@@ -184,8 +184,20 @@ export class CollectionSyncService {
                     plexItem.ratingKey,
                     'trailer-placeholder'
                   );
-                } catch {
-                  // Non-fatal: label may already be absent
+                } catch (error) {
+                  logger.warn(
+                    'Failed to remove placeholder label, deferring cleanup',
+                    {
+                      label: 'Collection Sync Service',
+                      title: marker.title,
+                      ratingKey: plexItem.ratingKey,
+                      error:
+                        error instanceof Error
+                          ? error.message
+                          : 'Unknown error',
+                    }
+                  );
+                  continue;
                 }
               }
               await cleanupPlaceholderForRealContent(
@@ -335,8 +347,20 @@ export class CollectionSyncService {
                     plexItem.ratingKey,
                     'trailer-placeholder'
                   );
-                } catch {
-                  // Non-fatal: label may already be absent
+                } catch (error) {
+                  logger.warn(
+                    'Failed to remove placeholder label, deferring cleanup',
+                    {
+                      label: 'Collection Sync Service',
+                      title: movie.title,
+                      ratingKey: plexItem.ratingKey,
+                      error:
+                        error instanceof Error
+                          ? error.message
+                          : 'Unknown error',
+                    }
+                  );
+                  continue;
                 }
               }
               await cleanupPlaceholderForRealContent(
