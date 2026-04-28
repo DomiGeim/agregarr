@@ -178,6 +178,16 @@ export class CollectionSyncService {
 
             if (!needsTitleFix && marker.tmdbId) {
               // Real content detected - clean up placeholder
+              if (plexItem) {
+                try {
+                  await plexClient.removeLabelFromItem(
+                    plexItem.ratingKey,
+                    'trailer-placeholder'
+                  );
+                } catch {
+                  // Non-fatal: label may already be absent
+                }
+              }
               await cleanupPlaceholderForRealContent(
                 marker.tmdbId,
                 marker.placeholderPath,
@@ -319,6 +329,16 @@ export class CollectionSyncService {
           for (const { plexItem, needsCleanup, movie } of discovered) {
             if (plexItem && needsCleanup) {
               // Real content detected - clean up placeholder
+              if (plexItem) {
+                try {
+                  await plexClient.removeLabelFromItem(
+                    plexItem.ratingKey,
+                    'trailer-placeholder'
+                  );
+                } catch {
+                  // Non-fatal: label may already be absent
+                }
+              }
               await cleanupPlaceholderForRealContent(
                 movie.tmdbId,
                 movie.placeholderPath,
