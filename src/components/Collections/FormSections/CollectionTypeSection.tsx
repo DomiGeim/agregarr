@@ -274,6 +274,12 @@ const CollectionTypeSection = ({
             description:
               'Automatically create smart collections for the top 5 actors in this library.',
           },
+          {
+            value: 'watchlist',
+            label: 'Plex Watchlist',
+            description:
+              'Create a collection from your Plex account watchlist.',
+          },
         ];
       case 'imdb':
         return [

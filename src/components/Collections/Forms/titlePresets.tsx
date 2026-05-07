@@ -1034,6 +1034,18 @@ export const getTemplatePresets = (
           },
           { label: 'Custom', value: 'custom' },
         ];
+      case 'watchlist':
+        return [
+          {
+            label: 'Plex Watchlist',
+            value: 'Plex Watchlist',
+          },
+          {
+            label: 'My Watchlist',
+            value: 'My Watchlist',
+          },
+          { label: 'Custom', value: 'custom' },
+        ];
       default:
         return [
           {

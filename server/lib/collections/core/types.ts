@@ -173,6 +173,7 @@ export type CollectionSource =
 export type ItemProducingSource =
   | 'radarr'
   | 'sonarr'
+  | 'plex'
   | 'trakt'
   | 'tmdb'
   | 'imdb'
@@ -558,6 +559,14 @@ export interface TautulliSourceData {
   last_played?: number;
 }
 
+export interface PlexWatchlistSourceData {
+  ratingKey: string;
+  tmdbId: number;
+  tvdbId?: number;
+  type: 'movie' | 'show';
+  title: string;
+}
+
 export interface OverseerrSourceData {
   id: number;
   title: string;
@@ -726,6 +735,7 @@ export type CollectionSourceData =
   | TraktSourceData
   | MDBListSourceData
   | TautulliSourceData
+  | PlexWatchlistSourceData
   | OverseerrSourceData
   | TmdbSourceData
   | ImdbSourceData

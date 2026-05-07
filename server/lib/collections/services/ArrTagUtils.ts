@@ -14,6 +14,7 @@ import logger from '@server/logger';
  */
 export type TagSource =
   | 'trakt'
+  | 'plex'
   | 'tmdb'
   | 'imdb'
   | 'letterboxd'
@@ -30,6 +31,7 @@ export type TagSource =
 
 const SOURCE_LABELS: Record<TagSource, string> = {
   trakt: 'Trakt',
+  plex: 'Plex',
   tmdb: 'Tmdb',
   imdb: 'Imdb',
   letterboxd: 'Letterboxd',
