@@ -151,7 +151,7 @@ const SettingsMain = () => {
             applicationTitle: data?.applicationTitle,
             applicationUrl: data?.applicationUrl,
             csrfProtection: data?.csrfProtection,
-            locale: data?.locale ?? 'en',
+            locale: data?.locale ?? 'de',
             tmdbLanguage: data?.tmdbLanguage ?? 'en',
             enableTmdbPosterCache: data?.enableTmdbPosterCache ?? true,
             trustProxy: data?.trustProxy,

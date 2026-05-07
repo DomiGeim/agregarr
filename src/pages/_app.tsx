@@ -122,7 +122,7 @@ const CoreApp: Omit<NextAppComponentType, 'origGetInitialProps'> = ({
       <LanguageContext.Provider value={{ locale: currentLocale, setLocale }}>
         <IntlProvider
           locale={currentLocale}
-          defaultLocale="en"
+          defaultLocale="de"
           messages={loadedMessages}
         >
           <LoadingBar />
@@ -163,7 +163,7 @@ CoreApp.getInitialProps = async (initialProps) => {
     partialRequestsEnabled: true,
     vapidPublic: '',
     enablePushRegistration: false,
-    locale: 'en',
+    locale: 'de',
     emailEnabled: false,
     newPlexLogin: true,
   };

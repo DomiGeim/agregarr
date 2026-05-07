@@ -725,7 +725,7 @@ class Settings {
         localLogin: false,
         newPlexLogin: true,
         trustProxy: false,
-        locale: 'en',
+        locale: 'de',
         tmdbLanguage: 'en',
         enableTmdbPosterCache: true,
       },

@@ -18,7 +18,7 @@ const defaultSettings = {
   partialRequestsEnabled: true,
   vapidPublic: '',
   enablePushRegistration: false,
-  locale: 'en',
+  locale: 'de',
   emailEnabled: false,
   newPlexLogin: true,
 };
