@@ -165,12 +165,15 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
     mediaType: 'movie' | 'tv'
   ): Promise<NetworksTemplateContext> {
     // Extract platform name from subtype (e.g., "neon-tv_top_10" -> "neon-tv")
-    const platformName = (config.subtype || '').replace(/_top_10$/, '');
+    const platformName = (config.subtype || '').replace(
+      /_(top_10|newly_added)$/,
+      ''
+    );
 
     return this.templateEngine.createNetworksContext(
       mediaType,
       platformName,
-      'top_10'
+      config.subtype?.endsWith('_newly_added') ? 'newly_added' : 'top_10'
     ) as NetworksTemplateContext;
   }
 
@@ -185,7 +188,10 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
   ): Promise<NetworksSourceData[]> {
     try {
       // Extract platform name for logging
-      const platformName = (config.subtype || '').replace(/_top_10$/, '');
+      const platformName = (config.subtype || '').replace(
+        /_(top_10|newly_added)$/,
+        ''
+      );
 
       logger.debug(`Fetching Networks data for platform: ${platformName}`, {
         label: 'Networks Collections',
@@ -201,11 +207,16 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
 
       const country = config.networksCountry || 'global';
       const mediaType = getCollectionMediaType(config);
-      const platformData = await this.flixpatrolClient.getPlatformTop10(
-        config.subtype || '', // Pass the full subtype (e.g., "neon-tv_top_10")
-        country,
-        mediaType
-      );
+      const platformData = config.subtype?.endsWith('_newly_added')
+        ? await this.flixpatrolClient.getPlatformNewlyAdded(
+            config.subtype || '',
+            mediaType
+          )
+        : await this.flixpatrolClient.getPlatformTop10(
+            config.subtype || '', // Pass the full subtype (e.g., "neon-tv_top_10")
+            country,
+            mediaType
+          );
 
       const networksData: NetworksSourceData[] = [];
 
@@ -581,7 +592,10 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
 
     // Dynamic validation - any subtype ending with "_top_10" is valid
     // This allows for the full range of platforms that FlixPatrol supports
-    return config.subtype.endsWith('_top_10');
+    return (
+      config.subtype.endsWith('_top_10') ||
+      config.subtype === 'netflix_newly_added'
+    );
   }
 
   /**
@@ -825,8 +839,8 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
    * Extract clean platform name from subtype for branding
    */
   private extractPlatformNameFromSubtype(subtype: string): string {
-    // Remove "_top_10" suffix and normalize to match poster generation system
-    const platformName = subtype.replace(/_top_10$/, '');
+    // Remove Networks subtype suffix and normalize to match poster generation system
+    const platformName = subtype.replace(/_(top_10|newly_added)$/, '');
 
     // Convert underscores to hyphens for poster generation compatibility
     // This ensures platform names match the SERVICE_LOGO_MAP in posterGeneration.ts

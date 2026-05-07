@@ -1156,6 +1156,24 @@ export const getTemplatePresets = (
   // Networks collection presets
   if (values.type === 'networks') {
     if (values.subtype) {
+      if (values.subtype === 'netflix_newly_added') {
+        return [
+          {
+            label: 'Neu auf Netflix',
+            value: 'Neu auf Netflix',
+          },
+          {
+            label: 'Netflix Neu hinzugefügt',
+            value: 'Netflix Neu hinzugefügt',
+          },
+          {
+            label: 'Neue {mediaType}s auf Netflix',
+            value: 'Neue {mediaType}s auf Netflix',
+          },
+          { label: 'Custom', value: 'custom' },
+        ];
+      }
+
       // Get platform name from subtype for display
       // Handle cases like "netflix_top_10" -> "Netflix"
       // and "disney-plus" -> "Disney Plus"

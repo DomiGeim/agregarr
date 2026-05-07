@@ -249,10 +249,14 @@ function getSourceDisplayName(source: {
       return 'MDBList';
 
     case 'networks': {
+      if (subtype === 'netflix_newly_added') {
+        return 'Netflix Neu hinzugefügt';
+      }
+
       // Extract network name from subtype (e.g., "netflix_top_10" -> "Netflix")
       const networkName =
         subtype
-          ?.replace(/_top_10$/, '')
+          ?.replace(/_(top_10|newly_added)$/, '')
           .split('_')
           .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
           .join(' ') || 'Network';
@@ -427,7 +431,7 @@ async function processMultiSourcePreview(
 
       if (source.type === 'networks') {
         const extractedNetwork =
-          source.subtype?.replace(/_top_10$/, '') || undefined;
+          source.subtype?.replace(/_(top_10|newly_added)$/, '') || undefined;
         sourceConfigRecord.network = extractedNetwork;
         sourceConfigRecord.networksCountry = source.networksCountry;
       }
@@ -1073,7 +1077,8 @@ async function processPreviewAsync(
       // Extract network from subtype if not explicitly provided
       // e.g., "netflix_top_10" -> "netflix"
       const extractedNetwork =
-        network || (subtype ? subtype.replace(/_top_10$/, '') : undefined);
+        network ||
+        (subtype ? subtype.replace(/_(top_10|newly_added)$/, '') : undefined);
       previewConfigRecord.network = extractedNetwork;
       previewConfigRecord.networksCountry = country;
     }

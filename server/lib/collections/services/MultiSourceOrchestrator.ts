@@ -2392,10 +2392,11 @@ export class MultiSourceOrchestrator {
           if (
             activeSource.type === 'networks' &&
             activeSource.subtype &&
-            activeSource.subtype.endsWith('_top_10')
+            (activeSource.subtype.endsWith('_top_10') ||
+              activeSource.subtype === 'netflix_newly_added')
           ) {
             const platformName = activeSource.subtype
-              .replace(/_top_10$/, '') // Remove "_top_10" suffix
+              .replace(/_(top_10|newly_added)$/, '') // Remove Networks subtype suffix
               .replace(/_/g, '-'); // Convert underscores to hyphens for logo compatibility
             collectionType = platformName;
 
@@ -2430,7 +2431,9 @@ export class MultiSourceOrchestrator {
           try {
             // Extract platform name from active source subtype
             const platformName = activeSource.subtype
-              ? activeSource.subtype.replace(/_top_10$/, '').replace(/_/g, '-')
+              ? activeSource.subtype
+                  .replace(/_(top_10|newly_added)$/, '')
+                  .replace(/_/g, '-')
               : 'unknown';
 
             logger.debug(

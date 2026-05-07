@@ -281,6 +281,75 @@ class FlixPatrolAPI extends ExternalAPI {
   }
 
   /**
+   * Get newly added titles for a specific streaming platform.
+   */
+  public async getPlatformNewlyAdded(
+    platform: string,
+    requestedMediaType?: 'movie' | 'tv' | 'both'
+  ): Promise<FlixPatrolPlatformData> {
+    const basePlatform = platform.replace(/_newly_added$/, '');
+    const contentPath =
+      requestedMediaType === 'movie'
+        ? 'movies'
+        : requestedMediaType === 'tv'
+        ? 'tv-shows'
+        : 'titles';
+    const url = `/calendar/new/${contentPath}/${basePlatform}/`;
+
+    try {
+      logger.debug(`Fetching FlixPatrol newly added titles`, {
+        label: 'FlixPatrol API',
+        platform,
+        basePlatform,
+        requestedMediaType,
+        url,
+      });
+
+      const response = await this.axios.get(url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+          'Sec-Ch-Ua':
+            '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': '"macOS"',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'Upgrade-Insecure-Requests': '1',
+        },
+        timeout: 30000,
+      });
+
+      return this.parseNewlyAddedCalendarHtml(
+        response.data,
+        basePlatform,
+        requestedMediaType
+      );
+    } catch (error) {
+      logger.error(
+        `Failed to fetch FlixPatrol newly added titles for ${platform}:`,
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          platform,
+          stack: error instanceof Error ? error.stack : undefined,
+        }
+      );
+      throw new Error(
+        `Failed to fetch FlixPatrol newly added titles: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
+    }
+  }
+
+  /**
    * Get dates to try (today and yesterday) for FlixPatrol data fetching
    */
   private getDatesToTry(
@@ -1084,8 +1153,8 @@ class FlixPatrolAPI extends ExternalAPI {
    * Extract clean platform name from subtype
    */
   private extractPlatformNameFromSubtype(platform: string): string {
-    // Remove "_top_10" suffix and return the platform identifier
-    return platform.replace(/_top_10$/, '');
+    // Remove Networks subtype suffix and return the platform identifier
+    return platform.replace(/_(top_10|newly_added)$/, '');
   }
 
   /**
@@ -1291,6 +1360,7 @@ class FlixPatrolAPI extends ExternalAPI {
    */
   private getGlobalPlatformOptions(): FlixPatrolPlatformOption[] {
     return [
+      { value: 'netflix_newly_added', label: 'Netflix Neu hinzugefügt' },
       { value: 'netflix_top_10', label: 'Netflix Top 10' },
       { value: 'hbo_top_10', label: 'HBO Top 10' },
       { value: 'disney_top_10', label: 'Disney+ Top 10' },
@@ -1716,6 +1786,16 @@ class FlixPatrolAPI extends ExternalAPI {
         }
       });
 
+      if (
+        platforms.some((platform) => platform.value === 'netflix_top_10') &&
+        !platforms.some((platform) => platform.value === 'netflix_newly_added')
+      ) {
+        platforms.unshift({
+          value: 'netflix_newly_added',
+          label: 'Netflix Neu hinzugefügt',
+        });
+      }
+
       logger.info(`Scraped ${platforms.length} platforms for ${country}`, {
         label: 'FlixPatrol API',
         country,
@@ -1981,6 +2061,93 @@ class FlixPatrolAPI extends ExternalAPI {
     });
 
     return items;
+  }
+
+  /**
+   * Parse FlixPatrol's "new titles" calendar table.
+   */
+  private parseNewlyAddedCalendarHtml(
+    html: string,
+    platform: string,
+    requestedMediaType?: 'movie' | 'tv' | 'both'
+  ): FlixPatrolPlatformData {
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    const pageTitle = document.querySelector('title')?.textContent || '';
+
+    const result: FlixPatrolPlatformData = {
+      platform: `${this.formatDynamicPlatformName(platform)} Neu hinzugefügt`,
+      region: 'Global',
+      date: this.extractDateFromTitle(pageTitle) || 'Unknown',
+      tvShows: [],
+      movies: [],
+    };
+
+    const rows = document.querySelectorAll('table tr');
+    let rank = 1;
+
+    rows.forEach((row) => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length < 2) {
+        return;
+      }
+
+      const titleCell = cells[1];
+      const titleLink = titleCell.querySelector('a[href^="/title/"]');
+      const image = titleCell.querySelector('img');
+      const title =
+        image?.getAttribute('title')?.trim() ||
+        image?.getAttribute('alt')?.trim() ||
+        titleLink?.textContent?.trim().replace(/\s+/g, ' ');
+
+      if (!title) {
+        return;
+      }
+
+      const cellText = titleCell.textContent?.replace(/\s+/g, ' ').trim() || '';
+      const itemType: 'movie' | 'tv' =
+        requestedMediaType === 'movie'
+          ? 'movie'
+          : requestedMediaType === 'tv'
+          ? 'tv'
+          : cellText.toLowerCase().includes('tv show')
+          ? 'tv'
+          : 'movie';
+
+      if (requestedMediaType === 'movie' && itemType !== 'movie') {
+        return;
+      }
+
+      if (requestedMediaType === 'tv' && itemType !== 'tv') {
+        return;
+      }
+
+      const flixpatrolUrl = titleLink?.getAttribute('href');
+      const item: FlixPatrolListItem = {
+        rank: rank++,
+        title,
+        points: cells[0].textContent?.trim().replace(/\s+/g, ' ') || undefined,
+        flixpatrolUrl: flixpatrolUrl
+          ? `https://flixpatrol.com${flixpatrolUrl}`
+          : undefined,
+        type: itemType,
+      };
+
+      if (itemType === 'tv') {
+        result.tvShows.push(item);
+      } else {
+        result.movies.push(item);
+      }
+    });
+
+    logger.debug(`Parsed FlixPatrol newly added titles for ${platform}`, {
+      label: 'FlixPatrol API',
+      platform,
+      movies: result.movies.length,
+      tvShows: result.tvShows.length,
+    });
+
+    return result;
   }
 }
 
