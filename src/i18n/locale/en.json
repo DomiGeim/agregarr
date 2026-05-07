@@ -1554,7 +1554,7 @@
   "components.Settings.menuSources": "Sources",
   "components.Settings.monitorByDefault": "Monitor by default",
   "components.Settings.myanimelistApiKey": "MyAnimeList API Key",
-  "components.Settings.myanimelistApiKeyTip": "Get your API key from <code>https://myanimelist.net/apiconfig</code> and copy the <code>Client ID</code>. Critical fields: App Type - <code>Web</code>, App Redirect URL - <code>http://localhost/</code>, Homepage URL - <code>https://github.com/agregarr/agregarr</code>, <code>Non-Commercial</code>, <code>Hobbyist</code>.",
+  "components.Settings.myanimelistApiKeyTip": "Get your API key from <code>https://myanimelist.net/apiconfig</code> and copy the <code>Client ID</code>. Critical fields: App Type - <code>Web</code>, App Redirect URL - <code>http://localhost/</code>, Homepage URL - <code>https://github.com/DomiGeim/agregarr</code>, <code>Non-Commercial</code>, <code>Hobbyist</code>.",
   "components.Settings.myanimelistConnectionFailure": "Failed to connect to MyAnimeList",
   "components.Settings.myanimelistConnectionSuccess": "Connected to MyAnimeList successfully!",
   "components.Settings.myanimelistSettings": "MyAnimeList Settings",
