@@ -249,8 +249,27 @@ function getSourceDisplayName(source: {
       return 'MDBList';
 
     case 'networks': {
-      if (subtype === 'netflix_newly_added') {
-        return 'Netflix Neu hinzugefügt';
+      if (subtype?.endsWith('_newly_added')) {
+        const networkName = subtype
+          .replace(/_newly_added$/, '')
+          .split(/[-_]/)
+          .map((word) => {
+            if (word.toLowerCase() === 'tv') {
+              return 'TV';
+            }
+            if (word.toLowerCase() === 'prime') {
+              return 'Prime';
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1);
+          })
+          .join(' ');
+        const displayName =
+          networkName.toLowerCase() === 'paramount'
+            ? 'Paramount+'
+            : networkName.toLowerCase() === 'amazon'
+            ? 'Amazon Prime'
+            : networkName;
+        return `${displayName} Neu hinzugefügt`;
       }
 
       // Extract network name from subtype (e.g., "netflix_top_10" -> "Netflix")

@@ -590,11 +590,17 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
       return false;
     }
 
-    // Dynamic validation - any subtype ending with "_top_10" is valid
-    // This allows for the full range of platforms that FlixPatrol supports
+    // Dynamic validation - any subtype ending with "_top_10" is valid.
+    // Newly added collections are limited to platforms with known calendar pages.
     return (
       config.subtype.endsWith('_top_10') ||
-      config.subtype === 'netflix_newly_added'
+      [
+        'netflix_newly_added',
+        'amazon_prime_newly_added',
+        'amazon-prime_newly_added',
+        'amazon_newly_added',
+        'paramount_newly_added',
+      ].includes(config.subtype)
     );
   }
 
