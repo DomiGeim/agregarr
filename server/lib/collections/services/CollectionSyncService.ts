@@ -427,7 +427,9 @@ export class CollectionSyncService {
 
     if (hasUsersConfig || hasServerOwnerConfig || hasTargetUserConfigs) {
       logger.info(
-        `Detected user-scoped collections - applying pre-sync user restrictions (overseerr_users: ${hasUsersConfig}, server_owner: ${hasServerOwnerConfig}, target_user: ${hasTargetUserConfigs})`,
+        `Detected user-scoped collections - applying pre-sync user restrictions (overseerr_users: ${hasUsersConfig}, server_owner: ${hasServerOwnerConfig}, target_user: ${
+          hasTargetUserConfigs
+        })`,
         {
           label: 'Collection Sync Service',
           hasUsersConfig,

@@ -694,7 +694,11 @@ export async function applySelectivePreSyncUserRestrictions(
         label: 'Plex User Manager',
         plexUsers: allPlexUserIds.length,
         activeOverseerrUsers: activeOverseerrUserIds.length,
-        configTypes: { hasUsersConfig, hasServerOwnerConfig, hasTargetUsers },
+        configTypes: {
+          hasUsersConfig,
+          hasServerOwnerConfig,
+          hasTargetUsers,
+        },
       }
     );
 
