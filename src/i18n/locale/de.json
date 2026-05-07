@@ -1554,7 +1554,7 @@
     "components.Settings.menuSources":  "Quellen",
     "components.Settings.monitorByDefault":  "Standardmäßig überwachen",
     "components.Settings.myanimelistApiKey":  "MyAnimeList-API-Schlüssel",
-    "components.Settings.myanimelistApiKeyTip":  "Holen Sie sich Ihren API-Schlüssel von \u003ccode\u003ehttps://myanimelist.net/apiconfig\u003c/code\u003e und kopieren Sie die \u003ccode\u003eClient-ID\u003c/code\u003e. Kritische Felder: App-Typ – \u003ccode\u003eWeb\u003c/code\u003e, App-Umleitungs-URL – \u003ccode\u003ehttp://localhost/\u003c/code\u003e, Homepage-URL – \u003ccode\u003ehttps://github.com/agregarr/agregarr\u003c/code\u003e, \u003ccode\u003eNicht kommerziell\u003c/code\u003e, \u003ccode\u003eHobbyist\u003c/code\u003e.",
+  "components.Settings.myanimelistApiKeyTip":  "Holen Sie sich Ihren API-Schlüssel von \u003ccode\u003ehttps://myanimelist.net/apiconfig\u003c/code\u003e und kopieren Sie die \u003ccode\u003eClient-ID\u003c/code\u003e. Kritische Felder: App-Typ – \u003ccode\u003eWeb\u003c/code\u003e, App-Umleitungs-URL – \u003ccode\u003ehttp://localhost/\u003c/code\u003e, Homepage-URL – \u003ccode\u003ehttps://github.com/DomiGeim/agregarr\u003c/code\u003e, \u003ccode\u003eNicht kommerziell\u003c/code\u003e, \u003ccode\u003eHobbyist\u003c/code\u003e.",
     "components.Settings.myanimelistConnectionFailure":  "Verbindung zu MyAnimeList konnte nicht hergestellt werden",
     "components.Settings.myanimelistConnectionSuccess":  "Erfolgreich mit MyAnimeList verbunden!",
     "components.Settings.myanimelistSettings":  "MyAnimeList-Einstellungen",

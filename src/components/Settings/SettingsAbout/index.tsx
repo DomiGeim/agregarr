@@ -78,7 +78,7 @@ const SettingsAbout = () => {
             </p>
             <p className="mt-3 text-sm leading-5 md:mt-0 md:ml-6">
               <a
-                href="http://github.com/agregarr/agregarr"
+                href="https://github.com/DomiGeim/agregarr"
                 className="whitespace-nowrap font-medium text-gray-100 transition duration-150 ease-in-out hover:text-white"
                 target="_blank"
                 rel="noreferrer"
@@ -112,8 +112,8 @@ const SettingsAbout = () => {
                 <a
                   href={
                     data.version.startsWith('develop-')
-                      ? `https://github.com/agregarr/agregarr/compare/${status.commitTag}...develop`
-                      : 'https://github.com/agregarr/agregarr/releases'
+                      ? `https://github.com/DomiGeim/agregarr/compare/${status.commitTag}...develop`
+                      : 'https://github.com/DomiGeim/agregarr/releases'
                   }
                   target="_blank"
                   rel="noopener noreferrer"
@@ -129,8 +129,8 @@ const SettingsAbout = () => {
                 <a
                   href={
                     data.version.startsWith('develop-')
-                      ? 'https://github.com/agregarr/agregarr/commits/develop'
-                      : 'https://github.com/agregarr/agregarr/releases'
+                      ? 'https://github.com/DomiGeim/agregarr/commits/develop'
+                      : 'https://github.com/DomiGeim/agregarr/releases'
                   }
                   target="_blank"
                   rel="noopener noreferrer"
@@ -158,12 +158,12 @@ const SettingsAbout = () => {
         <List title={intl.formatMessage(messages.gettingsupport)}>
           <List.Item title={intl.formatMessage(messages.githubdiscussions)}>
             <a
-              href="https://github.com/agregarr/agregarr/discussions"
+              href="https://github.com/DomiGeim/agregarr/discussions"
               target="_blank"
               rel="noreferrer"
               className="text-orange-500 transition duration-300 hover:underline"
             >
-              https://github.com/agregarr/agregarr/discussions
+              https://github.com/DomiGeim/agregarr/discussions
             </a>
           </List.Item>
           <List.Item title="Discord">
