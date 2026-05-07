@@ -94,6 +94,8 @@ export interface CollectionConfig {
     serverOwnerHome: boolean;
     libraryRecommended: boolean;
   };
+  readonly targetUserId?: string; // Plex user ID - restricts collection visibility to this user
+  readonly targetUserLabel?: string; // Display name for UI reference
   readonly isActive: boolean; // Whether collection is currently active (time restrictions met)
   readonly missing?: boolean; // True if collection no longer exists in Plex
   // Sync status tracking fields
@@ -2210,6 +2212,8 @@ export interface MultiSourceCollectionConfig {
   readonly sources: readonly SourceDefinition[];
   readonly combineMode: MultiSourceCombineMode;
   readonly customSyncSchedule?: CustomSyncSchedule;
+  readonly targetUserId?: string;
+  readonly targetUserLabel?: string;
   readonly isActive?: boolean;
   readonly sortOrderHome?: number;
   readonly sortOrderLibrary?: number;

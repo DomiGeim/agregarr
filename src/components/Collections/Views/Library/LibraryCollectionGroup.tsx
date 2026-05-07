@@ -10,6 +10,7 @@ import {
   PreExistingBadge,
   SourceSubtypeBadge,
   SyncStatus,
+  TargetUserBadge,
   TimeRestrictionsBadge,
   UnwatchedBadge,
 } from '@app/components/Collections/Shared/CollectionBadges';
@@ -344,6 +345,15 @@ const SortableItem = ({
               <PlaceholdersBadge
                 createPlaceholdersForMissing={
                   (config as CollectionFormConfig).createPlaceholdersForMissing
+                }
+              />
+            )}
+
+            {isCollection && (
+              <TargetUserBadge
+                targetUserId={(config as CollectionFormConfig).targetUserId}
+                targetUserLabel={
+                  (config as CollectionFormConfig).targetUserLabel
                 }
               />
             )}

@@ -982,6 +982,52 @@ settingsRoutes.get('/plex/users', isAuthenticated(), async (req, res, next) => {
 });
 
 settingsRoutes.get(
+  '/plex/target-users',
+  isAuthenticated(),
+  async (_req, res, next) => {
+    const userRepository = getRepository(User);
+
+    try {
+      const admin = await userRepository.findOneOrFail({
+        select: { id: true, plexToken: true },
+        where: { id: 1 },
+      });
+      const plexApi = new PlexTvAPI(admin.plexToken ?? '');
+      const plexUsers = (await plexApi.getUsers()).MediaContainer.User.map(
+        (user) => user.$
+      ).filter((user) => user.email);
+
+      const targetUsers: {
+        id: string;
+        title: string;
+        username: string;
+        email: string;
+        thumb: string;
+      }[] = [];
+
+      await Promise.all(
+        plexUsers.map(async (plexUser) => {
+          if (await plexApi.checkUserAccess(parseInt(plexUser.id))) {
+            targetUsers.push(plexUser);
+          }
+        })
+      );
+
+      return res.status(200).json(sortBy(targetUsers, 'username'));
+    } catch (e) {
+      logger.error('Something went wrong getting target Plex users', {
+        label: 'API',
+        errorMessage: e.message,
+      });
+      next({
+        status: 500,
+        message: 'Unable to retrieve target Plex users.',
+      });
+    }
+  }
+);
+
+settingsRoutes.get(
   '/logs',
   rateLimit({ windowMs: 60 * 1000, max: 50 }),
   (req, res, next) => {
