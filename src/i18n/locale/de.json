@@ -1742,7 +1742,7 @@
     "i18n.specials":  "Sonderangebote",
     "i18n.test":  "Testen",
     "i18n.testing":  "Testen…",
-    "pages.dashboardDescription":  "Überblick über Ihre Agregarr-Statistiken und Sammlungsleistung",
+    "pages.dashboardDescription":  "Überblick über Ihre Agregarr-Statistiken und Sammlungen",
     "pages.dashboardTitle":  "Dashboard",
     "pages.errormessagewithcode":  "{statusCode} - {error}",
     "pages.homeDescription":  "Sammlungen und Hubs auf dem Startbildschirm. Die Reihenfolge wird zwischen den Ansichten „Startseite“ und „Empfohlen“ geteilt, es können jedoch separate Sichtbarkeitseinstellungen vorhanden sein.",
