@@ -42,16 +42,16 @@ class PlexOAuth {
   private authToken?: string;
 
   public initializeHeaders(): void {
-    if (!window) {
+    if (typeof window === 'undefined') {
       throw new Error(
         'Window is not defined. Are you calling this in the browser?'
       );
     }
 
-    let clientId = localStorage.getItem('plex-client-id');
+    let clientId = window.localStorage.getItem('plex-client-id');
     if (!clientId) {
       const uuid = uuidv4();
-      localStorage.setItem('plex-client-id', uuid);
+      window.localStorage.setItem('plex-client-id', uuid);
       clientId = uuid;
     }
 
@@ -173,7 +173,7 @@ class PlexOAuth {
     w: number;
     h: number;
   }): Window | void {
-    if (!window) {
+    if (typeof window === 'undefined') {
       throw new Error(
         'Window is undefined. Are you running this in the browser?'
       );
