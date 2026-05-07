@@ -599,7 +599,17 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
         'amazon_prime_newly_added',
         'amazon-prime_newly_added',
         'amazon_newly_added',
+        'apple_tv_newly_added',
+        'apple-tv_newly_added',
+        'apple_newly_added',
+        'disney_newly_added',
+        'hbo_newly_added',
+        'hbo-max_newly_added',
+        'hbomax_newly_added',
+        'hulu_newly_added',
+        'joyn_newly_added',
         'paramount_newly_added',
+        'peacock_newly_added',
       ].includes(config.subtype)
     );
   }
