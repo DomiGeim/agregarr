@@ -423,6 +423,10 @@ export interface CollectionFormConfig {
   // Collection exclusion settings
   readonly excludeFromCollections?: string[]; // Array of collection IDs to exclude items from (mutual exclusion)
 
+  // Target user restriction
+  readonly targetUserId?: string; // Plex user ID to restrict this collection to
+  readonly targetUserLabel?: string; // Display name of the target user for UI
+
   // Backend properties (from PlexHubConfig) - Present on hub configs from API
   readonly collectionType?: CollectionType; // Simplified categorization system
   readonly isUnlinked?: boolean; // True if this hub was deliberately unlinked
@@ -628,6 +632,8 @@ export interface CollectionConfigCreateRequest {
   readonly useSeparator?: boolean;
   readonly separatorTitle?: string;
   readonly excludeFromCollections?: string[];
+  readonly targetUserId?: string;
+  readonly targetUserLabel?: string;
   readonly timeRestriction?: {
     readonly alwaysActive: boolean;
     readonly removeFromPlexWhenInactive?: boolean;
@@ -771,6 +777,8 @@ export const toCollectionCreateRequest = (
     sortOrder: config.sortOrder,
     personMinimumItems: config.personMinimumItems,
     excludeFromCollections: config.excludeFromCollections,
+    targetUserId: config.targetUserId,
+    targetUserLabel: config.targetUserLabel,
     timeRestriction: config.timeRestriction,
     customPoster: config.customPoster,
     autoPoster: config.autoPoster,
@@ -1122,6 +1130,8 @@ export interface MultiSourceCollectionConfig {
   readonly sources: readonly SourceDefinition[]; // Required sources array
   readonly combineMode: MultiSourceCombineMode; // Required combine mode
   readonly customSyncSchedule?: CustomSyncSchedule;
+  readonly targetUserId?: string;
+  readonly targetUserLabel?: string;
   // Optional fields from parent
   readonly isActive?: boolean;
   readonly sortOrderHome?: number;

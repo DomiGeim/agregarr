@@ -23,6 +23,7 @@ const messages = defineMessages({
   timeRestrictionsSet: 'Time Restrictions Set',
   unwatched: 'Unwatched',
   createPlaceholders: 'Create Placeholders',
+  targetUser: 'Target User: {user}',
 });
 
 // This file contains shared badge and UI components used across LibraryCollectionGroup and AllCollectionsView
@@ -672,6 +673,27 @@ export const PlaceholdersBadge: React.FC<PlaceholdersBadgeProps> = ({
   return (
     <Badge badgeType="default" className="!bg-opacity-30">
       {intl.formatMessage(messages.createPlaceholders)}
+    </Badge>
+  );
+};
+
+interface TargetUserBadgeProps {
+  targetUserId?: string;
+  targetUserLabel?: string;
+}
+
+export const TargetUserBadge: React.FC<TargetUserBadgeProps> = ({
+  targetUserId,
+  targetUserLabel,
+}) => {
+  const intl = useIntl();
+  if (!targetUserId) return null;
+
+  return (
+    <Badge badgeType="default" className="!bg-opacity-30">
+      {intl.formatMessage(messages.targetUser, {
+        user: targetUserLabel || targetUserId,
+      })}
     </Badge>
   );
 };

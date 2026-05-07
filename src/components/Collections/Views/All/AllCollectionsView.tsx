@@ -12,6 +12,7 @@ import {
   PreExistingBadge,
   SourceSubtypeBadge,
   SyncStatus,
+  TargetUserBadge,
   TimeRestrictionsBadge,
   UnwatchedBadge,
 } from '@app/components/Collections/Shared/CollectionBadges';
@@ -757,6 +758,19 @@ const AllCollectionsView: React.FC = () => {
                           createPlaceholdersForMissing={
                             (collection.originalConfig as CollectionFormConfig)
                               .createPlaceholdersForMissing
+                          }
+                        />
+                      )}
+
+                      {isCollection && collection.originalConfig && (
+                        <TargetUserBadge
+                          targetUserId={
+                            (collection.originalConfig as CollectionFormConfig)
+                              .targetUserId
+                          }
+                          targetUserLabel={
+                            (collection.originalConfig as CollectionFormConfig)
+                              .targetUserLabel
                           }
                         />
                       )}
