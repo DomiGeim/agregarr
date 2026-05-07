@@ -431,7 +431,7 @@ export interface NetworksTemplateContext extends TemplateContext {
   /** Streaming platform */
   platform?: string;
   /** Network-specific stat type */
-  statType?: 'top_10';
+  statType?: 'top_10' | 'newly_added';
 }
 
 export interface OriginalsTemplateContext extends TemplateContext {

@@ -407,6 +407,10 @@ export const getSubtypeLabel = (type: string, subtype?: string): string => {
           return subtype;
       }
     case 'networks':
+      if (subtype === 'netflix_newly_added') {
+        return 'Netflix Neu hinzugefügt';
+      }
+
       // Format platform names like "netflix_top_10" -> "Netflix"
       // and "neon-tv" -> "Neon TV"
       return subtype
