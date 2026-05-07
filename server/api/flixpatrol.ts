@@ -288,22 +288,23 @@ class FlixPatrolAPI extends ExternalAPI {
     requestedMediaType?: 'movie' | 'tv' | 'both'
   ): Promise<FlixPatrolPlatformData> {
     const basePlatform = platform.replace(/_newly_added$/, '');
-    const flixPatrolPlatform =
-      this.mapPlatformIdToFlixPatrolCalendarSlug(basePlatform);
+    const calendarSource =
+      this.mapPlatformIdToFlixPatrolCalendarSource(basePlatform);
     const contentPath =
       requestedMediaType === 'movie'
         ? 'movies'
         : requestedMediaType === 'tv'
         ? 'tv-shows'
         : 'titles';
-    const url = `/calendar/new/${contentPath}/${flixPatrolPlatform}/`;
+    const url = `/calendar/new/${contentPath}/${calendarSource.slug}/`;
 
     try {
       logger.debug(`Fetching FlixPatrol newly added titles`, {
         label: 'FlixPatrol API',
         platform,
         basePlatform,
-        flixPatrolPlatform,
+        flixPatrolPlatform: calendarSource.slug,
+        platformFilterName: calendarSource.filterName,
         requestedMediaType,
         url,
       });
@@ -333,7 +334,8 @@ class FlixPatrolAPI extends ExternalAPI {
       return this.parseNewlyAddedCalendarHtml(
         response.data,
         basePlatform,
-        requestedMediaType
+        requestedMediaType,
+        calendarSource.filterName
       );
     } catch (error) {
       logger.error(
@@ -1140,7 +1142,7 @@ class FlixPatrolAPI extends ExternalAPI {
   private formatDynamicPlatformName(platform: string): string {
     // Extract platform name from subtype (e.g., "neon-tv_top_10" -> "Neon TV")
     const platformName = this.extractPlatformNameFromSubtype(platform);
-    return platformName
+    const formattedName = platformName
       .split(/[-_]/)
       .map((word) => {
         // Special case for TV to maintain proper capitalization
@@ -1150,6 +1152,29 @@ class FlixPatrolAPI extends ExternalAPI {
         return word.charAt(0).toUpperCase() + word.slice(1);
       })
       .join(' ');
+    const lowerName = formattedName.toLowerCase();
+
+    if (lowerName === 'amazon') {
+      return 'Amazon Prime';
+    }
+    if (lowerName === 'apple' || lowerName === 'apple tv') {
+      return 'Apple TV+';
+    }
+    if (lowerName === 'disney') {
+      return 'Disney+';
+    }
+    if (
+      lowerName === 'hbo' ||
+      lowerName === 'hbo max' ||
+      lowerName === 'hbomax'
+    ) {
+      return 'HBO Max';
+    }
+    if (lowerName === 'paramount') {
+      return 'Paramount+';
+    }
+
+    return formattedName;
   }
 
   /**
@@ -1168,12 +1193,36 @@ class FlixPatrolAPI extends ExternalAPI {
       case 'amazon-prime':
       case 'amazon':
         return 'amazon';
+      case 'apple':
+      case 'apple-tv':
+        return 'apple-tv';
+      case 'hbo':
+      case 'hbomax':
+      case 'hbo-max':
+        return 'hbo-max';
       case 'paramount':
       case 'paramount-plus':
         return 'paramount-plus';
       default:
         return platformId.replace(/_/g, '-');
     }
+  }
+
+  /**
+   * Map platform IDs to FlixPatrol calendar pages. Some services are listed
+   * only in the all-streaming calendar, so they need a provider-name filter.
+   */
+  private mapPlatformIdToFlixPatrolCalendarSource(platformId: string): {
+    slug: string;
+    filterName?: string;
+  } {
+    const normalized = platformId.replace(/_/g, '-');
+
+    if (normalized === 'joyn') {
+      return { slug: 'streaming', filterName: 'Joyn' };
+    }
+
+    return { slug: this.mapPlatformIdToFlixPatrolCalendarSlug(platformId) };
   }
 
   /**
@@ -1385,19 +1434,25 @@ class FlixPatrolAPI extends ExternalAPI {
         value: 'amazon_prime_newly_added',
         label: 'Amazon Prime Neu hinzugefügt',
       },
+      { value: 'hbo_newly_added', label: 'HBO Max Neu hinzugefügt' },
       { value: 'hbo_top_10', label: 'HBO Top 10' },
+      { value: 'disney_newly_added', label: 'Disney+ Neu hinzugefügt' },
       { value: 'disney_top_10', label: 'Disney+ Top 10' },
       { value: 'amazon_prime_top_10', label: 'Amazon Prime Top 10' },
+      { value: 'apple_tv_newly_added', label: 'Apple TV+ Neu hinzugefügt' },
       { value: 'apple_tv_top_10', label: 'Apple TV+ Top 10' },
       {
         value: 'paramount_newly_added',
         label: 'Paramount+ Neu hinzugefügt',
       },
       { value: 'paramount_top_10', label: 'Paramount+ Top 10' },
+      { value: 'peacock_newly_added', label: 'Peacock Neu hinzugefügt' },
       { value: 'peacock_top_10', label: 'Peacock Top 10' },
       { value: 'crunchyroll_top_10', label: 'Crunchyroll Top 10' },
       { value: 'discovery_plus_top_10', label: 'Discovery+ Top 10' },
+      { value: 'hulu_newly_added', label: 'Hulu Neu hinzugefügt' },
       { value: 'hulu_top_10', label: 'Hulu Top 10' },
+      { value: 'joyn_newly_added', label: 'Joyn Neu hinzugefügt' },
     ];
   }
 
@@ -1839,6 +1894,56 @@ class FlixPatrolAPI extends ExternalAPI {
           value: 'netflix_newly_added',
           label: 'Netflix Neu hinzugefügt',
         },
+        {
+          top10Value: 'disney_top_10',
+          value: 'disney_newly_added',
+          label: 'Disney+ Neu hinzugefügt',
+        },
+        {
+          top10Value: 'joyn_top_10',
+          value: 'joyn_newly_added',
+          label: 'Joyn Neu hinzugefügt',
+        },
+        {
+          top10Value: 'peacock_top_10',
+          value: 'peacock_newly_added',
+          label: 'Peacock Neu hinzugefügt',
+        },
+        {
+          top10Value: 'hulu_top_10',
+          value: 'hulu_newly_added',
+          label: 'Hulu Neu hinzugefügt',
+        },
+        {
+          top10Value: 'apple_tv_top_10',
+          value: 'apple_tv_newly_added',
+          label: 'Apple TV+ Neu hinzugefügt',
+        },
+        {
+          top10Value: 'apple-tv_top_10',
+          value: 'apple-tv_newly_added',
+          label: 'Apple TV+ Neu hinzugefügt',
+        },
+        {
+          top10Value: 'apple_top_10',
+          value: 'apple_newly_added',
+          label: 'Apple TV+ Neu hinzugefügt',
+        },
+        {
+          top10Value: 'hbo_top_10',
+          value: 'hbo_newly_added',
+          label: 'HBO Max Neu hinzugefügt',
+        },
+        {
+          top10Value: 'hbo-max_top_10',
+          value: 'hbo-max_newly_added',
+          label: 'HBO Max Neu hinzugefügt',
+        },
+        {
+          top10Value: 'hbomax_top_10',
+          value: 'hbomax_newly_added',
+          label: 'HBO Max Neu hinzugefügt',
+        },
       ].forEach((newlyAddedOption) => {
         if (
           platforms.some(
@@ -2128,7 +2233,8 @@ class FlixPatrolAPI extends ExternalAPI {
   private parseNewlyAddedCalendarHtml(
     html: string,
     platform: string,
-    requestedMediaType?: 'movie' | 'tv' | 'both'
+    requestedMediaType?: 'movie' | 'tv' | 'both',
+    platformFilterName?: string
   ): FlixPatrolPlatformData {
     const dom = new JSDOM(html);
     const document = dom.window.document;
@@ -2164,6 +2270,13 @@ class FlixPatrolAPI extends ExternalAPI {
       }
 
       const cellText = titleCell.textContent?.replace(/\s+/g, ' ').trim() || '';
+      if (
+        platformFilterName &&
+        !cellText.toLowerCase().includes(platformFilterName.toLowerCase())
+      ) {
+        return;
+      }
+
       const itemType: 'movie' | 'tv' =
         requestedMediaType === 'movie'
           ? 'movie'
@@ -2202,6 +2315,7 @@ class FlixPatrolAPI extends ExternalAPI {
     logger.debug(`Parsed FlixPatrol newly added titles for ${platform}`, {
       label: 'FlixPatrol API',
       platform,
+      platformFilterName,
       movies: result.movies.length,
       tvShows: result.tvShows.length,
     });

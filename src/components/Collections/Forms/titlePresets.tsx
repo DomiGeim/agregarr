@@ -1172,6 +1172,15 @@ export const getTemplatePresets = (
             ? 'Paramount+'
             : platformName.toLowerCase() === 'amazon'
             ? 'Amazon Prime'
+            : platformName.toLowerCase() === 'apple tv' ||
+              platformName.toLowerCase() === 'apple'
+            ? 'Apple TV+'
+            : platformName.toLowerCase() === 'disney'
+            ? 'Disney+'
+            : platformName.toLowerCase() === 'hbo' ||
+              platformName.toLowerCase() === 'hbo max' ||
+              platformName.toLowerCase() === 'hbomax'
+            ? 'HBO Max'
             : platformName;
 
         return [

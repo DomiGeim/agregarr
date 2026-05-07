@@ -268,6 +268,15 @@ function getSourceDisplayName(source: {
             ? 'Paramount+'
             : networkName.toLowerCase() === 'amazon'
             ? 'Amazon Prime'
+            : networkName.toLowerCase() === 'apple tv' ||
+              networkName.toLowerCase() === 'apple'
+            ? 'Apple TV+'
+            : networkName.toLowerCase() === 'disney'
+            ? 'Disney+'
+            : networkName.toLowerCase() === 'hbo' ||
+              networkName.toLowerCase() === 'hbo max' ||
+              networkName.toLowerCase() === 'hbomax'
+            ? 'HBO Max'
             : networkName;
         return `${displayName} Neu hinzugefügt`;
       }
