@@ -5,6 +5,59 @@ import { isAuthenticated } from '@server/middleware/auth';
 import { Router } from 'express';
 
 const dashboardRoutes = Router();
+const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
+
+const dashboardCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    data: unknown;
+  }
+>();
+
+const getCachedDashboardData = <T>(key: string): T | null => {
+  const cached = dashboardCache.get(key);
+
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    dashboardCache.delete(key);
+    return null;
+  }
+
+  return cached.data as T;
+};
+
+const setCachedDashboardData = <T>(key: string, data: T): void => {
+  dashboardCache.set(key, {
+    expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS,
+    data,
+  });
+};
+
+const getCollectionRatingKeys = (settings: ReturnType<typeof getSettings>) => {
+  const collectionRatingKeys: string[] = [];
+
+  if (settings.plex.collectionConfigs) {
+    for (const config of settings.plex.collectionConfigs) {
+      if (config.collectionRatingKey) {
+        collectionRatingKeys.push(config.collectionRatingKey);
+      }
+    }
+  }
+
+  if (settings.plex.preExistingCollectionConfigs) {
+    for (const config of settings.plex.preExistingCollectionConfigs) {
+      if (config.collectionRatingKey) {
+        collectionRatingKeys.push(config.collectionRatingKey);
+      }
+    }
+  }
+
+  return [...new Set(collectionRatingKeys)];
+};
 
 /**
  * GET /api/v1/dashboard/stats
@@ -13,6 +66,13 @@ const dashboardRoutes = Router();
 dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
   try {
     const settings = getSettings();
+    const collectionRatingKeys = getCollectionRatingKeys(settings);
+    const cacheKey = `stats:${collectionRatingKeys.join(',')}`;
+    const cachedDashboardData = getCachedDashboardData(cacheKey);
+
+    if (cachedDashboardData) {
+      return res.status(200).json(cachedDashboardData);
+    }
 
     let tautulliStats = null;
     let collectionStatsData = null;
@@ -23,35 +83,14 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       try {
         const tautulli = new TautulliAPI(settings.tautulli);
 
-        // Get rating keys from our configured collections
-        const collectionRatingKeys: string[] = [];
-        const agregarrCollectionKeys: string[] = [];
-        const preExistingCollectionKeys: string[] = [];
-
-        // Include user-created Agregarr collections
-        if (settings.plex.collectionConfigs) {
-          for (const config of settings.plex.collectionConfigs) {
-            if (config.collectionRatingKey) {
-              collectionRatingKeys.push(config.collectionRatingKey);
-              agregarrCollectionKeys.push(config.collectionRatingKey);
-            }
-          }
-        }
-
-        // Include pre-existing collections
-        if (settings.plex.preExistingCollectionConfigs) {
-          for (const config of settings.plex.preExistingCollectionConfigs) {
-            if (config.collectionRatingKey) {
-              collectionRatingKeys.push(config.collectionRatingKey);
-              preExistingCollectionKeys.push(config.collectionRatingKey);
-            }
-          }
-        }
-
         // Get collection stats and weekly activity stats
         const [collectionStats, weeklyMovies, weeklyTV] = await Promise.all([
           tautulli
-            .getTopCollections(50, 'plays', 7, collectionRatingKeys)
+            .getTopCollections(50, 'plays', 7, collectionRatingKeys, {
+              includeMetadata: false,
+              includeUserStats: false,
+              concurrency: 6,
+            })
             .catch((err) => {
               logger.warn('Failed to get collection stats from Tautulli', {
                 label: 'Dashboard API',
@@ -157,6 +196,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       timestamp: new Date().toISOString(),
     };
 
+    setCachedDashboardData(cacheKey, dashboardData);
     res.status(200).json(dashboardData);
   } catch (error) {
     logger.error('Failed to get dashboard stats', {
@@ -179,6 +219,8 @@ dashboardRoutes.get('/collections', isAuthenticated(), async (req, res) => {
   try {
     const settings = getSettings();
     const { limit = 10, statType = 'plays', days = 30 } = req.query;
+    const numericLimit = Number(limit);
+    const numericDays = Number(days);
 
     if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
       return res.status(400).json({
@@ -188,25 +230,14 @@ dashboardRoutes.get('/collections', isAuthenticated(), async (req, res) => {
       });
     }
 
-    // Get rating keys from our configured collections
-    const collectionRatingKeys: string[] = [];
+    const collectionRatingKeys = getCollectionRatingKeys(settings);
+    const cacheKey = `collections:${numericLimit}:${statType}:${numericDays}:${collectionRatingKeys.join(
+      ','
+    )}`;
+    const cachedCollectionData = getCachedDashboardData(cacheKey);
 
-    // Extract rating keys from user-created Agregarr collections
-    if (settings.plex.collectionConfigs) {
-      for (const config of settings.plex.collectionConfigs) {
-        if (config.collectionRatingKey) {
-          collectionRatingKeys.push(config.collectionRatingKey);
-        }
-      }
-    }
-
-    // Extract rating keys from pre-existing collections
-    if (settings.plex.preExistingCollectionConfigs) {
-      for (const config of settings.plex.preExistingCollectionConfigs) {
-        if (config.collectionRatingKey) {
-          collectionRatingKeys.push(config.collectionRatingKey);
-        }
-      }
+    if (cachedCollectionData) {
+      return res.status(200).json(cachedCollectionData);
     }
 
     logger.info('Getting collection statistics', {
@@ -225,9 +256,9 @@ dashboardRoutes.get('/collections', isAuthenticated(), async (req, res) => {
       return res.status(200).json({
         collections: [],
         metadata: {
-          limit: Number(limit),
+          limit: numericLimit,
           statType,
-          days: Number(days),
+          days: numericDays,
           timestamp: new Date().toISOString(),
         },
       });
@@ -235,21 +266,25 @@ dashboardRoutes.get('/collections', isAuthenticated(), async (req, res) => {
 
     const tautulli = new TautulliAPI(settings.tautulli);
     const collections = await tautulli.getTopCollections(
-      Number(limit),
+      numericLimit,
       statType as 'plays' | 'duration',
-      Number(days),
-      collectionRatingKeys
+      numericDays,
+      collectionRatingKeys,
+      { concurrency: 6 }
     );
 
-    res.status(200).json({
+    const collectionData = {
       collections,
       metadata: {
-        limit: Number(limit),
+        limit: numericLimit,
         statType,
-        days: Number(days),
+        days: numericDays,
         timestamp: new Date().toISOString(),
       },
-    });
+    };
+
+    setCachedDashboardData(cacheKey, collectionData);
+    res.status(200).json(collectionData);
   } catch (error) {
     logger.error('Failed to get collection statistics', {
       label: 'Dashboard API',
