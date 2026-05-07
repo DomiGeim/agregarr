@@ -45,6 +45,7 @@ export class DirectDownloadService {
     config: CollectionConfig,
     source:
       | 'trakt'
+      | 'plex'
       | 'tmdb'
       | 'imdb'
       | 'letterboxd'
@@ -225,6 +226,7 @@ export class DirectDownloadService {
     config: CollectionConfig,
     source:
       | 'trakt'
+      | 'plex'
       | 'tmdb'
       | 'imdb'
       | 'letterboxd'
@@ -328,6 +330,7 @@ export class DirectDownloadService {
     maxSeasons: number,
     source:
       | 'trakt'
+      | 'plex'
       | 'tmdb'
       | 'imdb'
       | 'letterboxd'

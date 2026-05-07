@@ -393,6 +393,8 @@ export const getSubtypeLabel = (type: string, subtype?: string): string => {
           return 'Directors Auto Collections';
         case 'actors':
           return 'Actors Auto Collections';
+        case 'watchlist':
+          return 'Plex Watchlist';
         default:
           return subtype;
       }

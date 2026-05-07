@@ -61,6 +61,7 @@ export class AutoRequestService {
     config: CollectionConfig,
     source:
       | 'trakt'
+      | 'plex'
       | 'tmdb'
       | 'imdb'
       | 'letterboxd'

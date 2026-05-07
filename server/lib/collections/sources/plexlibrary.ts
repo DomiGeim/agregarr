@@ -7,12 +7,16 @@ import { PosterTemplate } from '@server/entity/PosterTemplate';
  */
 
 import type PlexAPI from '@server/api/plexapi';
+import PlexTvAPI from '@server/api/plextv';
 import TheMovieDb from '@server/api/themoviedb';
 import { BaseCollectionSync } from '@server/lib/collections/core/BaseCollectionSync';
 import {
   extractTmdbIdFromGuids,
   extractTvdbIdFromGuids,
+  findPlexItemsByTmdbIds,
+  getAdminUser,
   getCollectionMediaType,
+  processMissingItemsWithMode,
   type LibraryItemsCache,
 } from '@server/lib/collections/core/CollectionUtilities';
 import type {
@@ -25,6 +29,8 @@ import type {
   MissingItem,
   PlexCollection,
   PlexLabel,
+  PlexLookupResult,
+  PlexWatchlistSourceData,
   SyncResult,
 } from '@server/lib/collections/core/types';
 import { CollectionSyncErrorType } from '@server/lib/collections/core/types';
@@ -749,60 +755,322 @@ export class PlexLibraryCollectionSync extends BaseCollectionSync<'plex'> {
   }
 
   public override async fetchSourceData(
-    _config: CollectionConfig,
+    config: CollectionConfig,
     _options?: CollectionSyncOptions,
     _libraryCache?: LibraryItemsCache
   ): Promise<CollectionSourceData[]> {
-    void _config;
     void _options;
     void _libraryCache;
-    // Director collections use Plex library data gathered during processing; no external source fetch required.
-    return [];
+
+    if (config.subtype !== 'watchlist') {
+      // Person collections use Plex library data gathered during processing; no external source fetch required.
+      return [];
+    }
+
+    const adminUser = await getAdminUser();
+    if (!adminUser?.plexToken) {
+      throw this.createSyncError(
+        CollectionSyncErrorType.CONFIGURATION_ERROR,
+        'Plex account token is required for Plex Watchlist collections'
+      );
+    }
+
+    const mediaType = getCollectionMediaType(config);
+    const plexTv = new PlexTvAPI(adminUser.plexToken);
+    const watchlist = await plexTv.getWatchlist({ size: 500 });
+
+    return watchlist.items.filter((item) => {
+      const itemMediaType = item.type === 'show' ? 'tv' : 'movie';
+      return itemMediaType === mediaType;
+    });
+  }
+
+  private isPlexWatchlistSourceData(
+    item: CollectionSourceData
+  ): item is PlexWatchlistSourceData {
+    return (
+      typeof item === 'object' &&
+      item !== null &&
+      'tmdbId' in item &&
+      'type' in item &&
+      'ratingKey' in item
+    );
+  }
+
+  private mapPlexWatchlistItem(
+    lookup: {
+      tmdbId: number;
+      tvdbId?: number;
+      mediaType: 'movie' | 'tv';
+      title: string;
+      originalPosition: number;
+    },
+    plexItem: PlexLookupResult
+  ): CollectionItem {
+    return {
+      ratingKey: plexItem.ratingKey,
+      title: plexItem.title,
+      type: lookup.mediaType,
+      tmdbId: lookup.tmdbId,
+      tvdbId: plexItem.tvdbId || lookup.tvdbId,
+      addedAt: plexItem.addedAt,
+      releaseDate: plexItem.releaseDate,
+      metadata: {
+        libraryKey: plexItem.libraryKey,
+        originalPosition: lookup.originalPosition,
+      },
+    };
+  }
+
+  private async filterWatchlistMissingItemsByGlobalLibrary(
+    missingItems: MissingItem[],
+    plexClient: PlexAPI,
+    targetLibraryId?: string,
+    libraryCache?: LibraryItemsCache
+  ): Promise<MissingItem[]> {
+    if (missingItems.length === 0) {
+      return missingItems;
+    }
+
+    const globalPlexLookup = await findPlexItemsByTmdbIds(
+      plexClient,
+      missingItems.map((item) => ({
+        tmdbId: item.tmdbId,
+        mediaType: item.mediaType,
+        title: item.title,
+      })),
+      targetLibraryId,
+      libraryCache,
+      true
+    );
+
+    return missingItems.filter((item) => {
+      const key = `${item.tmdbId}-${item.mediaType}`;
+      const foundInOtherLibrary = globalPlexLookup.get(key);
+
+      if (foundInOtherLibrary) {
+        logger.debug(
+          `Plex Watchlist item "${item.title}" found in another library - not marking as missing`,
+          {
+            label: 'Plex Library Collections',
+            tmdbId: item.tmdbId,
+            targetLibrary: targetLibraryId,
+            foundInLibrary: foundInOtherLibrary.libraryKey,
+          }
+        );
+      }
+
+      return !foundInOtherLibrary;
+    });
   }
 
   public override async mapSourceDataToItems(
-    _sourceData: CollectionSourceData[],
-    _config: CollectionConfig,
-    _plexClient?: PlexAPI,
-    _libraryCache?: LibraryItemsCache
+    sourceData: CollectionSourceData[],
+    config: CollectionConfig,
+    plexClient?: PlexAPI,
+    libraryCache?: LibraryItemsCache
   ): Promise<{
     items: CollectionItem[];
     missingItems?: MissingItem[];
     stats?: FilteringStats;
   }> {
-    void _sourceData;
-    void _config;
-    void _plexClient;
-    void _libraryCache;
-    // Items are derived directly from Plex during processConfiguration.
-    return {
-      items: [],
-      missingItems: [],
-      stats: { original: 0, filtered: 0, removed: 0 },
-    };
+    if (config.subtype !== 'watchlist') {
+      // Items are derived directly from Plex during person collection processing.
+      return {
+        items: [],
+        missingItems: [],
+        stats: { original: 0, filtered: 0, removed: 0 },
+      };
+    }
+
+    const watchlistItems: PlexWatchlistSourceData[] = sourceData.filter(
+      (item): item is PlexWatchlistSourceData =>
+        this.isPlexWatchlistSourceData(item)
+    );
+    const targetLibraryId = Array.isArray(config.libraryId)
+      ? config.libraryId[0]
+      : config.libraryId;
+    const watchlistLookups = watchlistItems.map((item, index) => ({
+      tmdbId: item.tmdbId,
+      tvdbId: item.tvdbId,
+      mediaType: item.type === 'show' ? ('tv' as const) : ('movie' as const),
+      title: item.title,
+      originalPosition: index + 1,
+    }));
+
+    if (!plexClient || watchlistLookups.length === 0) {
+      const stats = this.createFilteringStats(sourceData.length, 0, {
+        'missing plex client or empty watchlist': sourceData.length,
+      });
+      return { items: [], missingItems: [], stats };
+    }
+
+    const plexLookup = await findPlexItemsByTmdbIds(
+      plexClient,
+      watchlistLookups,
+      targetLibraryId,
+      libraryCache,
+      false
+    );
+
+    const mappedItems: CollectionItem[] = [];
+    let missingItems: MissingItem[] = [];
+
+    for (const lookup of watchlistLookups) {
+      const key = `${lookup.tmdbId}-${lookup.mediaType}`;
+      const plexItem = plexLookup.get(key);
+
+      if (plexItem) {
+        mappedItems.push(this.mapPlexWatchlistItem(lookup, plexItem));
+      } else {
+        missingItems.push({
+          tmdbId: lookup.tmdbId,
+          tvdbId: lookup.tvdbId,
+          mediaType: lookup.mediaType,
+          title: lookup.title,
+          originalPosition: lookup.originalPosition,
+          source: this.source,
+        });
+      }
+    }
+
+    missingItems = await this.filterWatchlistMissingItemsByGlobalLibrary(
+      missingItems,
+      plexClient,
+      targetLibraryId,
+      libraryCache
+    );
+
+    const stats = this.createFilteringStats(
+      sourceData.length,
+      mappedItems.length,
+      {
+        'not in target plex library': missingItems.length,
+        'invalid watchlist data': sourceData.length - watchlistItems.length,
+      }
+    );
+
+    logger.info(
+      `Mapped ${mappedItems.length}/${watchlistItems.length} Plex Watchlist items`,
+      {
+        label: 'Plex Library Collections',
+        collection: config.name,
+        missingItems: missingItems.length,
+      }
+    );
+
+    return { items: mappedItems, missingItems, stats };
   }
 
   protected async createCollection(
-    _items: CollectionItem[],
-    _mediaType: 'movie' | 'tv',
-    _collectionName: string,
-    _plexClient: PlexAPI,
-    _allCollections: PlexCollection[],
-    _config: CollectionConfig,
-    _processedCollectionKeys?: Set<string>
+    items: CollectionItem[],
+    mediaType: 'movie' | 'tv',
+    collectionName: string,
+    plexClient: PlexAPI,
+    allCollections: PlexCollection[],
+    config: CollectionConfig,
+    processedCollectionKeys?: Set<string>
   ): Promise<CollectionOperationResult> {
-    void _items;
-    void _mediaType;
-    void _collectionName;
-    void _plexClient;
-    void _allCollections;
-    void _config;
-    void _processedCollectionKeys;
+    if (config.subtype === 'watchlist') {
+      try {
+        const result = await this.createOrUpdateCollectionStandardized(
+          items,
+          collectionName,
+          mediaType,
+          config,
+          plexClient,
+          allCollections,
+          processedCollectionKeys
+        );
+
+        this.updateConfigWithRatingKey(config, result.collectionRatingKey);
+
+        return {
+          created: result.created,
+          updated: result.updated,
+          collectionRatingKey: result.collectionRatingKey,
+          itemCount: result.itemCount || items.length,
+          stats: result.stats,
+        };
+      } catch (error) {
+        throw this.createSyncError(
+          CollectionSyncErrorType.COLLECTION_ERROR,
+          `Failed to create Plex Watchlist collection ${collectionName}`,
+          { collectionName, itemCount: items.length },
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
+    }
+
     return {
       created: 0,
       updated: 0,
       itemCount: 0,
     };
+  }
+
+  private async processWatchlistConfiguration(
+    config: CollectionConfig,
+    plexClient: PlexAPI,
+    allCollections: PlexCollection[],
+    processedCollectionKeys?: Set<string>,
+    libraryCache?: LibraryItemsCache,
+    options?: CollectionSyncOptions
+  ): Promise<SyncResult> {
+    const sourceData = await this.fetchSourceData(
+      config,
+      options,
+      libraryCache
+    );
+    const mappedResult = await this.mapSourceDataToItems(
+      sourceData,
+      config,
+      plexClient,
+      libraryCache
+    );
+    const { items, missingItems } = await this.applyFilteringToMappedItems(
+      mappedResult,
+      config
+    );
+
+    await this.tagExistingItemsInArr(items, config);
+
+    const placeholderItems = await this.handlePlaceholdersAndMissingItems(
+      items,
+      missingItems,
+      config,
+      plexClient,
+      libraryCache,
+      missingItems && missingItems.length > 0
+        ? async () => {
+            await processMissingItemsWithMode(missingItems, config, 'plex');
+          }
+        : undefined
+    );
+
+    const finalItems =
+      placeholderItems.length > 0 ? [...items, ...placeholderItems] : items;
+
+    if (finalItems.length === 0) {
+      logger.warn('No items to create Plex Watchlist collection from', {
+        label: 'Plex Library Collections',
+        configName: config.name,
+        sourceItems: sourceData.length,
+        missingItems: missingItems?.length ?? 0,
+      });
+      return { created: 0, updated: 0 };
+    }
+
+    return await this.processWithMediaTypeStrategy(
+      finalItems,
+      config,
+      plexClient,
+      allCollections,
+      processedCollectionKeys,
+      undefined,
+      libraryCache,
+      missingItems
+    );
   }
 
   /**
@@ -813,17 +1081,26 @@ export class PlexLibraryCollectionSync extends BaseCollectionSync<'plex'> {
     plexClient: PlexAPI,
     allCollections: PlexCollection[],
     processedCollectionKeys?: Set<string>,
-    _libraryCache?: LibraryItemsCache,
-    _options?: CollectionSyncOptions
+    libraryCache?: LibraryItemsCache,
+    options?: CollectionSyncOptions
   ): Promise<SyncResult> {
-    void _libraryCache;
-    void _options;
+    if (config.subtype === 'watchlist') {
+      return await this.processWatchlistConfiguration(
+        config,
+        plexClient,
+        allCollections,
+        processedCollectionKeys,
+        libraryCache,
+        options
+      );
+    }
+
     const mediaType = getCollectionMediaType(config);
     const subtype = config.subtype;
     if (!subtype || (subtype !== 'directors' && subtype !== 'actors')) {
       throw this.createSyncError(
         CollectionSyncErrorType.CONFIGURATION_ERROR,
-        `Invalid plex subtype: ${subtype}. Currently only 'directors' and 'actors' are supported.`
+        `Invalid plex subtype: ${subtype}. Currently 'directors', 'actors', and 'watchlist' are supported.`
       );
     }
 
