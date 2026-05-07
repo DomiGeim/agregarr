@@ -288,19 +288,22 @@ class FlixPatrolAPI extends ExternalAPI {
     requestedMediaType?: 'movie' | 'tv' | 'both'
   ): Promise<FlixPatrolPlatformData> {
     const basePlatform = platform.replace(/_newly_added$/, '');
+    const flixPatrolPlatform =
+      this.mapPlatformIdToFlixPatrolCalendarSlug(basePlatform);
     const contentPath =
       requestedMediaType === 'movie'
         ? 'movies'
         : requestedMediaType === 'tv'
         ? 'tv-shows'
         : 'titles';
-    const url = `/calendar/new/${contentPath}/${basePlatform}/`;
+    const url = `/calendar/new/${contentPath}/${flixPatrolPlatform}/`;
 
     try {
       logger.debug(`Fetching FlixPatrol newly added titles`, {
         label: 'FlixPatrol API',
         platform,
         basePlatform,
+        flixPatrolPlatform,
         requestedMediaType,
         url,
       });
@@ -1158,6 +1161,22 @@ class FlixPatrolAPI extends ExternalAPI {
   }
 
   /**
+   * Map platform IDs used by Top 10 lists to FlixPatrol calendar URL slugs.
+   */
+  private mapPlatformIdToFlixPatrolCalendarSlug(platformId: string): string {
+    switch (platformId.replace(/_/g, '-')) {
+      case 'amazon-prime':
+      case 'amazon':
+        return 'amazon';
+      case 'paramount':
+      case 'paramount-plus':
+        return 'paramount-plus';
+      default:
+        return platformId.replace(/_/g, '-');
+    }
+  }
+
+  /**
    * Map our platform IDs to FlixPatrol HTML platform names
    */
   private mapPlatformIdToFlixPatrolName(platformId: string): string[] {
@@ -1362,10 +1381,18 @@ class FlixPatrolAPI extends ExternalAPI {
     return [
       { value: 'netflix_newly_added', label: 'Netflix Neu hinzugefügt' },
       { value: 'netflix_top_10', label: 'Netflix Top 10' },
+      {
+        value: 'amazon_prime_newly_added',
+        label: 'Amazon Prime Neu hinzugefügt',
+      },
       { value: 'hbo_top_10', label: 'HBO Top 10' },
       { value: 'disney_top_10', label: 'Disney+ Top 10' },
       { value: 'amazon_prime_top_10', label: 'Amazon Prime Top 10' },
       { value: 'apple_tv_top_10', label: 'Apple TV+ Top 10' },
+      {
+        value: 'paramount_newly_added',
+        label: 'Paramount+ Neu hinzugefügt',
+      },
       { value: 'paramount_top_10', label: 'Paramount+ Top 10' },
       { value: 'peacock_top_10', label: 'Peacock Top 10' },
       { value: 'crunchyroll_top_10', label: 'Crunchyroll Top 10' },
@@ -1786,15 +1813,47 @@ class FlixPatrolAPI extends ExternalAPI {
         }
       });
 
-      if (
-        platforms.some((platform) => platform.value === 'netflix_top_10') &&
-        !platforms.some((platform) => platform.value === 'netflix_newly_added')
-      ) {
-        platforms.unshift({
+      [
+        {
+          top10Value: 'paramount_top_10',
+          value: 'paramount_newly_added',
+          label: 'Paramount+ Neu hinzugefügt',
+        },
+        {
+          top10Value: 'amazon_prime_top_10',
+          value: 'amazon_prime_newly_added',
+          label: 'Amazon Prime Neu hinzugefügt',
+        },
+        {
+          top10Value: 'amazon-prime_top_10',
+          value: 'amazon-prime_newly_added',
+          label: 'Amazon Prime Neu hinzugefügt',
+        },
+        {
+          top10Value: 'amazon_top_10',
+          value: 'amazon_newly_added',
+          label: 'Amazon Prime Neu hinzugefügt',
+        },
+        {
+          top10Value: 'netflix_top_10',
           value: 'netflix_newly_added',
           label: 'Netflix Neu hinzugefügt',
-        });
-      }
+        },
+      ].forEach((newlyAddedOption) => {
+        if (
+          platforms.some(
+            (platform) => platform.value === newlyAddedOption.top10Value
+          ) &&
+          !platforms.some(
+            (platform) => platform.value === newlyAddedOption.value
+          )
+        ) {
+          platforms.unshift({
+            value: newlyAddedOption.value,
+            label: newlyAddedOption.label,
+          });
+        }
+      });
 
       logger.info(`Scraped ${platforms.length} platforms for ${country}`, {
         label: 'FlixPatrol API',

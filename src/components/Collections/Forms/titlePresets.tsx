@@ -1156,19 +1156,36 @@ export const getTemplatePresets = (
   // Networks collection presets
   if (values.type === 'networks') {
     if (values.subtype) {
-      if (values.subtype === 'netflix_newly_added') {
+      if (values.subtype.endsWith('_newly_added')) {
+        const platformName = values.subtype
+          .replace(/_newly_added$/, '')
+          .split(/[-_]/)
+          .map((word) => {
+            if (word.toLowerCase() === 'tv') {
+              return 'TV';
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1);
+          })
+          .join(' ');
+        const displayName =
+          platformName.toLowerCase() === 'paramount'
+            ? 'Paramount+'
+            : platformName.toLowerCase() === 'amazon'
+            ? 'Amazon Prime'
+            : platformName;
+
         return [
           {
-            label: 'Neu auf Netflix',
-            value: 'Neu auf Netflix',
+            label: `Neu auf ${displayName}`,
+            value: `Neu auf ${displayName}`,
           },
           {
-            label: 'Netflix Neu hinzugefügt',
-            value: 'Netflix Neu hinzugefügt',
+            label: `${displayName} Neu hinzugefügt`,
+            value: `${displayName} Neu hinzugefügt`,
           },
           {
-            label: 'Neue {mediaType}s auf Netflix',
-            value: 'Neue {mediaType}s auf Netflix',
+            label: `Neue {mediaType}s auf ${displayName}`,
+            value: `Neue {mediaType}s auf ${displayName}`,
           },
           { label: 'Custom', value: 'custom' },
         ];

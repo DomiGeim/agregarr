@@ -2393,7 +2393,7 @@ export class MultiSourceOrchestrator {
             activeSource.type === 'networks' &&
             activeSource.subtype &&
             (activeSource.subtype.endsWith('_top_10') ||
-              activeSource.subtype === 'netflix_newly_added')
+              activeSource.subtype.endsWith('_newly_added'))
           ) {
             const platformName = activeSource.subtype
               .replace(/_(top_10|newly_added)$/, '') // Remove Networks subtype suffix
