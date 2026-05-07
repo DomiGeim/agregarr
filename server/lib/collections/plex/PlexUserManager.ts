@@ -620,9 +620,7 @@ export async function applySelectivePreSyncUserRestrictions(
 ): Promise<void> {
   try {
     logger.info(
-      `Starting selective pre-sync user restriction application (users: ${hasUsersConfig}, server_owner: ${hasServerOwnerConfig}, target_user: ${
-        !!targetUserConfigs?.length
-      })`,
+      `Starting selective pre-sync user restriction application (users: ${hasUsersConfig}, server_owner: ${hasServerOwnerConfig}, target_user: ${!!targetUserConfigs?.length})`,
       {
         label: 'Plex User Manager',
         hasUsersConfig,

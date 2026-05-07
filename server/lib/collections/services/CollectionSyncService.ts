@@ -420,16 +420,14 @@ export class CollectionSyncService {
         config.type === 'overseerr' && config.subtype === 'server_owner'
     );
 
-    const targetUserConfigs = collectionConfigs.filter(
-      (config) => Boolean(config.targetUserId)
+    const targetUserConfigs = collectionConfigs.filter((config) =>
+      Boolean(config.targetUserId)
     );
     const hasTargetUserConfigs = targetUserConfigs.length > 0;
 
     if (hasUsersConfig || hasServerOwnerConfig || hasTargetUserConfigs) {
       logger.info(
-        `Detected user-scoped collections - applying pre-sync user restrictions (overseerr_users: ${hasUsersConfig}, server_owner: ${hasServerOwnerConfig}, target_user: ${
-          hasTargetUserConfigs
-        })`,
+        `Detected user-scoped collections - applying pre-sync user restrictions (overseerr_users: ${hasUsersConfig}, server_owner: ${hasServerOwnerConfig}, target_user: ${hasTargetUserConfigs})`,
         {
           label: 'Collection Sync Service',
           hasUsersConfig,
