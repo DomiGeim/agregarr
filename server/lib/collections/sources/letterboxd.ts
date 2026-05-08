@@ -869,7 +869,7 @@ export class LetterboxdCollectionSync extends BaseCollectionSync<'letterboxd'> {
 
       for (const match of matches) {
         if (count >= maxItems) break;
-        const itemHtml = match[1];
+        const itemHtml = match[0];
 
         // Extract target link (movie slug)
         const targetLinkMatch = itemHtml.match(targetLinkRegex);

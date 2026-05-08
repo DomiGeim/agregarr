@@ -156,6 +156,23 @@ const parseCronToInterval = (
   return undefined;
 };
 
+const getTimeMs = (dateString?: string | null): number | undefined => {
+  if (!dateString) {
+    return undefined;
+  }
+
+  const timeMs = new Date(dateString).getTime();
+  return Number.isFinite(timeMs) ? timeMs : undefined;
+};
+
+const describeCronSchedule = (cronSchedule: string, locale: string): string => {
+  try {
+    return cronstrue.toString(cronSchedule, { locale });
+  } catch {
+    return cronSchedule;
+  }
+};
+
 const jobModalReducer = (
   state: JobModalState,
   action: JobModalAction
@@ -396,9 +413,10 @@ const SettingsJobs = () => {
                 <div className="form-input-area mt-2 mb-1">
                   <div>
                     {jobModalState.job &&
-                      cronstrue.toString(jobModalState.job.cronSchedule, {
-                        locale,
-                      })}
+                      describeCronSchedule(
+                        jobModalState.job.cronSchedule,
+                        locale
+                      )}
                   </div>
                   <div className="text-sm text-gray-500">
                     {jobModalState.job?.cronSchedule}
@@ -623,9 +641,20 @@ const SettingsJobs = () => {
                 </Table.TD>
                 <Table.TD>
                   {(() => {
+                    const nextExecutionTimeMs = getTimeMs(
+                      job.nextExecutionTime
+                    );
+
+                    if (nextExecutionTimeMs === undefined) {
+                      return (
+                        <div className="text-sm leading-5 text-gray-400">
+                          {job.cronSchedule}
+                        </div>
+                      );
+                    }
+
                     const secondsUntilNext = Math.floor(
-                      (new Date(job.nextExecutionTime).getTime() - Date.now()) /
-                        1000
+                      (nextExecutionTimeMs - Date.now()) / 1000
                     );
                     const minutesUntilNext = secondsUntilNext / 60;
                     const hoursUntilNext = secondsUntilNext / 3600;
@@ -660,10 +689,16 @@ const SettingsJobs = () => {
                   })()}
                   {job.followingExecutionTime &&
                     (() => {
+                      const followingExecutionTimeMs = getTimeMs(
+                        job.followingExecutionTime
+                      );
+
+                      if (followingExecutionTimeMs === undefined) {
+                        return null;
+                      }
+
                       const secondsUntil = Math.floor(
-                        (new Date(job.followingExecutionTime).getTime() -
-                          Date.now()) /
-                          1000
+                        (followingExecutionTimeMs - Date.now()) / 1000
                       );
                       const minutesUntil = Math.floor(secondsUntil / 60);
                       const hoursUntil = Math.floor(secondsUntil / 3600);
