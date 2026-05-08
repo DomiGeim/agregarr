@@ -89,6 +89,8 @@ export interface CollectionConfig {
   readonly template: string; // Collection template
   readonly customMovieTemplate?: string; // Custom template for movie collections when mediaType is 'both'
   readonly customTVTemplate?: string; // Custom template for TV collections when mediaType is 'both'
+  readonly customSortTitle?: string; // Optional Plex sort title override
+  readonly removeLeadingArticlesFromSortTitle?: boolean; // Remove A/An/The from generated Plex sort titles
   readonly visibilityConfig: {
     usersHome: boolean;
     serverOwnerHome: boolean;
@@ -214,6 +216,7 @@ export interface CollectionConfig {
   readonly traktCustomListUrl?: string; // Custom Trakt list URL (e.g., https://trakt.tv/users/username/lists/list-name or https://trakt.tv/lists/official/collection-name)
   // IMDb custom list fields
   readonly imdbCustomListUrl?: string; // Custom IMDb list URL (e.g., https://www.imdb.com/list/ls123456789/)
+  readonly imdbTitleIds?: string; // Direct IMDb title IDs (tt1234567), newline/comma/space separated
   // Letterboxd custom list fields
   readonly letterboxdCustomListUrl?: string; // Custom Letterboxd list URL (e.g., https://letterboxd.com/username/list/list-name/)
   // MDBList custom list fields
@@ -469,11 +472,13 @@ export interface PreExistingCollectionConfig {
 }
 
 export interface PlexSettings {
+  mediaServerType?: 'plex' | 'jellyfin';
   name: string;
   machineId?: string;
   ip: string;
   port: number;
   useSsl?: boolean;
+  jellyfinApiKey?: string;
   libraries: Library[];
   webAppUrl?: string;
   collectionConfigs?: CollectionConfig[]; // Agregarr-created collections
@@ -638,6 +643,8 @@ export interface MainSettings {
   adminNickname?: string; // Admin's Plex title/display name
   externalApplicationUrl?: string; // External Overseerr URL
   externalApplicationTitle?: string; // External Overseerr title
+  defaultPage?: string; // Route to open after login/root redirect
+  hideDashboard?: boolean; // Hide dashboard navigation entry
   // Overseerr user label state tracking
   overseerrLabelsApplied?: boolean; // True if Overseerr user filter labels are currently applied to Plex users
   // Placeholder root folders (per-library)
@@ -732,6 +739,7 @@ class Settings {
         enableTmdbPosterCache: true,
       },
       plex: {
+        mediaServerType: 'plex',
         name: '',
         ip: '',
         port: 32400,

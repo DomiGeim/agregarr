@@ -49,6 +49,11 @@ const messages = defineMessages({
   locale: 'Display Language',
   tmdbLanguage: 'TMDB Language',
   tmdbLanguageTip: 'Language for TMDB posters',
+  defaultPage: 'Startseite',
+  defaultPageTip: 'Seite, die beim Aufruf der Hauptseite geöffnet wird',
+  hideDashboard: 'Dashboard im Menü ausblenden',
+  hideDashboardTip:
+    'Blendet den Dashboard-Link in der Seitenleiste aus und verhindert, dass er als Startseite gewählt wird.',
   enableTmdbPosterCache: 'Enable TMDB Poster Cache',
   enableTmdbPosterCacheTip:
     'Cache TMDB posters for 7 days to reduce API calls and improve performance (recommended)',
@@ -153,6 +158,8 @@ const SettingsMain = () => {
             csrfProtection: data?.csrfProtection,
             locale: data?.locale ?? 'de',
             tmdbLanguage: data?.tmdbLanguage ?? 'en',
+            defaultPage: data?.defaultPage ?? '/',
+            hideDashboard: data?.hideDashboard ?? false,
             enableTmdbPosterCache: data?.enableTmdbPosterCache ?? true,
             trustProxy: data?.trustProxy,
           }}
@@ -166,6 +173,11 @@ const SettingsMain = () => {
                 csrfProtection: values.csrfProtection,
                 locale: values.locale,
                 tmdbLanguage: values.tmdbLanguage,
+                defaultPage:
+                  values.hideDashboard && values.defaultPage === '/dashboard'
+                    ? '/'
+                    : values.defaultPage,
+                hideDashboard: values.hideDashboard,
                 enableTmdbPosterCache: values.enableTmdbPosterCache,
                 trustProxy: values.trustProxy,
               });
@@ -311,6 +323,53 @@ const SettingsMain = () => {
                         ))}
                       </Field>
                     </div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="defaultPage" className="text-label">
+                    {intl.formatMessage(messages.defaultPage)}
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.defaultPageTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <div className="form-input-field">
+                      <Field as="select" id="defaultPage" name="defaultPage">
+                        {!values.hideDashboard && (
+                          <option value="/dashboard">Dashboard</option>
+                        )}
+                        <option value="/">Home</option>
+                        <option value="/recommended">Recommended</option>
+                        <option value="/library">Library</option>
+                        <option value="/allcollections">All Collections</option>
+                        <option value="/posters">Posters</option>
+                        <option value="/settings">Settings</option>
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="hideDashboard" className="checkbox-label">
+                    <span className="mr-2">
+                      {intl.formatMessage(messages.hideDashboard)}
+                    </span>
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.hideDashboardTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <Field
+                      type="checkbox"
+                      id="hideDashboard"
+                      name="hideDashboard"
+                      onChange={() => {
+                        const nextValue = !values.hideDashboard;
+                        setFieldValue('hideDashboard', nextValue);
+                        if (nextValue && values.defaultPage === '/dashboard') {
+                          setFieldValue('defaultPage', '/');
+                        }
+                      }}
+                    />
                   </div>
                 </div>
                 <div className="form-row">

@@ -306,6 +306,11 @@ const CollectionTypeSection = ({
           },
           { value: 'custom', label: 'Custom List' },
           {
+            value: 'title_ids',
+            label: 'IMDb Title IDs',
+            description: 'Erstellt eine Sammlung aus direkten tt... IMDb IDs',
+          },
+          {
             value: 'random',
             label: 'Random Lists',
             description: 'Randomly select from configured IMDb lists',

@@ -1,3 +1,4 @@
+import JellyfinAPI from '@server/api/jellyfin';
 import PlexAPI from '@server/api/plexapi';
 import { extractErrorMessage } from '@server/lib/collections/core/CollectionUtilities';
 import { getSettings } from '@server/lib/settings';
@@ -59,6 +60,12 @@ class CollectionsSync {
    * @throws Error if admin user or token not found
    */
   private async getPlexClient(): Promise<PlexAPI> {
+    const settings = getSettings().load();
+
+    if (settings.plex.mediaServerType === 'jellyfin') {
+      return new JellyfinAPI(settings.plex) as unknown as PlexAPI;
+    }
+
     // Get Plex token from LOCAL admin user (not external Overseerr)
     const { getAdminUser } = await import(
       '@server/lib/collections/core/CollectionUtilities'
@@ -69,7 +76,6 @@ class CollectionsSync {
       throw new Error('No local admin Plex token found');
     }
 
-    const settings = getSettings().load();
     return new PlexAPI({
       plexToken: localAdmin.plexToken,
       plexSettings: settings.plex,
@@ -84,33 +90,39 @@ class CollectionsSync {
     const settings = getSettings();
 
     try {
-      // Refresh admin Plex user info if we have an admin
-      const { getAdminUser } = await import(
-        '@server/lib/collections/core/CollectionUtilities'
-      );
-      const localAdmin = await getAdminUser();
+      if (settings.plex.mediaServerType === 'jellyfin') {
+        logger.debug('Skipping Plex user refresh for Jellyfin server', {
+          label: 'Collections Sync',
+        });
+      } else {
+        // Refresh admin Plex user info if we have an admin
+        const { getAdminUser } = await import(
+          '@server/lib/collections/core/CollectionUtilities'
+        );
+        const localAdmin = await getAdminUser();
 
-      if (localAdmin?.plexId && localAdmin.plexToken) {
-        try {
-          const plexTitle = await plexClient.getPlexUserTitle(
-            localAdmin.plexId.toString()
-          );
-          if (plexTitle) {
-            settings.updateAdminPlexInfo(
-              localAdmin.plexUsername || undefined,
-              plexTitle
+        if (localAdmin?.plexId && localAdmin.plexToken) {
+          try {
+            const plexTitle = await plexClient.getPlexUserTitle(
+              localAdmin.plexId.toString()
             );
-            logger.debug('Refreshed admin Plex info for template variables', {
+            if (plexTitle) {
+              settings.updateAdminPlexInfo(
+                localAdmin.plexUsername || undefined,
+                plexTitle
+              );
+              logger.debug('Refreshed admin Plex info for template variables', {
+                label: 'Collections Sync',
+                username: localAdmin.plexUsername,
+                title: plexTitle,
+              });
+            }
+          } catch (error) {
+            logger.warn('Failed to refresh admin Plex user info', {
               label: 'Collections Sync',
-              username: localAdmin.plexUsername,
-              title: plexTitle,
+              error: error instanceof Error ? error.message : String(error),
             });
           }
-        } catch (error) {
-          logger.warn('Failed to refresh admin Plex user info', {
-            label: 'Collections Sync',
-            error: error instanceof Error ? error.message : String(error),
-          });
         }
       }
 
@@ -249,43 +261,49 @@ class CollectionsSync {
 
     const settings = getSettings();
 
-    // Validate Plex configuration
-    if (!settings.plex.ip || !settings.plex.machineId) {
+    const isJellyfin = settings.plex.mediaServerType === 'jellyfin';
+
+    // Validate media server configuration
+    if (!settings.plex.ip || (!settings.plex.machineId && !isJellyfin)) {
       logger.error(
-        'Plex server configuration incomplete. Please check Plex settings.',
+        'Media server configuration incomplete. Please check media server settings.',
         { label: 'Collections Sync' }
       );
       return;
     }
 
-    // Get admin user for Plex token
-    // Check local admin user for Plex token (not external Overseerr)
-    const { getAdminUser } = await import(
-      '@server/lib/collections/core/CollectionUtilities'
-    );
-    const localAdmin = await getAdminUser();
-
-    if (!localAdmin?.plexToken) {
-      logger.warn(
-        'Collections sync skipped. No local admin Plex token found.',
-        {
-          label: 'Collections Sync',
-        }
+    if (!isJellyfin) {
+      // Get admin user for Plex token
+      // Check local admin user for Plex token (not external Overseerr)
+      const { getAdminUser } = await import(
+        '@server/lib/collections/core/CollectionUtilities'
       );
-      return;
+      const localAdmin = await getAdminUser();
+
+      if (!localAdmin?.plexToken) {
+        logger.warn(
+          'Collections sync skipped. No local admin Plex token found.',
+          {
+            label: 'Collections Sync',
+          }
+        );
+        return;
+      }
     }
 
     const startTime = Date.now();
 
     try {
-      // Initialize Plex client
-      this.setStage('Connecting to Plex server...');
+      // Initialize media server client
+      this.setStage(
+        `Connecting to ${isJellyfin ? 'Jellyfin' : 'Plex'} server...`
+      );
       const plexClient = await this.getPlexClient();
 
       // Test connection
       const isConnected = await plexClient.getStatus();
       if (!isConnected) {
-        throw new Error('Could not connect to Plex server');
+        throw new Error('Could not connect to media server');
       }
 
       // Refresh external service data for template variables
@@ -315,25 +333,30 @@ class CollectionsSync {
         }
       );
 
-      // Sync hub visibility settings
-      this.setStage('Syncing hub visibility settings...');
-      const { HubSyncService } = await import(
-        './collections/plex/HubSyncService'
-      );
-      const hubSyncService = new HubSyncService();
-      await hubSyncService.syncHubVisibility(plexClient, (stage: string) => {
-        this.setStage(stage);
-      });
+      if (!isJellyfin) {
+        // Sync hub visibility settings
+        this.setStage('Syncing hub visibility settings...');
+        const { HubSyncService } = await import(
+          './collections/plex/HubSyncService'
+        );
+        const hubSyncService = new HubSyncService();
+        await hubSyncService.syncHubVisibility(plexClient, (stage: string) => {
+          this.setStage(stage);
+        });
 
-      // Sync pre-existing collection sortTitles based on promotion status
-      this.setStage('Updating collection sort titles...');
-      await hubSyncService.syncPreExistingCollectionSortTitles(plexClient);
+        // Sync pre-existing collection sortTitles based on promotion status
+        this.setStage('Updating collection sort titles...');
+        await hubSyncService.syncPreExistingCollectionSortTitles(plexClient);
 
-      // Sync unified ordering (collections + hubs)
-      this.setStage('Applying collection ordering to Plex...');
-      await hubSyncService.syncUnifiedOrdering(plexClient, (stage: string) => {
-        this.setStage(stage);
-      });
+        // Sync unified ordering (collections + hubs)
+        this.setStage('Applying collection ordering to Plex...');
+        await hubSyncService.syncUnifiedOrdering(
+          plexClient,
+          (stage: string) => {
+            this.setStage(stage);
+          }
+        );
+      }
 
       // Clean up orphaned collections after sync completes
       this.setStage('Cleaning up orphaned collections...');
@@ -522,19 +545,21 @@ class CollectionsSync {
         // Don't fail the sync if discovery fails
       }
 
-      // Randomize home order for collections with randomizeHomeOrder enabled
-      try {
-        this.setStage('Randomizing home order...');
-        const randomizeHomeOrder = (
-          await import('@server/lib/randomizeHomeOrder')
-        ).default;
-        await randomizeHomeOrder.run();
-      } catch (error) {
-        logger.warn('Failed to randomize home order', {
-          label: 'Collections Sync',
-          error: error instanceof Error ? error.message : String(error),
-        });
-        // Don't fail the sync if randomization fails
+      if (!isJellyfin) {
+        // Randomize home order for collections with randomizeHomeOrder enabled
+        try {
+          this.setStage('Randomizing home order...');
+          const randomizeHomeOrder = (
+            await import('@server/lib/randomizeHomeOrder')
+          ).default;
+          await randomizeHomeOrder.run();
+        } catch (error) {
+          logger.warn('Failed to randomize home order', {
+            label: 'Collections Sync',
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Don't fail the sync if randomization fails
+        }
       }
 
       logger.info('Collections sync completed successfully', {

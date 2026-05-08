@@ -6,7 +6,7 @@ import { defineMessages, useIntl } from 'react-intl';
 
 const messages = defineMessages({
   menuGeneralSettings: 'General',
-  menuPlexSettings: 'Plex',
+  menuPlexSettings: 'Media Server',
   menuSources: 'Sources',
   menuDownloads: 'Downloads',
   menuLogs: 'Logs',

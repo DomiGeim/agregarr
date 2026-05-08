@@ -1,3 +1,4 @@
+import JellyfinAPI from '@server/api/jellyfin';
 import PlexAPI, { type PlexLibraryItem } from '@server/api/plexapi';
 import { getRepository } from '@server/datasource';
 import { CollectionMissingItems } from '@server/entity/CollectionMissingItems';
@@ -62,6 +63,12 @@ class CollectionsQuickSync {
    * Get Plex client with admin token
    */
   private async getPlexClient(): Promise<PlexAPI> {
+    const settings = getSettings().load();
+
+    if (settings.plex.mediaServerType === 'jellyfin') {
+      return new JellyfinAPI(settings.plex) as unknown as PlexAPI;
+    }
+
     const { getAdminUser } = await import(
       '@server/lib/collections/core/CollectionUtilities'
     );
@@ -71,7 +78,6 @@ class CollectionsQuickSync {
       throw new Error('No local admin Plex token found');
     }
 
-    const settings = getSettings().load();
     return new PlexAPI({
       plexToken: localAdmin.plexToken,
       plexSettings: settings.plex,
@@ -131,14 +137,18 @@ class CollectionsQuickSync {
         isFirstRun: !lastRunStr,
       });
 
-      // Get Plex client
-      this.setStage('Connecting to Plex...');
+      // Get media server client
+      this.setStage(
+        `Connecting to ${
+          settings.plex.mediaServerType === 'jellyfin' ? 'Jellyfin' : 'Plex'
+        }...`
+      );
       const plexClient = await this.getPlexClient();
 
       // Test connection
       const isConnected = await plexClient.getStatus();
       if (!isConnected) {
-        throw new Error('Could not connect to Plex server');
+        throw new Error('Could not connect to media server');
       }
 
       // Get libraries from settings

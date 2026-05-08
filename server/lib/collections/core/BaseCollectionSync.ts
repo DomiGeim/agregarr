@@ -93,6 +93,36 @@ interface CollectionUpdateResult {
   };
 }
 
+const TITLE_TEMPLATE_VARIANT_SEPARATOR = ';';
+
+const pickTemplateVariant = (template: string): string => {
+  const variants = template
+    .split(TITLE_TEMPLATE_VARIANT_SEPARATOR)
+    .map((variant) => variant.trim())
+    .filter(Boolean);
+
+  if (variants.length <= 1) {
+    return template;
+  }
+
+  return variants[Math.floor(Math.random() * variants.length)];
+};
+
+const removeLeadingSortArticles = (title: string): string =>
+  title.replace(/^(the|an|a)\s+/i, '').trim() || title;
+
+const getConfiguredSortTitleBase = (
+  collectionName: string,
+  config?: CollectionConfig
+): string => {
+  const customSortTitle = config?.customSortTitle?.trim();
+  const baseTitle = customSortTitle || collectionName;
+
+  return config?.removeLeadingArticlesFromSortTitle
+    ? removeLeadingSortArticles(baseTitle)
+    : baseTitle;
+};
+
 /**
  * Abstract base class for all collection sync implementations
  *
@@ -451,7 +481,10 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
 
     const context = await this.createTemplateContext(config, mediaType);
 
-    return this.templateEngine.processTemplate(templateToUse, context);
+    return this.templateEngine.processTemplate(
+      pickTemplateVariant(templateToUse),
+      context
+    );
   }
 
   /**
@@ -482,7 +515,10 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
       return config.template || config.name;
     })();
 
-    return this.templateEngine.processTemplate(template, context);
+    return this.templateEngine.processTemplate(
+      pickTemplateVariant(template),
+      context
+    );
   }
 
   /**
@@ -1956,6 +1992,11 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
       let sortTitle: string;
       const updateConfig: Partial<CollectionConfig> = {};
 
+      const sortTitleBase = getConfiguredSortTitleBase(
+        collectionName,
+        options.config
+      );
+
       if (isLibraryPromoted && sortOrderLibrary > 0) {
         // Promoted: Set exclamation marks
         const sameLibraryConfigs = allConfigs.filter((config) => {
@@ -1976,13 +2017,13 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
           const maxSortOrder = Math.max(...sortOrders);
           const exclamationCount = maxSortOrder - sortOrderLibrary + 2;
           const exclamationPrefix = '!'.repeat(exclamationCount);
-          sortTitle = `${exclamationPrefix}${collectionName}`;
+          sortTitle = `${exclamationPrefix}${sortTitleBase}`;
         } else {
-          sortTitle = `!!${collectionName}`;
+          sortTitle = `!!${sortTitleBase}`;
         }
       } else {
         // Demoted: Reset to natural title and mark as cleaned
-        sortTitle = collectionName;
+        sortTitle = sortTitleBase;
         // After reset, set everLibraryPromoted back to false
         updateConfig.everLibraryPromoted = false;
       }

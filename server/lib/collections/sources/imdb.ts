@@ -40,6 +40,16 @@ export class ImdbCollectionSync extends BaseCollectionSync<'imdb'> {
     this.tmdbClient = new TmdbAPI();
   }
 
+  private parseImdbTitleIds(value?: string): string[] {
+    if (!value) {
+      return [];
+    }
+
+    return Array.from(new Set(value.match(/tt\d{6,10}/gi) ?? [])).map((id) =>
+      id.toLowerCase()
+    );
+  }
+
   protected async validateConfiguration(): Promise<void> {
     // IMDb lists are public and don't require API keys
     // For custom lists, we use simple axios approach so no complex validation needed
@@ -59,7 +69,32 @@ export class ImdbCollectionSync extends BaseCollectionSync<'imdb'> {
     try {
       let imdbData: ImdbListItem[] = [];
 
-      if (config.subtype === 'custom') {
+      if (config.subtype === 'title_ids' || config.imdbTitleIds?.trim()) {
+        const titleIds = this.parseImdbTitleIds(config.imdbTitleIds);
+
+        if (titleIds.length === 0) {
+          throw this.createSyncError(
+            CollectionSyncErrorType.CONFIGURATION_ERROR,
+            'At least one IMDb title ID is required'
+          );
+        }
+
+        const mediaType = getCollectionMediaType(config);
+        const itemType: 'movie' | 'tv' = mediaType === 'tv' ? 'tv' : 'movie';
+
+        imdbData = titleIds.map((imdbId) => ({
+          imdbId,
+          title: imdbId,
+          type: itemType,
+        }));
+
+        logger.info(`Using ${imdbData.length} direct IMDb title IDs`, {
+          label: 'IMDb Collections',
+          configName: config.name,
+          itemCount: imdbData.length,
+          mediaType,
+        });
+      } else if (config.subtype === 'custom') {
         // Custom IMDb list - fetch all pages using __NEXT_DATA__ pagination
         if (!config.imdbCustomListUrl) {
           throw this.createSyncError(

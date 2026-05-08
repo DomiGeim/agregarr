@@ -424,6 +424,7 @@ const CollectionSettings = ({
           traktCustomListUrl: config.traktCustomListUrl,
           tmdbCustomCollectionUrl: config.tmdbCustomCollectionUrl,
           imdbCustomListUrl: config.imdbCustomListUrl,
+          imdbTitleIds: config.imdbTitleIds,
           letterboxdCustomListUrl: config.letterboxdCustomListUrl,
           radarrInstanceId: config.radarrInstanceId,
           radarrTagId: config.radarrTagId,
@@ -436,6 +437,9 @@ const CollectionSettings = ({
           comingSoonRadarrTagIds: config.comingSoonRadarrTagIds,
           comingSoonSonarrTagIds: config.comingSoonSonarrTagIds,
           sortOrder: config.sortOrder,
+          customSortTitle: config.customSortTitle,
+          removeLeadingArticlesFromSortTitle:
+            config.removeLeadingArticlesFromSortTitle,
           timeRestriction: config.timeRestriction,
           customPoster: config.customPoster,
           autoPoster: config.autoPoster,

@@ -410,6 +410,38 @@ export const getSubtypeLabel = (type: string, subtype?: string): string => {
           return subtype;
       }
     case 'networks':
+      if (subtype.endsWith('-overall_top_10')) {
+        const platformName = subtype
+          .replace(/-overall_top_10$/, '')
+          .split(/[-_]/)
+          .map((word) => {
+            if (word.toLowerCase() === 'tv') {
+              return 'TV';
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1);
+          })
+          .join(' ');
+
+        const displayName =
+          platformName.toLowerCase() === 'paramount'
+            ? 'Paramount+'
+            : platformName.toLowerCase() === 'amazon' ||
+              platformName.toLowerCase() === 'amazon prime'
+            ? 'Amazon Prime'
+            : platformName.toLowerCase() === 'apple tv' ||
+              platformName.toLowerCase() === 'apple'
+            ? 'Apple TV+'
+            : platformName.toLowerCase() === 'disney'
+            ? 'Disney+'
+            : platformName.toLowerCase() === 'hbo' ||
+              platformName.toLowerCase() === 'hbo max' ||
+              platformName.toLowerCase() === 'hbomax'
+            ? 'HBO Max'
+            : platformName;
+
+        return `${displayName} Overall Top 10`;
+      }
+
       if (subtype.endsWith('_newly_added')) {
         const platformName = subtype
           .replace(/_newly_added$/, '')
@@ -443,8 +475,8 @@ export const getSubtypeLabel = (type: string, subtype?: string): string => {
       // Format platform names like "netflix_top_10" -> "Netflix"
       // and "neon-tv" -> "Neon TV"
       return subtype
-        .split('_')[0] // Take first part before underscore (removes "_top_10" etc)
-        .split('-') // Split on dashes
+        .replace(/_top_10$/, '')
+        .split(/[-_]/)
         .map((word) => {
           // Special case for TV to maintain proper capitalization
           if (word.toLowerCase() === 'tv') {

@@ -57,7 +57,7 @@ function isValidFilename(filename: string): boolean {
   // - Friendly names: any safe characters + extension
   // - Legacy UUID format
   // - Generated patterns (for auto-generated posters)
-  const friendlyPattern = /^[a-zA-Z0-9_\-\s.()]+\.(jpg|jpeg|png|webp)$/i;
+  const friendlyPattern = /^[a-zA-Z0-9_\-\s.()!]+\.(jpg|jpeg|png|webp)$/i;
   const uuidPattern =
     /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(jpg|jpeg|png|webp)$/i;
   const generatedPattern = /^generated_[a-z0-9]+\.(jpg|jpeg|png|webp)$/i;
