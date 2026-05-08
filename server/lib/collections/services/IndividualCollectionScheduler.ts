@@ -1,3 +1,4 @@
+import JellyfinAPI from '@server/api/jellyfin';
 import PlexAPI from '@server/api/plexapi';
 import type {
   CustomSyncSchedule,
@@ -800,20 +801,27 @@ export class IndividualCollectionScheduler {
         }
       );
 
-      // Get admin user for Plex API (same approach as full sync)
-      const { getAdminUser } = await import(
-        '@server/lib/collections/core/CollectionUtilities'
-      );
-      const admin = await getAdminUser();
+      let plexClient: PlexAPI;
+      const isJellyfin = settings.plex.mediaServerType === 'jellyfin';
 
-      if (!admin?.plexToken) {
-        throw new Error('No admin Plex token found');
+      if (isJellyfin) {
+        plexClient = new JellyfinAPI(settings.plex) as unknown as PlexAPI;
+      } else {
+        // Get admin user for Plex API (same approach as full sync)
+        const { getAdminUser } = await import(
+          '@server/lib/collections/core/CollectionUtilities'
+        );
+        const admin = await getAdminUser();
+
+        if (!admin?.plexToken) {
+          throw new Error('No admin Plex token found');
+        }
+
+        plexClient = new PlexAPI({
+          plexToken: admin.plexToken,
+          plexSettings: settings.plex,
+        });
       }
-
-      const plexClient = new PlexAPI({
-        plexToken: admin.plexToken,
-        plexSettings: settings.plex,
-      });
 
       // Determine if this is multi-source
       const extendedConfig = collectionConfig as typeof collectionConfig & {
@@ -909,12 +917,14 @@ export class IndividualCollectionScheduler {
       settings.markCollectionSynced(collectionId, 'collection');
       settings.save();
 
-      // Sync Plex collection ordering after collection sync
-      const { HubSyncService } = await import(
-        '@server/lib/collections/plex/HubSyncService'
-      );
-      const hubSyncService = new HubSyncService();
-      await hubSyncService.syncUnifiedOrdering(plexClient);
+      if (!isJellyfin) {
+        // Sync Plex collection ordering after collection sync
+        const { HubSyncService } = await import(
+          '@server/lib/collections/plex/HubSyncService'
+        );
+        const hubSyncService = new HubSyncService();
+        await hubSyncService.syncUnifiedOrdering(plexClient);
+      }
 
       logger.info(
         `Scheduled collection sync completed: ${collectionConfig.name}`,

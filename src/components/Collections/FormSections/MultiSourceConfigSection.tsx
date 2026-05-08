@@ -35,6 +35,8 @@ const messages = defineMessages({
   loadingPlatforms: 'Loading platforms...',
   customUrl: 'Custom URL',
   customUrlPlaceholder: 'Enter custom list URL',
+  imdbTitleIds: 'IMDb Title IDs',
+  imdbTitleIdsPlaceholder: 'tt0111161, tt0068646, tt0468569',
   timePeriod: 'Time Period',
   customDays: 'Number of Days',
   minimumPlays: 'Minimum Play Count',
@@ -846,6 +848,11 @@ const MultiSourceConfigSection = ({
           },
           { value: 'custom', label: 'Custom List' },
           {
+            value: 'title_ids',
+            label: 'IMDb Title IDs',
+            description: 'Erstellt eine Quelle aus direkten tt... IMDb IDs',
+          },
+          {
             value: 'random',
             label: 'Random Lists',
             description: 'Randomly select from configured IMDb lists',
@@ -1164,25 +1171,46 @@ const MultiSourceConfigSection = ({
                 </div>
               )}
 
-            {values.sources?.[index]?.subtype === 'custom' && (
+            {(values.sources?.[index]?.subtype === 'custom' ||
+              values.sources?.[index]?.subtype === 'title_ids') && (
               <div>
                 <label
                   htmlFor={`source-url-${index}`}
                   className="mb-2 block text-sm text-gray-300"
                 >
-                  {intl.formatMessage(messages.customUrl)}{' '}
+                  {intl.formatMessage(
+                    values.sources?.[index]?.subtype === 'title_ids'
+                      ? messages.imdbTitleIds
+                      : messages.customUrl
+                  )}{' '}
                   <span className="text-red-500">*</span>
                 </label>
                 <div className="flex space-x-2">
                   <Field
+                    as={
+                      values.sources?.[index]?.subtype === 'title_ids'
+                        ? 'textarea'
+                        : 'input'
+                    }
                     type="text"
                     id={`source-url-${index}`}
                     name={`sources[${index}].customUrl`}
                     placeholder={intl.formatMessage(
-                      messages.customUrlPlaceholder
+                      values.sources?.[index]?.subtype === 'title_ids'
+                        ? messages.imdbTitleIdsPlaceholder
+                        : messages.customUrlPlaceholder
                     )}
+                    rows={
+                      values.sources?.[index]?.subtype === 'title_ids'
+                        ? 4
+                        : undefined
+                    }
                     className="flex-1 rounded-md border border-stone-500 bg-stone-700 px-3 py-2 text-white focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    onChange={(
+                      e: React.ChangeEvent<
+                        HTMLInputElement | HTMLTextAreaElement
+                      >
+                    ) => {
                       setFieldValue(
                         `sources[${index}].customUrl`,
                         e.target.value
@@ -1201,26 +1229,28 @@ const MultiSourceConfigSection = ({
                       }));
                     }}
                   />
-                  <Button
-                    buttonType="ghost"
-                    buttonSize="sm"
-                    disabled={
-                      !source.customUrl?.trim() ||
-                      sourceValidations[source.id]?.isValidating ||
-                      !source.type
-                    }
-                    onClick={() =>
-                      validateSourceUrl(
-                        source.id,
-                        source.customUrl || '',
-                        source.type
-                      )
-                    }
-                  >
-                    {sourceValidations[source.id]?.isValidating
-                      ? intl.formatMessage(messages.validatingUrl)
-                      : intl.formatMessage(messages.validateUrl)}
-                  </Button>
+                  {values.sources?.[index]?.subtype !== 'title_ids' && (
+                    <Button
+                      buttonType="ghost"
+                      buttonSize="sm"
+                      disabled={
+                        !source.customUrl?.trim() ||
+                        sourceValidations[source.id]?.isValidating ||
+                        !source.type
+                      }
+                      onClick={() =>
+                        validateSourceUrl(
+                          source.id,
+                          source.customUrl || '',
+                          source.type
+                        )
+                      }
+                    >
+                      {sourceValidations[source.id]?.isValidating
+                        ? intl.formatMessage(messages.validatingUrl)
+                        : intl.formatMessage(messages.validateUrl)}
+                    </Button>
+                  )}
                 </div>
 
                 {/* Validation Status Display */}

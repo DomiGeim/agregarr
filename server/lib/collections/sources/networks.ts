@@ -166,7 +166,7 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
   ): Promise<NetworksTemplateContext> {
     // Extract platform name from subtype (e.g., "neon-tv_top_10" -> "neon-tv")
     const platformName = (config.subtype || '').replace(
-      /_(top_10|newly_added)$/,
+      /(-overall)?_(top_10|newly_added)$/,
       ''
     );
 
@@ -189,7 +189,7 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
     try {
       // Extract platform name for logging
       const platformName = (config.subtype || '').replace(
-        /_(top_10|newly_added)$/,
+        /(-overall)?_(top_10|newly_added)$/,
         ''
       );
 
@@ -207,6 +207,7 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
 
       const country = config.networksCountry || 'global';
       const mediaType = getCollectionMediaType(config);
+      const isOverallTop10 = config.subtype?.includes('-overall_top_10');
       const platformData = config.subtype?.endsWith('_newly_added')
         ? await this.flixpatrolClient.getPlatformNewlyAdded(
             config.subtype || '',
@@ -222,7 +223,13 @@ export class NetworksCollectionSync extends BaseCollectionSync<'networks'> {
 
       // Get the appropriate list based on media type
       let sourceItems: FlixPatrolListItem[] = [];
-      if (mediaType === 'movie') {
+      if (isOverallTop10) {
+        sourceItems = (
+          platformData.overall && platformData.overall.length > 0
+            ? platformData.overall
+            : [...platformData.movies, ...platformData.tvShows]
+        ).sort((a, b) => a.rank - b.rank);
+      } else if (mediaType === 'movie') {
         sourceItems = platformData.movies;
       } else if (mediaType === 'tv') {
         sourceItems = platformData.tvShows;

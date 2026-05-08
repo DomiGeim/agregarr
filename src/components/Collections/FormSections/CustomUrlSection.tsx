@@ -7,6 +7,7 @@ const messages = defineMessages({
   customTraktListUrl: 'Custom Trakt List URL',
   customTmdbCollectionUrl: 'Custom TMDB Collection/List/Network/Company URL',
   customImdbListUrl: 'Custom IMDb List URL',
+  imdbTitleIds: 'IMDb Title IDs',
   customLetterboxdListUrl: 'Custom Letterboxd List URL',
   customMdblistListUrl: 'Custom MDBList List URL',
   customAnilistListUrl: 'Custom AniList List URL',
@@ -18,6 +19,8 @@ const messages = defineMessages({
     'Examples: Collection (https://www.themoviedb.org/collection/12345), List (https://www.themoviedb.org/list/310), Network (https://www.themoviedb.org/network/213), Company (https://www.themoviedb.org/company/7505/movie or /tv)',
   imdbUrlExamples:
     'Examples: List (https://www.imdb.com/list/ls123456789/) or Watchlist (https://www.imdb.com/user/ur12345678/watchlist)',
+  imdbTitleIdsHelp:
+    'IMDb Title IDs wie tt0111161 eingeben. Trennung per Komma, Leerzeichen oder neuer Zeile.',
   letterboxdListUrlExample:
     'Example: https://letterboxd.com/username/list/listname/',
   letterboxdWatchlistUrl: 'Letterboxd Watchlist URL',
@@ -264,6 +267,37 @@ const CustomUrlSection = ({
         )}
         <p className="mt-1 text-xs text-gray-400">
           {intl.formatMessage(messages.imdbUrlExamples)}
+        </p>
+      </div>
+    );
+  }
+
+  // Direct IMDb title IDs
+  if (values.type === 'imdb' && values.subtype === 'title_ids') {
+    return (
+      <div>
+        <label
+          htmlFor="imdbTitleIds"
+          className="mb-2 block text-sm text-gray-300"
+        >
+          {intl.formatMessage(messages.imdbTitleIds)}{' '}
+          <span className="text-red-500">*</span>
+        </label>
+        <Field
+          as="textarea"
+          id="imdbTitleIds"
+          name="imdbTitleIds"
+          rows={5}
+          placeholder="tt0111161, tt0068646, tt0468569"
+          className="w-full rounded-md border border-stone-500 bg-stone-700 px-3 py-2 text-white placeholder-gray-400 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+        />
+        <ErrorMessage
+          name="imdbTitleIds"
+          component="div"
+          className="mt-1 text-sm text-red-500"
+        />
+        <p className="mt-1 text-xs text-gray-400">
+          {intl.formatMessage(messages.imdbTitleIdsHelp)}
         </p>
       </div>
     );

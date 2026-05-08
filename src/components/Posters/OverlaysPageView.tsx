@@ -49,6 +49,7 @@ const messages = defineMessages({
   overlaySyncError: 'Failed to start overlay sync',
   testItem: 'Test Item',
   allTags: 'All',
+  showDefaultTemplates: 'Standard-Templates anzeigen',
 });
 
 interface OverlayTemplate {
@@ -79,6 +80,7 @@ const OverlaysPageView: React.FC = () => {
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [fullSyncConfirmClicked, setFullSyncConfirmClicked] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [showDefaultTemplates, setShowDefaultTemplates] = useState(true);
   const [gridSize, setGridSize] = useState<'xs' | 'small' | 'medium' | 'large'>(
     () => {
       // Load from localStorage if available
@@ -156,24 +158,33 @@ const OverlaysPageView: React.FC = () => {
     () => templatesData?.templates || [],
     [templatesData?.templates]
   );
+  const visibleTemplates = useMemo(
+    () =>
+      showDefaultTemplates
+        ? templates
+        : templates.filter((template) => !template.isDefault),
+    [showDefaultTemplates, templates]
+  );
 
   // Extract unique tags from all templates
   const uniqueTags = useMemo(() => {
     const tagsSet = new Set<string>();
-    templates.forEach((template) => {
+    visibleTemplates.forEach((template) => {
       template.tags?.forEach((tag) => tagsSet.add(tag));
     });
     return Array.from(tagsSet).sort();
-  }, [templates]);
+  }, [visibleTemplates]);
 
   // Count templates per tag
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     uniqueTags.forEach((tag) => {
-      counts[tag] = templates.filter((t) => t.tags?.includes(tag)).length;
+      counts[tag] = visibleTemplates.filter((t) =>
+        t.tags?.includes(tag)
+      ).length;
     });
     return counts;
-  }, [templates, uniqueTags]);
+  }, [uniqueTags, visibleTemplates]);
 
   // Show setup modal when navigating to Library Configuration tab if setup not complete
   useEffect(() => {
@@ -335,7 +346,7 @@ const OverlaysPageView: React.FC = () => {
     {
       key: 'templates',
       name: intl.formatMessage(messages.templatesTab),
-      count: templates.length,
+      count: visibleTemplates.length,
       description: intl.formatMessage(messages.overlayTemplatesDescription),
     },
     {
@@ -404,6 +415,15 @@ const OverlaysPageView: React.FC = () => {
 
         {activeTab === 'templates' && (
           <div className="flex items-center space-x-2">
+            <label className="mr-2 flex items-center text-sm text-stone-200">
+              <input
+                type="checkbox"
+                checked={showDefaultTemplates}
+                onChange={() => setShowDefaultTemplates((value) => !value)}
+                className="mr-2"
+              />
+              {intl.formatMessage(messages.showDefaultTemplates)}
+            </label>
             {/* Grid size control */}
             <div className="flex items-center rounded-md border border-stone-600 bg-stone-800 text-xs font-medium">
               {(['xs', 'small', 'medium', 'large'] as const).map(
@@ -519,7 +539,8 @@ const OverlaysPageView: React.FC = () => {
                     : 'bg-stone-700 text-stone-300 hover:bg-stone-600 hover:text-white'
                 }`}
               >
-                {intl.formatMessage(messages.allTags)} ({templates.length})
+                {intl.formatMessage(messages.allTags)} (
+                {visibleTemplates.length})
               </button>
               {uniqueTags.map((tag) => (
                 <button
@@ -542,7 +563,7 @@ const OverlaysPageView: React.FC = () => {
             </div>
           ) : (
             <OverlayTemplateGrid
-              templates={templates}
+              templates={visibleTemplates}
               onTemplateUpdate={mutateTemplates}
               selectedTag={selectedTag}
               gridSize={gridSize}

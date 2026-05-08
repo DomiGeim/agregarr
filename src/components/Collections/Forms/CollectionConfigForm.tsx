@@ -151,6 +151,10 @@ const messages = defineMessages({
     'Please enter a valid TMDB URL (collection, list, network, or company page)',
   validationImdbUrlInvalid:
     'Please enter a valid IMDb list or watchlist URL (e.g., https://www.imdb.com/list/ls123456789/ or https://www.imdb.com/user/ur12345678/watchlist)',
+  validationImdbTitleIdsRequired:
+    'Bitte mindestens eine IMDb Title ID eingeben',
+  validationImdbTitleIdsInvalid:
+    'Bitte gültige IMDb Title IDs wie tt0111161 eingeben',
   validationLetterboxdUrlInvalid:
     'Please enter a valid Letterboxd URL (e.g., https://letterboxd.com/username/list/list-name/ or https://letterboxd.com/username/films/rated/4.5-5/)',
   validationLetterboxdWatchlistUrlInvalid:
@@ -161,6 +165,10 @@ const messages = defineMessages({
   validationSourceTypeRequired: 'Source type is required',
   validationSourcePriorityRequired: 'Source priority is required',
   collectionTitleTemplate: 'Collection Title Template',
+  collectionSortTitle: 'Plex Sortiertitel',
+  collectionSortTitleHelp:
+    'Optionaler Titel für die alphabetische Plex-Sortierung. Leer lassen, um den generierten Sammlungstitel zu verwenden.',
+  removeLeadingArticlesFromSortTitle: 'A/An/The beim Sortieren ignorieren',
   itemOrder: 'Item Order',
   tmdbMovieSortOrder: 'Movie Sort Order',
   tmdbTvSortOrder: 'TV Sort Order',
@@ -758,6 +766,19 @@ const CollectionFormConfigForm = ({
           .matches(
             /(imdb\.com\/list\/ls\d+|imdb\.com\/user\/ur\d+\/watchlist)/,
             intl.formatMessage(messages.validationImdbUrlInvalid)
+          ),
+      otherwise: (schema) => schema,
+    }),
+
+    imdbTitleIds: Yup.string().when(['type', 'subtype'], {
+      is: (type: string, subtype: string) =>
+        type === 'imdb' && subtype === 'title_ids',
+      then: (schema) =>
+        schema
+          .required(intl.formatMessage(messages.validationImdbTitleIdsRequired))
+          .matches(
+            /tt\d{6,10}/i,
+            intl.formatMessage(messages.validationImdbTitleIdsInvalid)
           ),
       otherwise: (schema) => schema,
     }),
@@ -1805,6 +1826,11 @@ const CollectionFormConfigForm = ({
             (config as CollectionFormConfig).customWallpaper || '',
           customSummary: (config as CollectionFormConfig).customSummary || '',
           customTheme: (config as CollectionFormConfig).customTheme || '',
+          customSortTitle:
+            (config as CollectionFormConfig).customSortTitle || '',
+          removeLeadingArticlesFromSortTitle:
+            (config as CollectionFormConfig)
+              .removeLeadingArticlesFromSortTitle ?? false,
           // Custom URL fields (default to empty strings to prevent uncontrolled->controlled warnings)
           traktCustomListUrl:
             (config as CollectionFormConfig).traktCustomListUrl || '',
@@ -1812,6 +1838,7 @@ const CollectionFormConfigForm = ({
             (config as CollectionFormConfig).tmdbCustomCollectionUrl || '',
           imdbCustomListUrl:
             (config as CollectionFormConfig).imdbCustomListUrl || '',
+          imdbTitleIds: (config as CollectionFormConfig).imdbTitleIds || '',
           letterboxdCustomListUrl:
             (config as CollectionFormConfig).letterboxdCustomListUrl || '',
           mdblistCustomListUrl:
@@ -1877,6 +1904,7 @@ const CollectionFormConfigForm = ({
                     existingConfig.traktCustomListUrl ||
                     existingConfig.tmdbCustomCollectionUrl ||
                     existingConfig.imdbCustomListUrl ||
+                    existingConfig.imdbTitleIds ||
                     existingConfig.letterboxdCustomListUrl,
                   customDays: existingConfig.customDays,
                   minimumPlays: existingConfig.minimumPlays,
@@ -2123,6 +2151,13 @@ const CollectionFormConfigForm = ({
               values.template === 'custom'
                 ? (values as CollectionFormConfig).customTVTemplate
                 : undefined,
+            traktCustomListUrl: values.traktCustomListUrl,
+            tmdbCustomCollectionUrl: values.tmdbCustomCollectionUrl,
+            imdbCustomListUrl: values.imdbCustomListUrl,
+            imdbTitleIds: values.imdbTitleIds,
+            letterboxdCustomListUrl: values.letterboxdCustomListUrl,
+            mdblistCustomListUrl: values.mdblistCustomListUrl,
+            anilistCustomListUrl: values.anilistCustomListUrl,
             // Convert string numbers to integers
             customDays: values.customDays
               ? parseInt(values.customDays.toString(), 10)
@@ -2306,6 +2341,9 @@ const CollectionFormConfigForm = ({
                 : undefined,
             autoPoster: values.autoPoster,
             autoPosterTemplate: values.autoPosterTemplate,
+            customSortTitle: values.customSortTitle,
+            removeLeadingArticlesFromSortTitle:
+              values.removeLeadingArticlesFromSortTitle,
             useTmdbFranchisePoster: values.useTmdbFranchisePoster,
             hideIndividualItems: values.hideIndividualItems,
             showUnwatchedOnly: values.showUnwatchedOnly,
@@ -2873,9 +2911,12 @@ const CollectionFormConfigForm = ({
                           (values as CollectionFormConfig)
                             .tmdbCustomCollectionUrl) &&
                         (values.type !== 'imdb' ||
-                          values.subtype !== 'custom' ||
-                          (values as CollectionFormConfig)
-                            .imdbCustomListUrl) && (
+                          (values.subtype !== 'custom' &&
+                            values.subtype !== 'title_ids') ||
+                          (values.subtype === 'custom'
+                            ? (values as CollectionFormConfig).imdbCustomListUrl
+                            : (values as CollectionFormConfig)
+                                .imdbTitleIds)) && (
                           <>
                             {/* Collection Title Template */}
                             <div className="form-row">
@@ -2916,6 +2957,44 @@ const CollectionFormConfigForm = ({
                                   currentUser={currentUser}
                                   libraries={libraries}
                                 />
+                              </div>
+                            </div>
+
+                            <div className="form-row">
+                              <label
+                                htmlFor="customSortTitle"
+                                className="text-label"
+                              >
+                                {intl.formatMessage(
+                                  messages.collectionSortTitle
+                                )}
+                                <span className="label-tip">
+                                  {intl.formatMessage(
+                                    messages.collectionSortTitleHelp
+                                  )}
+                                </span>
+                              </label>
+                              <div className="form-input-area space-y-3">
+                                <div className="form-input-field">
+                                  <Field
+                                    id="customSortTitle"
+                                    name="customSortTitle"
+                                    type="text"
+                                  />
+                                </div>
+                                <label className="flex items-center text-sm text-gray-300">
+                                  <Field
+                                    type="checkbox"
+                                    id="removeLeadingArticlesFromSortTitle"
+                                    name="removeLeadingArticlesFromSortTitle"
+                                    className="form-checkbox"
+                                  />
+                                  <span className="ml-2">
+                                    {intl.formatMessage(
+                                      messages.removeLeadingArticlesFromSortTitle
+                                    )}
+                                  </span>
+                                </label>
                               </div>
                             </div>
 
@@ -4870,9 +4949,13 @@ const CollectionFormConfigForm = ({
                                 | string
                                 | undefined)
                             : values.type === 'imdb'
-                            ? (valuesRecord.imdbCustomListUrl as
-                                | string
-                                | undefined)
+                            ? values.subtype === 'title_ids'
+                              ? (valuesRecord.imdbTitleIds as
+                                  | string
+                                  | undefined)
+                              : (valuesRecord.imdbCustomListUrl as
+                                  | string
+                                  | undefined)
                             : values.type === 'letterboxd'
                             ? (valuesRecord.letterboxdCustomListUrl as
                                 | string

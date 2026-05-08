@@ -191,6 +191,19 @@ export function validateExternalUrl(
 
 const collectionsRoutes = Router();
 
+const pickCollectionTitleTemplateVariant = (template: string): string => {
+  const variants = template
+    .split(';')
+    .map((variant) => variant.trim())
+    .filter(Boolean);
+
+  if (variants.length <= 1) {
+    return template;
+  }
+
+  return variants[Math.floor(Math.random() * variants.length)];
+};
+
 // Configure multer for poster uploads
 export const posterUpload = multer({
   storage: multer.memoryStorage(),
@@ -391,7 +404,7 @@ collectionsRoutes.put('/:id/settings', isAuthenticated(), async (req, res) => {
         }
 
         let processedName = templateEngine.processTemplate(
-          templateToProcess,
+          pickCollectionTitleTemplateVariant(templateToProcess),
           context
         );
 
@@ -553,7 +566,7 @@ collectionsRoutes.put('/:id/settings', isAuthenticated(), async (req, res) => {
       }
 
       let processedName = templateEngine.processTemplate(
-        templateToProcess,
+        pickCollectionTitleTemplateVariant(templateToProcess),
         context
       );
 
@@ -1440,7 +1453,7 @@ collectionsRoutes.post('/create', isAuthenticated(), async (req, res) => {
       }
 
       let processedName = templateEngine.processTemplate(
-        templateToProcess,
+        pickCollectionTitleTemplateVariant(templateToProcess),
         context
       );
 

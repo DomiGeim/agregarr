@@ -13,10 +13,12 @@ import {
   StarIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import type { MainSettings } from '@server/lib/settings';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Fragment, useRef } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
+import useSWR from 'swr';
 
 export const menuMessages = defineMessages({
   dashboard: 'Dashboard',
@@ -110,7 +112,11 @@ const Sidebar = ({
   const router = useRouter();
   const intl = useIntl();
   useUser(); // hasPermission removed - not used in simplified sidebar
+  const { data: mainSettings } = useSWR<MainSettings>('/api/v1/settings/main');
   useClickOutside(navRef, () => setClosed());
+  const visibleSidebarLinks = mainSettings?.hideDashboard
+    ? SidebarLinks.filter((link) => link.messagesKey !== 'dashboard')
+    : SidebarLinks;
 
   return (
     <>
@@ -162,7 +168,7 @@ const Sidebar = ({
                       </span>
                     </div>
                     <nav className="mt-16 flex-1 space-y-4 px-4">
-                      {SidebarLinks.map((sidebarLink) => {
+                      {visibleSidebarLinks.map((sidebarLink) => {
                         return (
                           <Link
                             key={`mobile-${sidebarLink.messagesKey}`}
@@ -247,7 +253,7 @@ const Sidebar = ({
                 </span>
               </div>
               <nav className="mt-16 flex-1 space-y-4 px-4">
-                {SidebarLinks.map((sidebarLink) => {
+                {visibleSidebarLinks.map((sidebarLink) => {
                   return (
                     <Link
                       key={`desktop-${sidebarLink.messagesKey}`}

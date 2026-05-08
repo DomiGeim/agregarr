@@ -1168,6 +1168,51 @@ export const getTemplatePresets = (
   // Networks collection presets
   if (values.type === 'networks') {
     if (values.subtype) {
+      if (values.subtype.endsWith('-overall_top_10')) {
+        const platformName = values.subtype
+          .replace(/-overall_top_10$/, '')
+          .split(/[-_]/)
+          .map((word) => {
+            if (word.toLowerCase() === 'tv') {
+              return 'TV';
+            }
+            return word.charAt(0).toUpperCase() + word.slice(1);
+          })
+          .join(' ');
+        const displayName =
+          platformName.toLowerCase() === 'paramount'
+            ? 'Paramount+'
+            : platformName.toLowerCase() === 'amazon' ||
+              platformName.toLowerCase() === 'amazon prime'
+            ? 'Amazon Prime'
+            : platformName.toLowerCase() === 'apple tv' ||
+              platformName.toLowerCase() === 'apple'
+            ? 'Apple TV+'
+            : platformName.toLowerCase() === 'disney'
+            ? 'Disney+'
+            : platformName.toLowerCase() === 'hbo' ||
+              platformName.toLowerCase() === 'hbo max' ||
+              platformName.toLowerCase() === 'hbomax'
+            ? 'HBO Max'
+            : platformName;
+
+        return [
+          {
+            label: `${displayName} Overall Top 10`,
+            value: `${displayName} Overall Top 10`,
+          },
+          {
+            label: `Top 10 auf ${displayName}`,
+            value: `Top 10 auf ${displayName}`,
+          },
+          {
+            label: `Beliebt auf ${displayName}`,
+            value: `Beliebt auf ${displayName}`,
+          },
+          { label: 'Custom', value: 'custom' },
+        ];
+      }
+
       if (values.subtype.endsWith('_newly_added')) {
         const platformName = values.subtype
           .replace(/_newly_added$/, '')
@@ -1216,8 +1261,8 @@ export const getTemplatePresets = (
       // Handle cases like "netflix_top_10" -> "Netflix"
       // and "disney-plus" -> "Disney Plus"
       const platformName = values.subtype
-        .split('_')[0] // Take first part before underscore (removes "_top_10" etc)
-        .split('-') // Split on dashes
+        .replace(/_top_10$/, '')
+        .split(/[-_]/)
         .map((word) => {
           // Special case for TV to maintain proper capitalization
           if (word.toLowerCase() === 'tv') {

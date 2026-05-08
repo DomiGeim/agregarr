@@ -1,3 +1,4 @@
+import JellyfinAPI from '@server/api/jellyfin';
 import MaintainerrAPI from '@server/api/maintainerr';
 import MDBListAPI from '@server/api/mdblist';
 import { getRankedAnime } from '@server/api/myanimelist';
@@ -107,36 +108,43 @@ settingsRoutes.get('/plex', (_req, res) => {
 settingsRoutes.post('/plex', async (req, res, next) => {
   const userRepository = getRepository(User);
   const settings = getSettings();
+  const mediaServerType = req.body.mediaServerType || 'plex';
 
-  logger.debug('Plex settings update requested', {
-    label: 'Plex Settings',
+  logger.debug('Media server settings update requested', {
+    label: 'Media Server Settings',
+    mediaServerType,
     ip: req.body.ip,
     port: req.body.port,
     useSsl: req.body.useSsl,
   });
 
   try {
-    const admin = await userRepository.findOneOrFail({
-      select: { id: true, plexToken: true },
-      where: { id: 1 },
-    });
-
     Object.assign(settings.plex, req.body);
+    settings.plex.mediaServerType = mediaServerType;
 
     const connectionUrl = `${settings.plex.useSsl ? 'https' : 'http'}://${
       settings.plex.ip
     }:${settings.plex.port}`;
-    logger.debug('Testing Plex connection with new settings', {
-      label: 'Plex Settings',
+    logger.debug('Testing media server connection with new settings', {
+      label: 'Media Server Settings',
+      mediaServerType,
       url: connectionUrl,
     });
 
     // Note: Collections sync is now handled by scheduled job (every 12 hours)
     // or manual "Save & Run" button - no auto-trigger on enable
 
-    const plexClient = new PlexAPI({ plexToken: admin.plexToken });
-
-    const result = await plexClient.getStatus();
+    const result =
+      mediaServerType === 'jellyfin'
+        ? await new JellyfinAPI(settings.plex).getStatus()
+        : await (async () => {
+            const admin = await userRepository.findOneOrFail({
+              select: { id: true, plexToken: true },
+              where: { id: 1 },
+            });
+            const plexClient = new PlexAPI({ plexToken: admin.plexToken });
+            return await plexClient.getStatus();
+          })();
 
     if (!result?.MediaContainer?.machineIdentifier) {
       throw new Error('Server not found');
@@ -147,8 +155,9 @@ settingsRoutes.post('/plex', async (req, res, next) => {
 
     settings.save();
 
-    logger.info('Plex settings updated successfully', {
-      label: 'Plex Settings',
+    logger.info('Media server settings updated successfully', {
+      label: 'Media Server Settings',
+      mediaServerType,
       serverName: result.MediaContainer.friendlyName,
       machineId:
         result.MediaContainer.machineIdentifier.substring(0, 8) + '...',
@@ -169,8 +178,9 @@ settingsRoutes.post('/plex', async (req, res, next) => {
       settings.plex.ip
     }:${settings.plex.port}`;
 
-    logger.error('Failed to connect to Plex with new settings', {
-      label: 'Plex Settings',
+    logger.error('Failed to connect to media server with new settings', {
+      label: 'Media Server Settings',
+      mediaServerType,
       error: e.message,
       errorType: e.constructor?.name,
       errorCode: e.code,
@@ -184,7 +194,7 @@ settingsRoutes.post('/plex', async (req, res, next) => {
 
     return next({
       status: 500,
-      message: `Unable to connect to Plex at ${connectionUrl}: ${e.message}`,
+      message: `Unable to connect to media server at ${connectionUrl}: ${e.message}`,
     });
   }
 
@@ -272,17 +282,21 @@ settingsRoutes.get('/plex/library', async (req, res) => {
   const settings = getSettings();
 
   if (req.query.sync) {
-    const userRepository = getRepository(User);
-    const admin = await userRepository.findOneOrFail({
-      select: { id: true, plexToken: true },
-      where: { id: 1 },
-    });
-    const plexapi = new PlexAPI({
-      plexToken: admin.plexToken,
-      timeout: 30000, // 30 second timeout
-    });
+    if (settings.plex.mediaServerType === 'jellyfin') {
+      await new JellyfinAPI(settings.plex).syncLibraries();
+    } else {
+      const userRepository = getRepository(User);
+      const admin = await userRepository.findOneOrFail({
+        select: { id: true, plexToken: true },
+        where: { id: 1 },
+      });
+      const plexapi = new PlexAPI({
+        plexToken: admin.plexToken,
+        timeout: 30000, // 30 second timeout
+      });
 
-    await plexapi.syncLibraries();
+      await plexapi.syncLibraries();
+    }
   }
 
   // Library enabled/disabled feature was removed - no longer needed
@@ -292,31 +306,39 @@ settingsRoutes.get('/plex/library', async (req, res) => {
 
 settingsRoutes.get('/plex/libraries', async (req, res) => {
   try {
-    const userRepository = getRepository(User);
-    const admin = await userRepository.findOne({
-      select: { id: true, plexToken: true },
-      where: { id: 1 },
-    });
-
-    if (!admin?.plexToken) {
-      return res.status(400).json({ error: 'No admin Plex token found' });
-    }
-
-    const plexapi = new PlexAPI({ plexToken: admin.plexToken });
-
-    // Sync libraries to settings so they're available for collection operations
-    await plexapi.syncLibraries();
-
-    // Return the libraries that were just synced to settings
-    // This ensures UI and backend always see the same library data
     const settings = getSettings();
-    return res.status(200).json(settings.plex.libraries);
+
+    if (settings.plex.mediaServerType === 'jellyfin') {
+      await new JellyfinAPI(settings.plex).syncLibraries();
+      return res.status(200).json(settings.plex.libraries);
+    } else {
+      const userRepository = getRepository(User);
+      const admin = await userRepository.findOne({
+        select: { id: true, plexToken: true },
+        where: { id: 1 },
+      });
+
+      if (!admin?.plexToken) {
+        return res.status(400).json({ error: 'No admin Plex token found' });
+      }
+
+      const plexapi = new PlexAPI({ plexToken: admin.plexToken });
+
+      // Sync libraries to settings so they're available for collection operations
+      await plexapi.syncLibraries();
+
+      // Return the libraries that were just synced to settings
+      // This ensures UI and backend always see the same library data
+      return res.status(200).json(settings.plex.libraries);
+    }
   } catch (error) {
-    logger.error('Failed to sync Plex libraries', {
+    logger.error('Failed to sync media server libraries', {
       label: 'Settings Routes',
       error: error instanceof Error ? error.message : String(error),
     });
-    return res.status(500).json({ error: 'Failed to sync Plex libraries' });
+    return res
+      .status(500)
+      .json({ error: 'Failed to sync media server libraries' });
   }
 });
 

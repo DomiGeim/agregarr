@@ -23,6 +23,7 @@ export interface FlixPatrolPlatformData {
   date: string;
   tvShows: FlixPatrolListItem[];
   movies: FlixPatrolListItem[];
+  overall?: FlixPatrolListItem[];
   platformLogo?: {
     spriteUrl: string;
     position: string;
@@ -115,7 +116,12 @@ class FlixPatrolAPI extends ExternalAPI {
       ];
 
       let basePlatform = platform;
-      let contentFilter: 'kids' | undefined;
+      let contentFilter: 'kids' | 'overall' | undefined;
+
+      if (platform.includes('-overall_top_10')) {
+        contentFilter = 'overall';
+        basePlatform = platform.replace('-overall_top_10', '');
+      }
 
       // Check if this is a multi-part platform name
       const isMultiPartPlatform = multiPartPlatforms.some((p) =>
@@ -130,13 +136,13 @@ class FlixPatrolAPI extends ExternalAPI {
         if (matchedPlatform) {
           basePlatform = matchedPlatform;
         }
-      } else {
+      } else if (!contentFilter) {
         // For single-part platforms, check for content filters
         const platformMatch = platform.match(/^([^-]+)(?:-(.+?))?_top_10$/);
         if (platformMatch) {
           basePlatform = platformMatch[1];
-          if (platformMatch[2] === 'kids') {
-            contentFilter = 'kids';
+          if (platformMatch[2] === 'kids' || platformMatch[2] === 'overall') {
+            contentFilter = platformMatch[2];
           }
         }
       }
@@ -559,7 +565,7 @@ class FlixPatrolAPI extends ExternalAPI {
     platform: string,
     region: string,
     requestedMediaType?: 'movie' | 'tv' | 'both',
-    contentFilter?: 'kids'
+    contentFilter?: 'kids' | 'overall'
   ): Promise<FlixPatrolPlatformData> {
     const dom = new JSDOM(html);
     const document = dom.window.document;
@@ -574,6 +580,7 @@ class FlixPatrolAPI extends ExternalAPI {
       date: date || 'Unknown',
       tvShows: [],
       movies: [],
+      overall: [],
     };
 
     // Find the platform section header (H2)
@@ -864,6 +871,21 @@ class FlixPatrolAPI extends ExternalAPI {
             }
           });
 
+          if (contentFilter === 'overall') {
+            result.overall = overallItems.map((item) => ({
+              ...item,
+              type: item.type,
+            }));
+            logger.debug(
+              `Using overall section directly: ${overallItems.length} items`,
+              {
+                label: 'FlixPatrol API',
+                platform,
+                requestedMediaType,
+              }
+            );
+          }
+
           // Apply fallback logic: use overall content only if specific content wasn't found
           if (overallItems.length > 0) {
             if (requestedMediaType === 'tv' && result.tvShows.length === 0) {
@@ -1027,6 +1049,13 @@ class FlixPatrolAPI extends ExternalAPI {
       const title =
         titleLink?.textContent?.trim() || titleCell?.textContent?.trim();
       const flixpatrolUrl = titleLink?.getAttribute('href');
+      const inferredType: 'movie' | 'tv' =
+        flixpatrolUrl?.includes('/tv-show/') ||
+        flixpatrolUrl?.includes('/tv-series/')
+          ? 'tv'
+          : flixpatrolUrl?.includes('/movie/')
+          ? 'movie'
+          : defaultType;
 
       // Extract points
       const points = pointsCell?.textContent?.trim();
@@ -1050,7 +1079,7 @@ class FlixPatrolAPI extends ExternalAPI {
           flixpatrolUrl: flixpatrolUrl
             ? `https://flixpatrol.com${flixpatrolUrl}`
             : undefined,
-          type: defaultType,
+          type: inferredType,
         });
       }
     });
@@ -1182,7 +1211,7 @@ class FlixPatrolAPI extends ExternalAPI {
    */
   private extractPlatformNameFromSubtype(platform: string): string {
     // Remove Networks subtype suffix and return the platform identifier
-    return platform.replace(/_(top_10|newly_added)$/, '');
+    return platform.replace(/(-overall)?_(top_10|newly_added)$/, '');
   }
 
   /**
@@ -1430,29 +1459,53 @@ class FlixPatrolAPI extends ExternalAPI {
     return [
       { value: 'netflix_newly_added', label: 'Netflix Neu hinzugefügt' },
       { value: 'netflix_top_10', label: 'Netflix Top 10' },
+      { value: 'netflix-overall_top_10', label: 'Netflix Overall Top 10' },
       {
         value: 'amazon_prime_newly_added',
         label: 'Amazon Prime Neu hinzugefügt',
       },
       { value: 'hbo_newly_added', label: 'HBO Max Neu hinzugefügt' },
       { value: 'hbo_top_10', label: 'HBO Top 10' },
+      { value: 'hbo-overall_top_10', label: 'HBO Max Overall Top 10' },
       { value: 'disney_newly_added', label: 'Disney+ Neu hinzugefügt' },
       { value: 'disney_top_10', label: 'Disney+ Top 10' },
+      { value: 'disney-overall_top_10', label: 'Disney+ Overall Top 10' },
       { value: 'amazon_prime_top_10', label: 'Amazon Prime Top 10' },
+      {
+        value: 'amazon_prime-overall_top_10',
+        label: 'Amazon Prime Overall Top 10',
+      },
       { value: 'apple_tv_newly_added', label: 'Apple TV+ Neu hinzugefügt' },
       { value: 'apple_tv_top_10', label: 'Apple TV+ Top 10' },
+      { value: 'apple_tv-overall_top_10', label: 'Apple TV+ Overall Top 10' },
       {
         value: 'paramount_newly_added',
         label: 'Paramount+ Neu hinzugefügt',
       },
       { value: 'paramount_top_10', label: 'Paramount+ Top 10' },
+      {
+        value: 'paramount-overall_top_10',
+        label: 'Paramount+ Overall Top 10',
+      },
       { value: 'peacock_newly_added', label: 'Peacock Neu hinzugefügt' },
       { value: 'peacock_top_10', label: 'Peacock Top 10' },
+      { value: 'peacock-overall_top_10', label: 'Peacock Overall Top 10' },
       { value: 'crunchyroll_top_10', label: 'Crunchyroll Top 10' },
+      {
+        value: 'crunchyroll-overall_top_10',
+        label: 'Crunchyroll Overall Top 10',
+      },
       { value: 'discovery_plus_top_10', label: 'Discovery+ Top 10' },
+      {
+        value: 'discovery_plus-overall_top_10',
+        label: 'Discovery+ Overall Top 10',
+      },
       { value: 'hulu_newly_added', label: 'Hulu Neu hinzugefügt' },
       { value: 'hulu_top_10', label: 'Hulu Top 10' },
+      { value: 'hulu-overall_top_10', label: 'Hulu Overall Top 10' },
       { value: 'joyn_newly_added', label: 'Joyn Neu hinzugefügt' },
+      { value: 'joyn_top_10', label: 'Joyn Top 10' },
+      { value: 'joyn-overall_top_10', label: 'Joyn Overall Top 10' },
     ];
   }
 
@@ -1790,6 +1843,10 @@ class FlixPatrolAPI extends ExternalAPI {
                       value: platformValue,
                       label: platformLabel,
                     });
+                    platforms.push({
+                      value: `${platformCode}-overall_top_10`,
+                      label: `${platformName} Overall Top 10`,
+                    });
 
                     logger.debug(
                       `Found platform with subsections (combined regular): "${platformName}" -> ${platformValue}`,
@@ -1810,6 +1867,10 @@ class FlixPatrolAPI extends ExternalAPI {
                   platforms.push({
                     value: platformValue,
                     label: platformLabel,
+                  });
+                  platforms.push({
+                    value: `${platformCode}-overall_top_10`,
+                    label: `${platformName} Overall Top 10`,
                   });
 
                   logger.debug(
@@ -1851,6 +1912,10 @@ class FlixPatrolAPI extends ExternalAPI {
                 platforms.push({
                   value: platformValue,
                   label: platformLabel,
+                });
+                platforms.push({
+                  value: `${platformCode}-overall_top_10`,
+                  label: `${platformName} Overall Top 10`,
                 });
 
                 logger.debug(

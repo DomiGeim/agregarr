@@ -22,9 +22,12 @@ import * as Yup from 'yup';
 
 const messages = defineMessages({
   plex: 'Plex',
-  plexsettings: 'Plex Settings',
+  plexsettings: 'Media Server Settings',
   plexsettingsDescription:
-    'Configure the settings for your Plex server. Agregarr scans, creates, and manages Collections and Hubs on your Plex server.',
+    'Configure your Plex or Jellyfin server. Agregarr uses this connection to discover libraries and manage collections.',
+  mediaServerType: 'Media Server',
+  mediaServerPlex: 'Plex',
+  mediaServerJellyfin: 'Jellyfin',
   serverpreset: 'Server',
   serverLocal: 'local',
   serverRemote: 'remote',
@@ -35,14 +38,18 @@ const messages = defineMessages({
   toastPlexRefresh: 'Retrieving server list from Plex…',
   toastPlexRefreshSuccess: 'Plex server list retrieved successfully!',
   toastPlexRefreshFailure: 'Failed to retrieve Plex server list.',
-  toastPlexConnecting: 'Attempting to connect to Plex…',
-  toastPlexConnectingSuccess: 'Plex connection established successfully!',
-  toastPlexConnectingFailure: 'Failed to connect to Plex.',
+  toastPlexConnecting: 'Attempting to connect to media server...',
+  toastPlexConnectingSuccess:
+    'Media server connection established successfully!',
+  toastPlexConnectingFailure: 'Failed to connect to media server.',
   settingUpPlexDescription:
-    'To set up Plex, you can either enter the details manually or select a server retrieved from <RegisterPlexTVLink>plex.tv</RegisterPlexTVLink>. Press the button to the right of the dropdown to fetch the list of available servers.',
+    'To set up Plex, you can either enter the details manually or select a server retrieved from <RegisterPlexTVLink>plex.tv</RegisterPlexTVLink>. For Jellyfin, enter the server details and API key manually.',
   hostname: 'Hostname or IP Address',
   port: 'Port',
   enablessl: 'Use SSL',
+  apiKey: 'API Key',
+  apiKeyTip:
+    'Required for Jellyfin. Create an API key in Jellyfin under Dashboard > API Keys.',
   validationHostnameRequired: 'You must provide a valid hostname or IP address',
   validationPortRequired: 'You must provide a valid port number',
   validationUrl: 'You must provide a valid URL',
@@ -114,6 +121,13 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
     webAppUrl: Yup.string()
       .nullable()
       .url(intl.formatMessage(messages.validationUrl)),
+    jellyfinApiKey: Yup.string().when('mediaServerType', {
+      is: 'jellyfin',
+      then: Yup.string().required(
+        intl.formatMessage(messages.validationHostnameRequired)
+      ),
+      otherwise: Yup.string().nullable(),
+    }),
   });
 
   const availablePresets = useMemo(() => {
@@ -234,9 +248,12 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
       </div>
       <Formik
         initialValues={{
+          mediaServerType: data?.mediaServerType ?? 'plex',
           hostname: data?.ip,
-          port: data?.port ?? 32400,
+          port:
+            data?.port ?? (data?.mediaServerType === 'jellyfin' ? 8096 : 32400),
           useSsl: data?.useSsl,
+          jellyfinApiKey: data?.jellyfinApiKey ?? '',
           selectedPreset: undefined,
           webAppUrl: data?.webAppUrl,
           autoEmptyTrash: data?.autoEmptyTrash !== false,
@@ -256,9 +273,11 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
               }
             );
             await axios.post('/api/v1/settings/plex', {
+              mediaServerType: values.mediaServerType,
               ip: values.hostname,
               port: Number(values.port),
               useSsl: values.useSsl,
+              jellyfinApiKey: values.jellyfinApiKey,
               webAppUrl: values.webAppUrl,
               autoEmptyTrash: values.autoEmptyTrash,
             } as PlexSettings);
@@ -301,6 +320,36 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
           return (
             <form className="section" onSubmit={handleSubmit}>
               <div className="form-row">
+                <label htmlFor="mediaServerType" className="text-label">
+                  {intl.formatMessage(messages.mediaServerType)}
+                </label>
+                <div className="form-input-area">
+                  <div className="form-input-field">
+                    <Field
+                      as="select"
+                      id="mediaServerType"
+                      name="mediaServerType"
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                        const nextType = e.target.value;
+                        setFieldValue('mediaServerType', nextType);
+                        if (nextType === 'jellyfin' && !values.port) {
+                          setFieldValue('port', 8096);
+                        } else if (nextType === 'plex' && !values.port) {
+                          setFieldValue('port', 32400);
+                        }
+                      }}
+                    >
+                      <option value="plex">
+                        {intl.formatMessage(messages.mediaServerPlex)}
+                      </option>
+                      <option value="jellyfin">
+                        {intl.formatMessage(messages.mediaServerJellyfin)}
+                      </option>
+                    </Field>
+                  </div>
+                </div>
+              </div>
+              <div className="form-row">
                 <label htmlFor="preset" className="text-label">
                   {intl.formatMessage(messages.serverpreset)}
                 </label>
@@ -310,7 +359,11 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
                       id="preset"
                       name="preset"
                       value={values.selectedPreset}
-                      disabled={!availableServers || isRefreshingPresets}
+                      disabled={
+                        values.mediaServerType === 'jellyfin' ||
+                        !availableServers ||
+                        isRefreshingPresets
+                      }
                       className="rounded-l-only flex-1"
                       onChange={async (e) => {
                         const targPreset =
@@ -367,6 +420,7 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
                         refreshPresetServers();
                       }}
                       className="input-action rounded-r-md border-l-0"
+                      disabled={values.mediaServerType === 'jellyfin'}
                     >
                       <ArrowPathIcon
                         className={isRefreshingPresets ? 'animate-spin' : ''}
@@ -436,6 +490,26 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
                   />
                 </div>
               </div>
+              {values.mediaServerType === 'jellyfin' && (
+                <div className="form-row">
+                  <label htmlFor="jellyfinApiKey" className="text-label">
+                    {intl.formatMessage(messages.apiKey)}
+                    <span className="label-required">*</span>
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.apiKeyTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <div className="form-input-field">
+                      <Field
+                        type="password"
+                        id="jellyfinApiKey"
+                        name="jellyfinApiKey"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="form-row">
                 <label htmlFor="webAppUrl" className="text-label">
                   {intl.formatMessage(messages.webAppUrl, {

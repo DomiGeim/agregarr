@@ -202,6 +202,8 @@ export interface CollectionFormConfig {
   readonly template?: string; // Collection title template (for preset templates or single media type) - optional for hubs/pre-existing
   readonly customMovieTemplate?: string; // Custom template for movie collections when mediaType is 'both'
   readonly customTVTemplate?: string; // Custom template for TV collections when mediaType is 'both'
+  readonly customSortTitle?: string;
+  readonly removeLeadingArticlesFromSortTitle?: boolean;
   readonly visibilityConfig: {
     usersHome: boolean;
     serverOwnerHome: boolean;
@@ -395,6 +397,7 @@ export interface CollectionFormConfig {
   readonly tmdbAdvancedFilters?: TmdbAdvancedFilters;
   // IMDb custom list fields
   readonly imdbCustomListUrl?: string; // Custom IMDb list URL
+  readonly imdbTitleIds?: string; // Direct IMDb title IDs
   // Letterboxd custom list fields
   readonly letterboxdCustomListUrl?: string; // Custom Letterboxd list URL
   // Networks fields
@@ -504,6 +507,8 @@ export interface CollectionConfigCreateRequest {
   readonly template?: string;
   readonly customMovieTemplate?: string;
   readonly customTVTemplate?: string;
+  readonly customSortTitle?: string;
+  readonly removeLeadingArticlesFromSortTitle?: boolean;
   readonly visibilityConfig: {
     usersHome: boolean;
     serverOwnerHome: boolean;
@@ -611,6 +616,7 @@ export interface CollectionConfigCreateRequest {
   readonly tmdbTvSortBy?: string;
   readonly tmdbAdvancedFilters?: Record<string, unknown>;
   readonly imdbCustomListUrl?: string;
+  readonly imdbTitleIds?: string;
   readonly letterboxdCustomListUrl?: string;
   readonly networksCountry?: string;
   readonly anilistCustomListUrl?: string;
@@ -691,6 +697,9 @@ export const toCollectionCreateRequest = (
     template: config.template,
     customMovieTemplate: config.customMovieTemplate,
     customTVTemplate: config.customTVTemplate,
+    customSortTitle: config.customSortTitle,
+    removeLeadingArticlesFromSortTitle:
+      config.removeLeadingArticlesFromSortTitle,
     visibilityConfig: config.visibilityConfig,
     // Explicitly exclude isActive - backend computes this
     maxItems: config.maxItems,
@@ -761,6 +770,7 @@ export const toCollectionCreateRequest = (
       | Record<string, unknown>
       | undefined,
     imdbCustomListUrl: config.imdbCustomListUrl,
+    imdbTitleIds: config.imdbTitleIds,
     letterboxdCustomListUrl: config.letterboxdCustomListUrl,
     networksCountry: config.networksCountry,
     anilistCustomListUrl: config.anilistCustomListUrl,

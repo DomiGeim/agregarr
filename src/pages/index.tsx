@@ -2,8 +2,12 @@ import HomeCollectionsView from '@app/components/Collections/Views/Home';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
 import { useUser } from '@app/hooks/useUser';
+import type { MainSettings } from '@server/lib/settings';
 import type { NextPage } from 'next';
+import { useRouter } from 'next/router';
+import { useEffect } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
+import useSWR from 'swr';
 
 const messages = defineMessages({
   homeTitle: 'Home',
@@ -14,8 +18,24 @@ const messages = defineMessages({
 const Index: NextPage = () => {
   const intl = useIntl();
   const { user } = useUser();
+  const router = useRouter();
+  const { data: mainSettings } = useSWR<MainSettings>(
+    user ? '/api/v1/settings/main' : null
+  );
+
+  useEffect(() => {
+    const defaultPage = mainSettings?.defaultPage;
+
+    if (defaultPage && defaultPage !== '/') {
+      router.replace(defaultPage);
+    }
+  }, [mainSettings?.defaultPage, router]);
 
   if (!user) {
+    return <LoadingSpinner />;
+  }
+
+  if (mainSettings?.defaultPage && mainSettings.defaultPage !== '/') {
     return <LoadingSpinner />;
   }
 

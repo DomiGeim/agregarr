@@ -825,9 +825,10 @@ export class MultiSourceOrchestrator {
           tmdbCustomCollectionUrl: source.customUrl,
         }),
       ...(source.type === 'imdb' &&
-        source.customUrl && {
-          imdbCustomListUrl: source.customUrl,
-        }),
+        source.customUrl &&
+        (source.subtype === 'title_ids'
+          ? { imdbTitleIds: source.customUrl }
+          : { imdbCustomListUrl: source.customUrl })),
       ...(source.type === 'letterboxd' &&
         source.customUrl && {
           letterboxdCustomListUrl: source.customUrl,
