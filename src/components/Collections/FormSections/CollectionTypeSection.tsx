@@ -47,6 +47,11 @@ const messages = defineMessages({
   directorCollections: 'Director Collections',
   numberOfDays: 'Number of Days',
   minimumPlayCount: 'Minimum Play Count',
+  mediaServersGroup: 'Media Servers',
+  listsGroup: 'Lists & Charts',
+  streamingGroup: 'Streaming Providers',
+  automationGroup: 'Automation',
+  advancedGroup: 'Advanced',
 });
 
 interface SubtypeOption {
@@ -135,6 +140,51 @@ const CollectionTypeSection = ({
     { value: 'comingsoon', label: 'Coming Soon' },
     { value: 'filtered_hub', label: 'Filtered Plex Hub' },
     { value: 'multi-source', label: 'Multiple Sources' },
+  ];
+
+  const collectionTypeGroups = [
+    {
+      label: intl.formatMessage(messages.mediaServersGroup),
+      options: collectionTypes.filter((type) =>
+        ['plex', 'filtered_hub'].includes(type.value)
+      ),
+    },
+    {
+      label: intl.formatMessage(messages.streamingGroup),
+      options: collectionTypes.filter((type) =>
+        ['networks', 'originals'].includes(type.value)
+      ),
+    },
+    {
+      label: intl.formatMessage(messages.listsGroup),
+      options: collectionTypes.filter((type) =>
+        [
+          'trakt',
+          'tmdb',
+          'imdb',
+          'letterboxd',
+          'mdblist',
+          'anilist',
+          'myanimelist',
+        ].includes(type.value)
+      ),
+    },
+    {
+      label: intl.formatMessage(messages.automationGroup),
+      options: collectionTypes.filter((type) =>
+        [
+          'overseerr',
+          'tautulli',
+          'radarrtag',
+          'sonarrtag',
+          'comingsoon',
+        ].includes(type.value)
+      ),
+    },
+    {
+      label: intl.formatMessage(messages.advancedGroup),
+      options: collectionTypes.filter((type) => type.value === 'multi-source'),
+    },
   ];
 
   const getSubtypeOptions = (type: string): SubtypeOption[] => {
@@ -498,10 +548,14 @@ const CollectionTypeSection = ({
           }}
         >
           <option value="">{intl.formatMessage(messages.selectSource)}</option>
-          {collectionTypes.map((type) => (
-            <option key={type.value} value={type.value}>
-              {type.label}
-            </option>
+          {collectionTypeGroups.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </Field>
 

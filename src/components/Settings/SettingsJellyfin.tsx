@@ -2,13 +2,11 @@ import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
 import globalMessages from '@app/i18n/globalMessages';
-import {
-  ArrowDownOnSquareIcon,
-  ServerStackIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowDownOnSquareIcon } from '@heroicons/react/24/outline';
 import type { PlexSettings } from '@server/lib/settings';
 import axios from 'axios';
 import { Field, Formik } from 'formik';
+import { useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useToasts } from 'react-toast-notifications';
 import useSWR from 'swr';
@@ -29,6 +27,14 @@ const messages = defineMessages({
   toastJellyfinConnectingSuccess:
     'Jellyfin connection established successfully!',
   toastJellyfinConnectingFailure: 'Failed to connect to Jellyfin.',
+  toastJellyfinSyncSuccess: 'Jellyfin libraries synced successfully!',
+  toastJellyfinSyncFailure: 'Failed to sync Jellyfin libraries.',
+  toastJellyfinActivated: 'Jellyfin is now the active media server.',
+  testAndSync: 'Test & Sync Libraries',
+  activeMediaServer: 'Active media server',
+  inactiveMediaServer: 'Saved profile',
+  libraries: 'Libraries',
+  activate: 'Activate',
   validationHostnameRequired: 'You must provide a valid hostname or IP address',
   validationPortRequired: 'You must provide a valid port number',
   validationApiKeyRequired: 'You must provide a Jellyfin API key',
@@ -48,11 +54,12 @@ interface SyncStatus {
 }
 
 const SettingsJellyfin = () => {
+  const [isSyncing, setIsSyncing] = useState(false);
   const {
     data,
     error,
     mutate: revalidate,
-  } = useSWR<PlexSettings>('/api/v1/settings/plex');
+  } = useSWR<PlexSettings & { active?: boolean }>('/api/v1/settings/jellyfin');
 
   useSWR<SyncStatus>('/api/v1/settings/plex/sync', {
     refreshInterval: 1000,
@@ -78,7 +85,7 @@ const SettingsJellyfin = () => {
   });
 
   const syncLibraries = async () => {
-    await axios.get('/api/v1/settings/plex/library', {
+    await axios.get('/api/v1/settings/jellyfin/library', {
       params: {
         sync: true,
       },
@@ -86,11 +93,22 @@ const SettingsJellyfin = () => {
     revalidate();
   };
 
+  const activateJellyfin = async () => {
+    await axios.post('/api/v1/settings/media-server/activate', {
+      mediaServerType: 'jellyfin',
+    });
+    revalidate();
+    addToast(intl.formatMessage(messages.toastJellyfinActivated), {
+      autoDismiss: true,
+      appearance: 'success',
+    });
+  };
+
   if (!data && !error) {
     return <LoadingSpinner />;
   }
 
-  const hasJellyfinSettings = data?.mediaServerType === 'jellyfin';
+  const hasJellyfinSettings = !!data?.ip;
 
   return (
     <>
@@ -102,12 +120,23 @@ const SettingsJellyfin = () => {
       />
       <div className="mb-6">
         <h3 className="heading flex items-center">
-          <ServerStackIcon className="mr-2 h-7 w-7 text-indigo-300" />
+          <img src="/services/jellyfin.svg" alt="" className="mr-2 h-7 w-7" />
           {intl.formatMessage(messages.jellyfinsettings)}
         </h3>
         <p className="description">
           {intl.formatMessage(messages.jellyfinsettingsDescription)}
         </p>
+        <div className="mt-4 flex flex-wrap gap-3 text-sm text-gray-300">
+          <span className="rounded-md border border-gray-600 px-3 py-2">
+            {data?.active
+              ? intl.formatMessage(messages.activeMediaServer)
+              : intl.formatMessage(messages.inactiveMediaServer)}
+          </span>
+          <span className="rounded-md border border-gray-600 px-3 py-2">
+            {intl.formatMessage(messages.libraries)}:{' '}
+            {data?.libraries?.length || 0}
+          </span>
+        </div>
       </div>
       <Formik
         initialValues={{
@@ -130,7 +159,7 @@ const SettingsJellyfin = () => {
                 toastId = id;
               }
             );
-            await axios.post('/api/v1/settings/plex', {
+            await axios.post('/api/v1/settings/jellyfin', {
               mediaServerType: 'jellyfin',
               ip: values.hostname,
               port: Number(values.port),
@@ -260,6 +289,60 @@ const SettingsJellyfin = () => {
               </div>
               <div className="actions">
                 <div className="flex justify-end">
+                  <span className="ml-3 inline-flex rounded-md shadow-sm">
+                    {!data?.active && (
+                      <Button
+                        buttonType="default"
+                        type="button"
+                        disabled={!data?.ip || isSubmitting}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          activateJellyfin();
+                        }}
+                      >
+                        {intl.formatMessage(messages.activate)}
+                      </Button>
+                    )}
+                  </span>
+                  <span className="ml-3 inline-flex rounded-md shadow-sm">
+                    <Button
+                      buttonType="default"
+                      type="button"
+                      disabled={!values.hostname || !values.jellyfinApiKey}
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        setIsSyncing(true);
+                        try {
+                          await syncLibraries();
+                          addToast(
+                            intl.formatMessage(
+                              messages.toastJellyfinSyncSuccess
+                            ),
+                            {
+                              autoDismiss: true,
+                              appearance: 'success',
+                            }
+                          );
+                        } catch (error) {
+                          addToast(
+                            intl.formatMessage(
+                              messages.toastJellyfinSyncFailure
+                            ),
+                            {
+                              autoDismiss: true,
+                              appearance: 'error',
+                            }
+                          );
+                        } finally {
+                          setIsSyncing(false);
+                        }
+                      }}
+                    >
+                      {isSyncing
+                        ? intl.formatMessage(globalMessages.saving)
+                        : intl.formatMessage(messages.testAndSync)}
+                    </Button>
+                  </span>
                   <span className="ml-3 inline-flex rounded-md shadow-sm">
                     <Button
                       buttonType="primary"

@@ -38,6 +38,7 @@ const messages = defineMessages({
   toastPlexConnecting: 'Attempting to connect to Plex...',
   toastPlexConnectingSuccess: 'Plex connection established successfully!',
   toastPlexConnectingFailure: 'Failed to connect to Plex.',
+  toastPlexActivated: 'Plex is now the active media server.',
   settingUpPlexDescription:
     'To set up Plex, you can either enter the details manually or select a server retrieved from <RegisterPlexTVLink>plex.tv</RegisterPlexTVLink>. Press the button to the right of the dropdown to fetch the list of available servers.',
   hostname: 'Hostname or IP Address',
@@ -52,6 +53,10 @@ const messages = defineMessages({
   autoEmptyTrash: 'Auto Empty Trash',
   autoEmptyTrashTip:
     'Automatically empty Plex library trash after placeholder cleanup to remove ghost entries',
+  activeMediaServer: 'Active media server',
+  inactiveMediaServer: 'Saved profile',
+  libraries: 'Libraries',
+  activate: 'Activate',
 });
 
 interface Library {
@@ -90,7 +95,7 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
     data,
     error,
     mutate: revalidate,
-  } = useSWR<PlexSettings>('/api/v1/settings/plex');
+  } = useSWR<PlexSettings & { active?: boolean }>('/api/v1/settings/plex');
 
   useSWR<SyncStatus>('/api/v1/settings/plex/sync', {
     // revalidateSync removed - not used
@@ -187,6 +192,17 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
     }
   };
 
+  const activatePlex = async () => {
+    await axios.post('/api/v1/settings/media-server/activate', {
+      mediaServerType: 'plex',
+    });
+    revalidate();
+    addToast(intl.formatMessage(messages.toastPlexActivated), {
+      autoDismiss: true,
+      appearance: 'success',
+    });
+  };
+
   // Scan and library toggle functions removed for Agregarr - not used
   // These were Overseerr-specific functionality
 
@@ -212,6 +228,17 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
         <p className="description">
           {intl.formatMessage(messages.plexsettingsDescription)}
         </p>
+        <div className="mt-4 flex flex-wrap gap-3 text-sm text-gray-300">
+          <span className="rounded-md border border-gray-600 px-3 py-2">
+            {data?.active !== false
+              ? intl.formatMessage(messages.activeMediaServer)
+              : intl.formatMessage(messages.inactiveMediaServer)}
+          </span>
+          <span className="rounded-md border border-gray-600 px-3 py-2">
+            {intl.formatMessage(messages.libraries)}:{' '}
+            {data?.libraries?.length || 0}
+          </span>
+        </div>
         {!!onComplete && (
           <div className="section">
             <Alert
@@ -493,6 +520,21 @@ const SettingsPlex = ({ onComplete }: SettingsPlexProps) => {
               </div>
               <div className="actions">
                 <div className="flex justify-end">
+                  {data?.active === false && (
+                    <span className="ml-3 inline-flex rounded-md shadow-sm">
+                      <Button
+                        buttonType="default"
+                        type="button"
+                        disabled={!data?.ip || isSubmitting}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          activatePlex();
+                        }}
+                      >
+                        {intl.formatMessage(messages.activate)}
+                      </Button>
+                    </span>
+                  )}
                   <span className="ml-3 inline-flex rounded-md shadow-sm">
                     <Button
                       buttonType="primary"
