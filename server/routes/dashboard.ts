@@ -6,7 +6,7 @@ import { Router } from 'express';
 
 const dashboardRoutes = Router();
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
-const TAUTULLI_DASHBOARD_TIMEOUT_MS = 8000;
+const TAUTULLI_DASHBOARD_TIMEOUT_MS = 60000;
 
 type HealthSeverity = 'error' | 'warning' | 'info';
 
@@ -189,6 +189,51 @@ const getCollectionHealth = (settings: ReturnType<typeof getSettings>) => {
   };
 };
 
+const getSourceStatus = (settings: ReturnType<typeof getSettings>) => {
+  const sources = [
+    {
+      id: 'media-server',
+      name: settings.plex.mediaServerType === 'jellyfin' ? 'Jellyfin' : 'Plex',
+      configured: !!settings.plex.ip,
+    },
+    {
+      id: 'tautulli',
+      name: 'Tautulli',
+      configured: !!settings.tautulli.hostname && !!settings.tautulli.apiKey,
+    },
+    {
+      id: 'radarr',
+      name: 'Radarr',
+      configured: (settings.radarr || []).some(
+        (server) => !!server.hostname && !!server.apiKey
+      ),
+    },
+    {
+      id: 'sonarr',
+      name: 'Sonarr',
+      configured: (settings.sonarr || []).some(
+        (server) => !!server.hostname && !!server.apiKey
+      ),
+    },
+    {
+      id: 'trakt',
+      name: 'Trakt',
+      configured: !!settings.trakt.apiKey || !!settings.trakt.accessToken,
+    },
+    {
+      id: 'mdblist',
+      name: 'MDBList',
+      configured: !!settings.mdblist.apiKey,
+    },
+  ];
+
+  return {
+    configured: sources.filter((source) => source.configured).length,
+    total: sources.length,
+    sources,
+  };
+};
+
 /**
  * GET /api/v1/dashboard/stats
  * Get dashboard statistics including collection stats, user activity, etc.
@@ -216,21 +261,13 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         // Get collection stats and weekly activity stats
         const [collectionStats, weeklyMovies, weeklyTV] = await withTimeout(
           Promise.all([
-            tautulli
-              .getTopCollections(50, 'plays', 7, collectionRatingKeys, {
-                includeMetadata: false,
-                includeUserStats: false,
-                concurrency: 6,
-              })
-              .catch((err) => {
-                logger.warn('Failed to get collection stats from Tautulli', {
-                  label: 'Dashboard API',
-                  error: err.message,
-                });
-                return [];
-              }),
-            tautulli.getHomeStats(7, 'plays', 'top_movies', 10).catch(() => []),
-            tautulli.getHomeStats(7, 'plays', 'top_tv', 10).catch(() => []),
+            tautulli.getTopCollections(50, 'plays', 7, collectionRatingKeys, {
+              includeMetadata: false,
+              includeUserStats: false,
+              concurrency: 6,
+            }),
+            tautulli.getHomeStats(7, 'plays', 'top_movies', 10),
+            tautulli.getHomeStats(7, 'plays', 'top_tv', 10),
           ]),
           TAUTULLI_DASHBOARD_TIMEOUT_MS,
           'Tautulli dashboard request timed out'
@@ -239,13 +276,18 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         // Calculate weekly plays from server totals
         let moviePlaysCount = 0;
         let tvPlaysCount = 0;
+        const getPlayCount = (item: {
+          total_plays?: number;
+          play_count?: number;
+          plays?: number;
+        }) => Number(item.total_plays ?? item.play_count ?? item.plays ?? 0);
 
         weeklyMovies.forEach((item) => {
-          moviePlaysCount += item.total_plays || 0;
+          moviePlaysCount += getPlayCount(item);
         });
 
         weeklyTV.forEach((item) => {
-          tvPlaysCount += item.total_plays || 0;
+          tvPlaysCount += getPlayCount(item);
         });
 
         const totalWeeklyPlays = moviePlaysCount + tvPlaysCount;
@@ -299,6 +341,10 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         tautulliStats = {
           isConnected: true,
           configured: true,
+          statsAvailable:
+            weeklyMovies.length > 0 ||
+            weeklyTV.length > 0 ||
+            collectionStats.length > 0,
           weeklyActivity: weeklyStats,
         };
       } catch (error) {
@@ -348,6 +394,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       activity: weeklyStats,
       tautulli: tautulliStats,
       health: getCollectionHealth(settings),
+      sourceStatus: getSourceStatus(settings),
       timestamp: new Date().toISOString(),
     };
 
