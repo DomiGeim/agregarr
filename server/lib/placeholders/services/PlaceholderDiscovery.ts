@@ -4,6 +4,7 @@ import { ComingSoonItem } from '@server/entity/ComingSoonItem';
 import {
   findPlexItemsByTitle,
   findPlexItemsByTmdbIds,
+  type LibraryItemsCache,
 } from '@server/lib/collections/core/CollectionUtilities';
 import logger from '@server/logger';
 
@@ -83,7 +84,8 @@ export interface DiscoveredMoviePlaceholder {
 export async function discoverPlaceholdersFromMarkers(
   plexClient: PlexAPI,
   libraryId: string,
-  libraryPath: string
+  libraryPath: string,
+  libraryCache?: LibraryItemsCache
 ): Promise<DiscoveredPlaceholder[]> {
   const { scanForMarkerFiles, upgradeMarkerFile } = await import(
     '@server/lib/placeholders/placeholderManager'
@@ -132,7 +134,8 @@ export async function discoverPlaceholdersFromMarkers(
     const plexMatches = await findPlexItemsByTmdbIds(
       plexClient,
       tmdbLookups,
-      libraryId
+      libraryId,
+      libraryCache
     );
 
     for (const marker of tier1Markers) {
@@ -186,10 +189,15 @@ export async function discoverPlaceholdersFromMarkers(
           effectiveTvdbId = dbRecord.tvdbId;
         }
       }
-      const arrStatus = effectiveTvdbId
-        ? showsByTvdbId.get(effectiveTvdbId)
-        : undefined;
-      const isDownloadedInArr = arrStatus?.downloaded === true;
+      const isDownloadedInArr = effectiveTvdbId
+        ? (
+            await placeholderContextService.checkMonitoringStatus(
+              marker.tmdbId,
+              effectiveTvdbId,
+              'tv'
+            )
+          ).downloaded
+        : false;
 
       // Marker file on disk proves this is an Agregarr-created placeholder.
       // Don't re-verify via isPlaceholderItem — returns false for TV shows

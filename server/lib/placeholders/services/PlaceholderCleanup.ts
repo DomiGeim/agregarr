@@ -526,24 +526,6 @@ async function deletePlexPlaceholderEpisode(
 }
 
 /**
- * Check if any retroactively-applicable placeholder filters are configured.
- * Rating filters are excluded because retroactive evaluation uses
- * skipRatingFilters (unreleased content has no ratings).
- */
-function hasPlaceholderFilters(config: CollectionConfig): boolean {
-  if (config.placeholderMinimumYear && config.placeholderMinimumYear > 0)
-    return true;
-
-  const pfs = config.placeholderFilterSettings;
-  if (pfs?.genres?.values?.length) return true;
-  if (pfs?.countries?.values?.length) return true;
-  if (pfs?.languages?.values?.length) return true;
-  if (pfs?.keywords?.values?.length) return true;
-
-  return false;
-}
-
-/**
  * Clean up placeholders for a collection:
  * 1. Items with real content detected in Plex (via discovery system)
  * 2. Items no longer in source data (orphaned items)
@@ -774,6 +756,14 @@ export async function cleanupPlaceholdersForConfig(
 
             // Remove from database if file removal succeeded
             if (fileRemovalSucceeded) {
+              if (placeholder.mediaType === 'tv' && placeholder.plexRatingKey) {
+                await deletePlexPlaceholderEpisode(
+                  plexClient,
+                  placeholder.plexRatingKey,
+                  placeholder.title
+                );
+              }
+
               await repository.remove(placeholder);
               removedCount++;
               orphanedCount++;
@@ -905,6 +895,14 @@ export async function cleanupPlaceholdersForConfig(
 
           // Remove from database if file removal succeeded
           if (fileRemovalSucceeded) {
+            if (placeholder.mediaType === 'tv' && placeholder.plexRatingKey) {
+              await deletePlexPlaceholderEpisode(
+                plexClient,
+                placeholder.plexRatingKey,
+                placeholder.title
+              );
+            }
+
             await repository.remove(placeholder);
             removedCount++;
             staleCount++;
