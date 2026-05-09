@@ -34,7 +34,8 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
     const settings = getSettings();
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = parseInt(req.query.offset as string) || 0;
-    const mediaType = req.query.mediaType === 'tv' ? 'show' : 'movie';
+    const mediaType = req.query.mediaType === 'tv' ? 'tv' : 'movie';
+    const tautulliMediaType = mediaType === 'tv' ? 'show' : 'movie';
 
     if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
       return res.status(200).json({
@@ -47,22 +48,30 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
     }
 
     const tautulli = new TautulliAPI(settings.tautulli);
-    const recentlyAdded = (await tautulli.getRecentlyAdded(limit + offset, 0))
+    const recentlyAdded = (
+      await tautulli.getRecentlyAdded(
+        limit + offset,
+        0,
+        undefined,
+        tautulliMediaType
+      )
+    )
       .filter((item) =>
         mediaType === 'movie'
           ? item.media_type === 'movie'
-          : item.media_type === 'show' || item.media_type === 'episode'
+          : item.media_type === 'show' ||
+            item.media_type === 'season' ||
+            item.media_type === 'episode'
       )
       .slice(offset, offset + limit);
 
     const results = recentlyAdded.map((item, index) => {
       const createdAt = toIsoDate(item.added_at);
-      const isTv = item.media_type === 'show' || item.media_type === 'episode';
 
       return {
         id: Number(item.rating_key) || index,
         tmdbId: 0,
-        mediaType: isTv ? 'tv' : 'movie',
+        mediaType,
         title:
           item.media_type === 'episode'
             ? item.grandparent_title || item.full_title || item.title

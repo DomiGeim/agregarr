@@ -1786,9 +1786,35 @@ settingsRoutes.post('/watchlistsync', (req, res) => {
 settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
   try {
     const settingsPath = path.join(appDataPath(), 'settings.json');
+    let backupJson = '';
 
-    if (!fs.existsSync(settingsPath)) {
-      getSettings().save();
+    if (fs.existsSync(settingsPath)) {
+      try {
+        backupJson = fs.readFileSync(settingsPath, 'utf-8');
+      } catch (readError) {
+        logger.warn('Settings backup file could not be read', {
+          label: 'Settings',
+          settingsPath,
+          errorMessage:
+            readError instanceof Error ? readError.message : 'Unknown error',
+        });
+      }
+    }
+
+    if (!backupJson) {
+      const settings = getSettings();
+      backupJson = JSON.stringify(settings.getAll(), undefined, ' ');
+
+      try {
+        settings.save();
+      } catch (saveError) {
+        logger.warn('Settings backup exported from memory only', {
+          label: 'Settings',
+          settingsPath,
+          errorMessage:
+            saveError instanceof Error ? saveError.message : 'Unknown error',
+        });
+      }
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -1798,7 +1824,7 @@ settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
       `attachment; filename="agregarr-settings-${timestamp}.json"`
     );
 
-    return res.status(200).send(fs.readFileSync(settingsPath, 'utf-8'));
+    return res.status(200).send(backupJson);
   } catch (error) {
     logger.error('Failed to export settings backup', {
       label: 'Settings',
