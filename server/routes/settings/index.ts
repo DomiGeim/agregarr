@@ -1788,10 +1788,7 @@ settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
     const settingsPath = path.join(appDataPath(), 'settings.json');
 
     if (!fs.existsSync(settingsPath)) {
-      return next({
-        status: 404,
-        message: 'settings.json not found.',
-      });
+      getSettings().save();
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

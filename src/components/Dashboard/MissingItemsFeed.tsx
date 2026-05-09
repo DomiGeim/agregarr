@@ -53,6 +53,7 @@ interface MissingItem {
   collectionName: string;
   collectionSource: string;
   collectionSubtype?: string;
+  posterUrl?: string;
   requestService: string;
   requestMethod: string;
   requestStatus:
@@ -91,7 +92,7 @@ const MissingItemsFeed: React.FC = () => {
     error,
     mutate,
   } = useSWR<MissingItemsResponse>(
-    `/api/v1/missing-items?limit=${limit}&mediaType=${
+    `/api/v1/missing-items/tautulli-recently-added?limit=${limit}&mediaType=${
       activeTab === 'movies' ? 'movie' : 'tv'
     }&offset=0`
   );
@@ -99,16 +100,8 @@ const MissingItemsFeed: React.FC = () => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      // First sync the status with Overseerr
-      const response = await fetch('/api/v1/missing-items/sync', {
-        method: 'POST',
-      });
-      if (response.ok) {
-        // Then refresh the data
-        await mutate();
-      }
+      await mutate();
     } catch (error) {
-      // Still try to refresh data even if sync failed
       await mutate();
     } finally {
       setIsRefreshing(false);
@@ -267,10 +260,10 @@ const MissingItemsFeed: React.FC = () => {
                 className="flex items-center space-x-3 rounded-lg border border-gray-700 p-3 transition-colors hover:border-gray-600"
               >
                 <div className="flex-shrink-0">
-                  {item.posterPath ? (
+                  {item.posterUrl || item.posterPath ? (
                     <div className="relative">
                       <img
-                        src={getTmdbImageUrl(item.posterPath)}
+                        src={item.posterUrl || getTmdbImageUrl(item.posterPath)}
                         alt={item.title}
                         className="h-18 w-12 rounded border border-gray-600 object-cover"
                         onError={(e) => {

@@ -1,9 +1,98 @@
+import TautulliAPI from '@server/api/tautulli';
 import { getRepository } from '@server/datasource';
 import { MissingItemRequest } from '@server/entity/MissingItemRequest';
+import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { Router } from 'express';
 
 const missingItemsRoutes = Router();
+
+const toIsoDate = (value?: number | string): string => {
+  if (!value) {
+    return new Date().toISOString();
+  }
+
+  const numericValue = Number(value);
+  if (!Number.isNaN(numericValue)) {
+    return new Date(numericValue * 1000).toISOString();
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime())
+    ? new Date().toISOString()
+    : parsedDate.toISOString();
+};
+
+/**
+ * @api {get} /api/v1/missing-items/tautulli-recently-added Get Tautulli recently added items
+ * @apiName GetTautulliRecentlyAdded
+ * @apiGroup MissingItems
+ * @apiDescription Retrieve recently added movies or shows directly from Tautulli for the dashboard
+ */
+missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
+  try {
+    const settings = getSettings();
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const mediaType = req.query.mediaType === 'tv' ? 'show' : 'movie';
+
+    if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
+      return res.status(200).json({
+        results: [],
+        total: 0,
+        limit,
+        offset,
+        configured: false,
+      });
+    }
+
+    const tautulli = new TautulliAPI(settings.tautulli);
+    const recentlyAdded = await tautulli.getRecentlyAdded(
+      limit,
+      offset,
+      mediaType
+    );
+
+    const results = recentlyAdded.map((item, index) => {
+      const createdAt = toIsoDate(item.added_at);
+      const isTv = item.media_type === 'show' || item.media_type === 'episode';
+
+      return {
+        id: Number(item.rating_key) || index,
+        tmdbId: 0,
+        mediaType: isTv ? 'tv' : 'movie',
+        title:
+          item.media_type === 'episode'
+            ? item.grandparent_title || item.full_title || item.title
+            : item.title,
+        posterPath: undefined,
+        posterUrl: undefined,
+        year: item.year ? Number(item.year) : undefined,
+        collectionName: item.section_name || 'Tautulli',
+        collectionSource: 'Tautulli',
+        requestService: 'Tautulli',
+        requestMethod: 'auto',
+        requestStatus: 'available',
+        createdAt,
+        requestedAt: createdAt,
+      };
+    });
+
+    return res.status(200).json({
+      results,
+      total: results.length,
+      limit,
+      offset,
+      configured: true,
+    });
+  } catch (error) {
+    logger.error('Failed to retrieve Tautulli recently added items', {
+      label: 'Missing Items API',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    return res.status(500).json({ message: 'Failed to load Tautulli items' });
+  }
+});
 
 /**
  * @api {get} /api/v1/missing-items Get missing item requests

@@ -139,6 +139,35 @@ interface TautulliHomeStatsResponse {
   };
 }
 
+export interface TautulliRecentlyAddedItem {
+  rating_key: string;
+  title: string;
+  full_title?: string;
+  grandparent_title?: string;
+  parent_title?: string;
+  media_type: 'movie' | 'show' | 'season' | 'episode' | 'artist' | string;
+  year?: number | string;
+  added_at?: number | string;
+  originally_available_at?: string;
+  thumb?: string;
+  art?: string;
+  section_id?: number | string;
+  section_name?: string;
+}
+
+interface TautulliRecentlyAddedResponse {
+  response: {
+    result: string;
+    message?: string;
+    data:
+      | TautulliRecentlyAddedItem[]
+      | {
+          recently_added?: TautulliRecentlyAddedItem[];
+          data?: TautulliRecentlyAddedItem[];
+        };
+  };
+}
+
 interface TautulliCollection {
   section_id: number;
   section_name: string;
@@ -472,6 +501,48 @@ class TautulliAPI {
         statsStart,
       });
       throw new Error(`[Tautulli] Failed to fetch home stats: ${e.message}`);
+    }
+  }
+
+  public async getRecentlyAdded(
+    count = 10,
+    start = 0,
+    mediaType?: 'movie' | 'show' | 'artist'
+  ): Promise<TautulliRecentlyAddedItem[]> {
+    try {
+      const response = await this.axios.get<TautulliRecentlyAddedResponse>(
+        '/api/v2',
+        {
+          params: {
+            cmd: 'get_recently_added',
+            count,
+            start,
+            ...(mediaType ? { media_type: mediaType } : {}),
+          },
+        }
+      );
+
+      const data = response.data.response.data;
+
+      if (Array.isArray(data)) {
+        return data;
+      }
+
+      return data.recently_added || data.data || [];
+    } catch (e) {
+      logger.error(
+        'Something went wrong fetching recently added from Tautulli',
+        {
+          label: 'Tautulli API',
+          errorMessage: e.message,
+          count,
+          start,
+          mediaType,
+        }
+      );
+      throw new Error(
+        `[Tautulli] Failed to fetch recently added: ${e.message}`
+      );
     }
   }
 
