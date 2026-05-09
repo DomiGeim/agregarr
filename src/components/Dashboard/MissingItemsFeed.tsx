@@ -23,8 +23,8 @@ const messages = defineMessages({
   recentlyAddedMissing: 'Recently Added von Tautulli',
   movies: 'Movies',
   tvShows: 'TV Shows',
-  noMissingItems: 'No missing items',
-  noRecentActivity: 'No recent missing item requests found',
+  noRecentlyAddedItems: 'No recently added items',
+  noRecentActivity: 'No recently added movies or TV shows found in Tautulli',
   refresh: 'Refresh',
   viewAll: 'View All',
   requestedFrom: 'From {collection}',
@@ -40,8 +40,8 @@ const messages = defineMessages({
   manualRequest: 'Manual',
   failedToLoadMissingItems: 'Failed to load missing items',
   failedToLoadTautulliRecentlyAdded: 'Failed to load Tautulli Recently Added',
-  requestsCount: '{total} {mediaType} requests',
-  showingRecent: 'Showing recent missing item requests',
+  recentlyAddedCount: '{total} {mediaType}',
+  showingRecent: 'Showing recently added items from Tautulli',
   lastUpdatedNow: 'Last updated: {time}',
 });
 
@@ -240,9 +240,9 @@ const MissingItemsFeed: React.FC = () => {
           {missingItemsData && (
             <p className="flex items-center text-sm text-gray-400">
               <CalendarDaysIcon className="mr-1 h-4 w-4" />
-              {intl.formatMessage(messages.requestsCount, {
+              {intl.formatMessage(messages.recentlyAddedCount, {
                 total: missingItemsData.total,
-                mediaType: activeTab === 'movies' ? 'movie' : 'TV',
+                mediaType: activeTab === 'movies' ? 'movies' : 'TV shows',
               })}
             </p>
           )}
@@ -284,7 +284,7 @@ const MissingItemsFeed: React.FC = () => {
               )}
             </div>
             <p className="mb-2 text-gray-400">
-              {intl.formatMessage(messages.noMissingItems)}
+              {intl.formatMessage(messages.noRecentlyAddedItems)}
             </p>
             <p className="text-sm text-gray-500">
               {intl.formatMessage(messages.noRecentActivity)}
