@@ -1355,6 +1355,7 @@
   "components.Settings.SettingsAbout.restoreSettingsBackup": "Einstellungs-Backup wiederherstellen",
   "components.Settings.SettingsAbout.toastSettingsBackupRestoreSuccess": "Einstellungs-Backup erfolgreich wiederhergestellt.",
   "components.Settings.SettingsAbout.toastSettingsBackupRestoreFailure": "Einstellungs-Backup konnte nicht wiederhergestellt werden.",
+  "components.Settings.SettingsAbout.toastSettingsBackupExportFailure": "Einstellungs-Backup konnte nicht exportiert werden.",
   "components.Settings.SettingsAbout.gettingsupport": "Hilfe erhalten",
   "components.Settings.SettingsAbout.githubdiscussions": "GitHub-Diskussionen",
   "components.Settings.SettingsAbout.helppaycoffee": "Hilf uns Kaffee zu bezahlen",
