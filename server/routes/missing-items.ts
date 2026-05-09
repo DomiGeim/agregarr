@@ -47,11 +47,13 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
     }
 
     const tautulli = new TautulliAPI(settings.tautulli);
-    const recentlyAdded = await tautulli.getRecentlyAdded(
-      limit,
-      offset,
-      mediaType
-    );
+    const recentlyAdded = (await tautulli.getRecentlyAdded(limit + offset, 0))
+      .filter((item) =>
+        mediaType === 'movie'
+          ? item.media_type === 'movie'
+          : item.media_type === 'show' || item.media_type === 'episode'
+      )
+      .slice(offset, offset + limit);
 
     const results = recentlyAdded.map((item, index) => {
       const createdAt = toIsoDate(item.added_at);
