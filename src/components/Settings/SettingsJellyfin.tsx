@@ -27,6 +27,12 @@ const messages = defineMessages({
   toastJellyfinConnectingSuccess:
     'Jellyfin connection established successfully!',
   toastJellyfinConnectingFailure: 'Failed to connect to Jellyfin.',
+  toastJellyfinAuthFailure:
+    'Jellyfin rejected the API key. Please check the key and try again.',
+  toastJellyfinServerFailure:
+    'Jellyfin is reachable, but did not return server information.',
+  toastJellyfinNetworkFailure:
+    'Jellyfin could not be reached. Please check host, port, and SSL.',
   toastJellyfinSyncSuccess: 'Jellyfin libraries synced successfully!',
   toastJellyfinSyncFailure: 'Failed to sync Jellyfin libraries.',
   toastJellyfinActivated: 'Jellyfin is now the active media server.',
@@ -67,6 +73,36 @@ const SettingsJellyfin = () => {
 
   const intl = useIntl();
   const { addToast, removeToast } = useToasts();
+
+  const getJellyfinErrorMessage = (error: unknown) => {
+    if (axios.isAxiosError(error)) {
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message;
+
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        return intl.formatMessage(messages.toastJellyfinAuthFailure);
+      }
+
+      if (
+        message?.toLowerCase().includes('server not found') ||
+        message?.toLowerCase().includes('server information')
+      ) {
+        return intl.formatMessage(messages.toastJellyfinServerFailure);
+      }
+
+      if (!error.response) {
+        return intl.formatMessage(messages.toastJellyfinNetworkFailure);
+      }
+
+      return (
+        message || intl.formatMessage(messages.toastJellyfinConnectingFailure)
+      );
+    }
+
+    return intl.formatMessage(messages.toastJellyfinConnectingFailure);
+  };
 
   const JellyfinSettingsSchema = Yup.object().shape({
     hostname: Yup.string()
@@ -183,13 +219,10 @@ const SettingsJellyfin = () => {
             if (toastId) {
               removeToast(toastId);
             }
-            addToast(
-              intl.formatMessage(messages.toastJellyfinConnectingFailure),
-              {
-                autoDismiss: true,
-                appearance: 'error',
-              }
-            );
+            addToast(getJellyfinErrorMessage(e), {
+              autoDismiss: true,
+              appearance: 'error',
+            });
           }
         }}
       >
@@ -324,15 +357,10 @@ const SettingsJellyfin = () => {
                             }
                           );
                         } catch (error) {
-                          addToast(
-                            intl.formatMessage(
-                              messages.toastJellyfinSyncFailure
-                            ),
-                            {
-                              autoDismiss: true,
-                              appearance: 'error',
-                            }
-                          );
+                          addToast(getJellyfinErrorMessage(error), {
+                            autoDismiss: true,
+                            appearance: 'error',
+                          });
                         } finally {
                           setIsSyncing(false);
                         }

@@ -27,6 +27,9 @@ const messages = defineMessages({
     'Configure Tautulli in your settings to view play statistics from your Plex server.',
   configureTautulli: 'Configure Tautulli',
   failedToLoadDashboardStats: 'Failed to load dashboard statistics',
+  loadingDashboardStats: 'Loading dashboard statistics...',
+  tautulliTimedOut:
+    'Tautulli is responding slowly. Showing collection data without play statistics.',
   mediaServer: 'Media Server',
   libraries: 'libraries',
   active: 'active',
@@ -73,6 +76,7 @@ interface DashboardData {
   tautulli?: {
     isConnected: boolean;
     error?: string;
+    timedOut?: boolean;
     weeklyActivity?: {
       totalPlays: number;
       moviePlays: number;
@@ -131,7 +135,12 @@ const DashboardStats: React.FC = () => {
     return (
       <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
         <div className="flex justify-center">
-          <LoadingSpinner />
+          <div className="flex flex-col items-center gap-3">
+            <LoadingSpinner />
+            <p className="text-sm text-gray-400">
+              {intl.formatMessage(messages.loadingDashboardStats)}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -228,7 +237,6 @@ const DashboardStats: React.FC = () => {
           messages.active
         )}`}
       />
-
       <StatCard
         title={intl.formatMessage(messages.collections)}
         value={dashboardData.collections.agregarr}
@@ -237,7 +245,6 @@ const DashboardStats: React.FC = () => {
           dashboardData.collections.preExisting
         } ${intl.formatMessage(messages.preExistingCollections)}`}
       />
-
       <StatCard
         title={intl.formatMessage(messages.collectionPlays)}
         value={collectionPlays}
@@ -246,7 +253,6 @@ const DashboardStats: React.FC = () => {
           messages.totalServer
         )} • ${intl.formatMessage(messages.thisWeek)}`}
       />
-
       <StatCard
         title={intl.formatMessage(messages.movieCollectionPlays)}
         value={movieCollectionPlays}
@@ -255,7 +261,6 @@ const DashboardStats: React.FC = () => {
           messages.totalServer
         )} • ${intl.formatMessage(messages.thisWeek)}`}
       />
-
       <StatCard
         title={intl.formatMessage(messages.tvCollectionPlays)}
         value={tvCollectionPlays}
@@ -264,6 +269,13 @@ const DashboardStats: React.FC = () => {
           messages.totalServer
         )} • ${intl.formatMessage(messages.thisWeek)}`}
       />
+      {dashboardData.tautulli?.timedOut && (
+        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+          <p className="text-sm text-orange-300">
+            {intl.formatMessage(messages.tautulliTimedOut)}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

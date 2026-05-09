@@ -1779,6 +1779,69 @@ settingsRoutes.post('/watchlistsync', (req, res) => {
   return res.status(200).json(settings.watchlistSync);
 });
 
+settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
+  try {
+    const settingsPath = path.join(appDataPath(), 'settings.json');
+
+    if (!fs.existsSync(settingsPath)) {
+      return next({
+        status: 404,
+        message: 'settings.json not found.',
+      });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-settings-${timestamp}.json"`
+    );
+
+    return res.status(200).send(fs.readFileSync(settingsPath, 'utf-8'));
+  } catch (error) {
+    logger.error('Failed to export settings backup', {
+      label: 'Settings',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+    });
+    return next(error);
+  }
+});
+
+settingsRoutes.post('/backup/restore', isAuthenticated(), (req, res, next) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') {
+      return next({
+        status: 400,
+        message: 'Invalid settings backup.',
+      });
+    }
+
+    const backup = req.body;
+    const requiredKeys = ['main', 'plex', 'tautulli', 'radarr', 'sonarr'];
+
+    if (!requiredKeys.every((key) => key in backup)) {
+      return next({
+        status: 400,
+        message: 'The selected file does not look like an Agregarr backup.',
+      });
+    }
+
+    const settings = getSettings();
+    settings.load(backup);
+    settings.save();
+
+    logger.info('Settings backup restored', { label: 'Settings' });
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    logger.error('Failed to restore settings backup', {
+      label: 'Settings',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+    });
+    return next(error);
+  }
+});
+
 settingsRoutes.post('/export-debug', (req, res, next) => {
   try {
     const { includeDatabase, includeSettings, includeLogs } = req.body;
