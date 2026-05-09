@@ -3,7 +3,10 @@ import OverseerrAPI, {
 } from '@server/api/overseerr';
 import type PlexAPI from '@server/api/plexapi';
 import type { BaseCollectionSync } from '@server/lib/collections/core/BaseCollectionSync';
-import { getCollectionMediaType } from '@server/lib/collections/core/CollectionUtilities';
+import {
+  getCollectionMediaType,
+  type LibraryItemsCache,
+} from '@server/lib/collections/core/CollectionUtilities';
 import type {
   CollectionSource,
   SyncResult,
@@ -87,7 +90,8 @@ export class CollectionSyncService {
    */
   private async prefetchPlaceholderDiscovery(
     plexClient: PlexAPI,
-    collectionConfigs: CollectionConfig[]
+    collectionConfigs: CollectionConfig[],
+    libraryCache?: LibraryItemsCache
   ): Promise<{
     tv: DiscoveredPlaceholder[];
     movies: DiscoveredMoviePlaceholder[];
@@ -155,7 +159,8 @@ export class CollectionSyncService {
           const discovered = await discoverPlaceholdersFromMarkers(
             plexClient,
             tvLibraryId,
-            tvLibraryPath
+            tvLibraryPath,
+            libraryCache
           );
 
           logger.info('Global TV placeholder discovery complete', {
@@ -177,11 +182,12 @@ export class CollectionSyncService {
             }
 
             if (!needsTitleFix && marker.tmdbId) {
-              // Real content detected - clean up placeholder
               await cleanupPlaceholderForRealContent(
                 marker.tmdbId,
                 marker.placeholderPath,
-                'tv'
+                'tv',
+                plexClient,
+                plexItem?.ratingKey
               );
               cleanedUp++;
             } else if (needsTitleFix) {
@@ -316,13 +322,16 @@ export class CollectionSyncService {
           let moviesCleanedUp = 0;
           let labelsFixed = 0;
 
-          for (const { plexItem, needsCleanup, movie } of discovered) {
-            if (plexItem && needsCleanup) {
-              // Real content detected - clean up placeholder
+          for (const { needsCleanup, movie, plexItem } of discovered) {
+            // Cleanup triggers when needsCleanup is true (real content detected via Plex OR *arr)
+            // This works even without a plexItem (content downloaded to different library)
+            if (needsCleanup) {
               await cleanupPlaceholderForRealContent(
                 movie.tmdbId,
                 movie.placeholderPath,
-                'movie'
+                'movie',
+                plexClient,
+                plexItem?.ratingKey
               );
               moviesCleanedUp++;
             } else if (plexItem) {
@@ -516,7 +525,8 @@ export class CollectionSyncService {
     onProgress?.(0, 'Discovering placeholders...');
     const placeholderDiscovery = await this.prefetchPlaceholderDiscovery(
       plexClient,
-      collectionConfigs
+      collectionConfigs,
+      libraryCache
     );
 
     // Initialize the global sync cache service for use across all sync operations
@@ -743,11 +753,14 @@ export class CollectionSyncService {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        logger.error(`Failed to process collection ${config.name}: ${error}`, {
-          label: 'Collection Sync Service',
-          configId: config.id,
-          error: errorMessage,
-        });
+        logger.error(
+          `Failed to process collection ${config.name}: ${errorMessage}`,
+          {
+            label: 'Collection Sync Service',
+            configId: config.id,
+            error: errorMessage,
+          }
+        );
 
         // Persist error for UI display
         settings.setCollectionSyncError(config.id, errorMessage);

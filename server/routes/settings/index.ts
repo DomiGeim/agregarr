@@ -55,6 +55,48 @@ settingsRoutes.use('/radarr', radarrRoutes);
 settingsRoutes.use('/sonarr', sonarrRoutes);
 // Discover settings routes removed - discovery functionality not needed in Agregarr
 
+const activateMediaServerProfile = (
+  settings: ReturnType<typeof getSettings>,
+  mediaServerType: 'plex' | 'jellyfin'
+) => {
+  const source =
+    mediaServerType === 'jellyfin' ? settings.jellyfin : settings.plexProfile;
+
+  Object.assign(settings.plex, {
+    mediaServerType,
+    name: source.name,
+    machineId: source.machineId,
+    ip: source.ip,
+    port: source.port,
+    useSsl: source.useSsl,
+    jellyfinApiKey: source.jellyfinApiKey,
+    libraries: source.libraries || [],
+    webAppUrl: source.webAppUrl,
+    collectionConfigs: source.collectionConfigs || [],
+    hubConfigs: source.hubConfigs || [],
+    preExistingCollectionConfigs: source.preExistingCollectionConfigs || [],
+    autoEmptyTrash: source.autoEmptyTrash,
+  });
+};
+
+const persistActiveMediaServerProfile = (
+  settings: ReturnType<typeof getSettings>
+) => {
+  if (settings.plex.mediaServerType === 'jellyfin') {
+    settings.jellyfin = {
+      ...settings.jellyfin,
+      ...settings.plex,
+      mediaServerType: 'jellyfin',
+    };
+  } else {
+    settings.plexProfile = {
+      ...settings.plexProfile,
+      ...settings.plex,
+      mediaServerType: 'plex',
+    };
+  }
+};
+
 const filteredMainSettings = (
   user: User,
   main: MainSettings
@@ -102,13 +144,26 @@ settingsRoutes.post('/main/regenerate', (req, res, next) => {
 settingsRoutes.get('/plex', (_req, res) => {
   const settings = getSettings();
 
-  res.status(200).json(settings.plex);
+  res.status(200).json({
+    ...settings.plexProfile,
+    active: settings.plex.mediaServerType !== 'jellyfin',
+  });
+});
+
+settingsRoutes.get('/jellyfin', (_req, res) => {
+  const settings = getSettings();
+
+  res.status(200).json({
+    ...settings.jellyfin,
+    active: settings.plex.mediaServerType === 'jellyfin',
+  });
 });
 
 settingsRoutes.post('/plex', async (req, res, next) => {
   const userRepository = getRepository(User);
   const settings = getSettings();
-  const mediaServerType = req.body.mediaServerType || 'plex';
+  persistActiveMediaServerProfile(settings);
+  const mediaServerType = 'plex';
 
   logger.debug('Media server settings update requested', {
     label: 'Media Server Settings',
@@ -119,8 +174,12 @@ settingsRoutes.post('/plex', async (req, res, next) => {
   });
 
   try {
-    Object.assign(settings.plex, req.body);
-    settings.plex.mediaServerType = mediaServerType;
+    settings.plexProfile = {
+      ...settings.plexProfile,
+      ...req.body,
+      mediaServerType,
+    };
+    activateMediaServerProfile(settings, 'plex');
 
     const connectionUrl = `${settings.plex.useSsl ? 'https' : 'http'}://${
       settings.plex.ip
@@ -134,17 +193,12 @@ settingsRoutes.post('/plex', async (req, res, next) => {
     // Note: Collections sync is now handled by scheduled job (every 12 hours)
     // or manual "Save & Run" button - no auto-trigger on enable
 
-    const result =
-      mediaServerType === 'jellyfin'
-        ? await new JellyfinAPI(settings.plex).getStatus()
-        : await (async () => {
-            const admin = await userRepository.findOneOrFail({
-              select: { id: true, plexToken: true },
-              where: { id: 1 },
-            });
-            const plexClient = new PlexAPI({ plexToken: admin.plexToken });
-            return await plexClient.getStatus();
-          })();
+    const admin = await userRepository.findOneOrFail({
+      select: { id: true, plexToken: true },
+      where: { id: 1 },
+    });
+    const plexClient = new PlexAPI({ plexToken: admin.plexToken });
+    const result = await plexClient.getStatus();
 
     if (!result?.MediaContainer?.machineIdentifier) {
       throw new Error('Server not found');
@@ -152,6 +206,12 @@ settingsRoutes.post('/plex', async (req, res, next) => {
 
     settings.plex.machineId = result.MediaContainer.machineIdentifier;
     settings.plex.name = result.MediaContainer.friendlyName;
+    settings.plexProfile = {
+      ...settings.plexProfile,
+      machineId: result.MediaContainer.machineIdentifier,
+      name: result.MediaContainer.friendlyName,
+      libraries: settings.plex.libraries,
+    };
 
     settings.save();
 
@@ -169,7 +229,8 @@ settingsRoutes.post('/plex', async (req, res, next) => {
 
     // Return the updated Plex settings
     const response = {
-      ...settings.plex,
+      ...settings.plexProfile,
+      active: true,
     };
 
     return res.status(200).json(response);
@@ -199,6 +260,98 @@ settingsRoutes.post('/plex', async (req, res, next) => {
   }
 
   return res.status(200).json(settings.plex);
+});
+
+settingsRoutes.post('/jellyfin', async (req, res, next) => {
+  const settings = getSettings();
+  const mediaServerType = 'jellyfin';
+
+  logger.debug('Jellyfin settings update requested', {
+    label: 'Jellyfin Settings',
+    ip: req.body.ip,
+    port: req.body.port,
+    useSsl: req.body.useSsl,
+  });
+
+  const nextJellyfinSettings = {
+    ...settings.jellyfin,
+    ...req.body,
+    mediaServerType,
+  };
+
+  try {
+    const connectionUrl = `${
+      nextJellyfinSettings.useSsl ? 'https' : 'http'
+    }://${nextJellyfinSettings.ip}:${nextJellyfinSettings.port}`;
+    logger.debug('Testing Jellyfin connection with new settings', {
+      label: 'Jellyfin Settings',
+      url: connectionUrl,
+    });
+
+    const result = await new JellyfinAPI(nextJellyfinSettings).getStatus();
+
+    if (!result?.MediaContainer?.machineIdentifier) {
+      throw new Error('Server not found');
+    }
+
+    settings.jellyfin = {
+      ...nextJellyfinSettings,
+      machineId: result.MediaContainer.machineIdentifier,
+      name: result.MediaContainer.friendlyName,
+    };
+
+    activateMediaServerProfile(settings, 'jellyfin');
+    settings.save();
+
+    logger.info('Jellyfin settings updated successfully', {
+      label: 'Jellyfin Settings',
+      serverName: result.MediaContainer.friendlyName,
+      machineId:
+        result.MediaContainer.machineIdentifier.substring(0, 8) + '...',
+    });
+
+    return res.status(200).json({
+      ...settings.jellyfin,
+      active: true,
+    });
+  } catch (e) {
+    const connectionUrl = `${
+      nextJellyfinSettings.useSsl ? 'https' : 'http'
+    }://${nextJellyfinSettings.ip}:${nextJellyfinSettings.port}`;
+
+    logger.error('Failed to connect to Jellyfin with new settings', {
+      label: 'Jellyfin Settings',
+      error: e.message,
+      errorType: e.constructor?.name,
+      errorCode: e.code,
+      connectionUrl,
+    });
+
+    return next({
+      status: 500,
+      message: `Unable to connect to Jellyfin at ${connectionUrl}: ${e.message}`,
+    });
+  }
+});
+
+settingsRoutes.post('/media-server/activate', (req, res, next) => {
+  const settings = getSettings();
+  const mediaServerType = req.body.mediaServerType;
+
+  if (mediaServerType !== 'plex' && mediaServerType !== 'jellyfin') {
+    return next({
+      status: 400,
+      message: 'mediaServerType must be plex or jellyfin',
+    });
+  }
+
+  persistActiveMediaServerProfile(settings);
+  activateMediaServerProfile(settings, mediaServerType);
+  settings.save();
+
+  return res.status(200).json({
+    mediaServerType: settings.plex.mediaServerType,
+  });
 });
 
 settingsRoutes.get('/plex/devices/servers', async (req, res, next) => {
@@ -241,7 +394,7 @@ settingsRoutes.get('/plex/devices/servers', async (req, res, next) => {
           await Promise.all(
             device.connection.map(async (connection) => {
               const plexDeviceSettings = {
-                ...settings.plex,
+                ...settings.plexProfile,
                 ip: connection.address,
                 port: connection.port,
                 useSsl: connection.protocol === 'https',
@@ -282,26 +435,49 @@ settingsRoutes.get('/plex/library', async (req, res) => {
   const settings = getSettings();
 
   if (req.query.sync) {
-    if (settings.plex.mediaServerType === 'jellyfin') {
-      await new JellyfinAPI(settings.plex).syncLibraries();
-    } else {
-      const userRepository = getRepository(User);
-      const admin = await userRepository.findOneOrFail({
-        select: { id: true, plexToken: true },
-        where: { id: 1 },
-      });
-      const plexapi = new PlexAPI({
-        plexToken: admin.plexToken,
-        timeout: 30000, // 30 second timeout
-      });
+    activateMediaServerProfile(settings, 'plex');
+    const userRepository = getRepository(User);
+    const admin = await userRepository.findOneOrFail({
+      select: { id: true, plexToken: true },
+      where: { id: 1 },
+    });
+    const plexapi = new PlexAPI({
+      plexToken: admin.plexToken,
+      timeout: 30000, // 30 second timeout
+    });
 
-      await plexapi.syncLibraries();
-    }
+    await plexapi.syncLibraries();
+    settings.plexProfile = {
+      ...settings.plexProfile,
+      ...settings.plex,
+      mediaServerType: 'plex',
+    };
   }
 
   // Library enabled/disabled feature was removed - no longer needed
   settings.save();
-  return res.status(200).json(settings.plex.libraries);
+  return res.status(200).json(settings.plexProfile.libraries);
+});
+
+settingsRoutes.get('/jellyfin/library', async (req, res) => {
+  const settings = getSettings();
+
+  if (req.query.sync) {
+    settings.plex = {
+      ...settings.plex,
+      ...settings.jellyfin,
+      mediaServerType: 'jellyfin',
+    };
+    await new JellyfinAPI(settings.plex).syncLibraries();
+    settings.jellyfin = {
+      ...settings.jellyfin,
+      ...settings.plex,
+      mediaServerType: 'jellyfin',
+    };
+  }
+
+  settings.save();
+  return res.status(200).json(settings.jellyfin.libraries || []);
 });
 
 settingsRoutes.get('/plex/libraries', async (req, res) => {
@@ -312,6 +488,7 @@ settingsRoutes.get('/plex/libraries', async (req, res) => {
       await new JellyfinAPI(settings.plex).syncLibraries();
       return res.status(200).json(settings.plex.libraries);
     } else {
+      activateMediaServerProfile(settings, 'plex');
       const userRepository = getRepository(User);
       const admin = await userRepository.findOne({
         select: { id: true, plexToken: true },
@@ -329,7 +506,13 @@ settingsRoutes.get('/plex/libraries', async (req, res) => {
 
       // Return the libraries that were just synced to settings
       // This ensures UI and backend always see the same library data
-      return res.status(200).json(settings.plex.libraries);
+      settings.plexProfile = {
+        ...settings.plexProfile,
+        ...settings.plex,
+        mediaServerType: 'plex',
+      };
+      settings.save();
+      return res.status(200).json(settings.plexProfile.libraries);
     }
   } catch (error) {
     logger.error('Failed to sync media server libraries', {
@@ -340,6 +523,66 @@ settingsRoutes.get('/plex/libraries', async (req, res) => {
       .status(500)
       .json({ error: 'Failed to sync media server libraries' });
   }
+});
+
+settingsRoutes.get('/jellyfin/libraries', async (_req, res) => {
+  try {
+    const settings = getSettings();
+
+    settings.plex = {
+      ...settings.plex,
+      ...settings.jellyfin,
+      mediaServerType: 'jellyfin',
+    };
+    await new JellyfinAPI(settings.plex).syncLibraries();
+    settings.jellyfin = {
+      ...settings.jellyfin,
+      ...settings.plex,
+      mediaServerType: 'jellyfin',
+    };
+    settings.save();
+
+    return res.status(200).json(settings.jellyfin.libraries || []);
+  } catch (error) {
+    logger.error('Failed to sync Jellyfin libraries', {
+      label: 'Settings Routes',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ error: 'Failed to sync Jellyfin libraries' });
+  }
+});
+
+settingsRoutes.get('/media-server/status', (_req, res) => {
+  const settings = getSettings();
+  const activeSettings =
+    settings.plex.mediaServerType === 'jellyfin'
+      ? settings.jellyfin
+      : settings.plex;
+
+  return res.status(200).json({
+    activeType: settings.plex.mediaServerType || 'plex',
+    plex: {
+      configured: !!settings.plexProfile.ip,
+      active: settings.plex.mediaServerType !== 'jellyfin',
+      name: settings.plexProfile.name,
+      libraryCount: settings.plexProfile.libraries?.length || 0,
+      collectionCount: settings.plexProfile.collectionConfigs?.length || 0,
+    },
+    jellyfin: {
+      configured: !!settings.jellyfin.ip,
+      active: settings.plex.mediaServerType === 'jellyfin',
+      name: settings.jellyfin.name,
+      libraryCount: settings.jellyfin.libraries?.length || 0,
+      collectionCount: settings.jellyfin.collectionConfigs?.length || 0,
+    },
+    active: {
+      name: activeSettings.name,
+      libraryCount: activeSettings.libraries?.length || 0,
+      collectionCount: activeSettings.collectionConfigs?.length || 0,
+      lastGlobalSyncAt: settings.main.lastGlobalSyncAt,
+      globalSyncError: settings.main.globalSyncError,
+    },
+  });
 });
 
 settingsRoutes.get('/plex/sync', (_req, res) => {

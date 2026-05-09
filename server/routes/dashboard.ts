@@ -185,6 +185,23 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       settings.plex.preExistingCollectionConfigs?.length || 0;
 
     const dashboardData = {
+      mediaServer: {
+        activeType: settings.plex.mediaServerType || 'plex',
+        name: settings.plex.name,
+        libraryCount: settings.plex.libraries?.length || 0,
+        lastGlobalSyncAt: settings.main.lastGlobalSyncAt,
+        globalSyncError: settings.main.globalSyncError,
+        profiles: {
+          plex: {
+            configured: !!settings.plexProfile.ip,
+            libraryCount: settings.plexProfile.libraries?.length || 0,
+          },
+          jellyfin: {
+            configured: !!settings.jellyfin.ip,
+            libraryCount: settings.jellyfin.libraries?.length || 0,
+          },
+        },
+      },
       collections: {
         agregarr: agregarrCollectionCount,
         preExisting: preExistingCollectionCount,

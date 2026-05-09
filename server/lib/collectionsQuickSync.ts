@@ -228,7 +228,8 @@ class CollectionsQuickSync {
           );
           const cleanupResult = await this.cleanupPlaceholdersForRecentItems(
             itemsWithMetadata,
-            library.key
+            library.key,
+            plexClient
           );
 
           placeholdersDeleted += cleanupResult.deletedCount;
@@ -318,7 +319,8 @@ class CollectionsQuickSync {
    */
   private async cleanupPlaceholdersForRecentItems(
     recentItems: PlexLibraryItem[],
-    libraryId: string
+    libraryId: string,
+    plexClient: PlexAPI
   ): Promise<{ deletedCount: number; affectedLibraries: Set<string> }> {
     const placeholderRepository = getRepository(ComingSoonItem);
     const { placeholderContextService } = await import(
@@ -406,7 +408,7 @@ class CollectionsQuickSync {
         continue;
       }
 
-      // Real content detected - delete placeholder for ALL collections
+      // Real content detected - remove label and delete placeholder for ALL collections
       logger.info(
         'Real content detected - deleting placeholder(s) for all collections',
         {
@@ -416,6 +418,20 @@ class CollectionsQuickSync {
           placeholderCount: matchedPlaceholders.length,
         }
       );
+
+      try {
+        await plexClient.removeLabelFromItem(
+          recentItem.ratingKey,
+          'trailer-placeholder'
+        );
+      } catch (error) {
+        logger.debug('Failed to remove placeholder label during quick sync', {
+          label: 'Collections Quick Sync',
+          title: recentItem.title,
+          ratingKey: recentItem.ratingKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       // Get ALL placeholder records for this TMDB ID across all collections
       const allPlaceholderRecords = await placeholderRepository.find({

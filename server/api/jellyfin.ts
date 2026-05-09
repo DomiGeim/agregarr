@@ -232,8 +232,10 @@ class JellyfinAPI {
 
     try {
       const libraries = await this.getLibraries();
-      settings.plex.libraries = libraries.map((library) => {
-        const existing = settings.plex.libraries.find(
+      const existingLibraries =
+        settings.jellyfin?.libraries || settings.plex.libraries || [];
+      const syncedLibraries = libraries.map((library) => {
+        const existing = existingLibraries.find(
           (saved) => saved.key === library.key && saved.name === library.name
         );
 
@@ -242,6 +244,10 @@ class JellyfinAPI {
           lastScan: existing?.lastScan,
         };
       });
+      settings.jellyfin.libraries = syncedLibraries;
+      if (settings.plex.mediaServerType === 'jellyfin') {
+        settings.plex.libraries = syncedLibraries;
+      }
       settings.save();
     } catch (error) {
       logger.error(

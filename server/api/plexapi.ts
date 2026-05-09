@@ -2129,6 +2129,18 @@ class PlexAPI {
     }
   }
 
+  public async deleteItem(ratingKey: string): Promise<void> {
+    try {
+      await this.safeDeleteQuery(`/library/metadata/${ratingKey}`);
+    } catch (error) {
+      logger.error(`Error deleting item ${ratingKey}.`, {
+        label: 'Plex API',
+        error,
+      });
+      throw error;
+    }
+  }
+
   /**
    * Trigger a Plex library scan/refresh
    * @param libraryId - The library section ID to scan

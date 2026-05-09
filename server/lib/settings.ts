@@ -699,6 +699,8 @@ interface AllSettings {
   clientId: string;
   main: MainSettings;
   plex: PlexSettings;
+  plexProfile: PlexSettings;
+  jellyfin: PlexSettings;
   tautulli: TautulliSettings;
   maintainerr: MaintainerrSettings;
   overseerr: OverseerrSettings;
@@ -744,6 +746,29 @@ class Settings {
         ip: '',
         port: 32400,
         useSsl: false,
+        libraries: [],
+        collectionConfigs: [],
+        hubConfigs: [],
+        preExistingCollectionConfigs: [],
+      },
+      plexProfile: {
+        mediaServerType: 'plex',
+        name: '',
+        ip: '',
+        port: 32400,
+        useSsl: false,
+        libraries: [],
+        collectionConfigs: [],
+        hubConfigs: [],
+        preExistingCollectionConfigs: [],
+      },
+      jellyfin: {
+        mediaServerType: 'jellyfin',
+        name: '',
+        ip: '',
+        port: 8096,
+        useSsl: false,
+        jellyfinApiKey: '',
         libraries: [],
         collectionConfigs: [],
         hubConfigs: [],
@@ -805,7 +830,63 @@ class Settings {
       this.data = merge(this.data, initialSettings);
     }
 
+    this.normalizeMediaServerProfiles();
     this.normalizeTagSettings();
+  }
+
+  private normalizeMediaServerProfiles(): void {
+    if (!this.data.jellyfin) {
+      this.data.jellyfin = {
+        mediaServerType: 'jellyfin',
+        name: '',
+        ip: '',
+        port: 8096,
+        useSsl: false,
+        jellyfinApiKey: '',
+        libraries: [],
+        collectionConfigs: [],
+        hubConfigs: [],
+        preExistingCollectionConfigs: [],
+      };
+    }
+
+    if (!this.data.plexProfile) {
+      this.data.plexProfile = {
+        mediaServerType: 'plex',
+        name: '',
+        ip: '',
+        port: 32400,
+        useSsl: false,
+        libraries: [],
+        collectionConfigs: [],
+        hubConfigs: [],
+        preExistingCollectionConfigs: [],
+      };
+    }
+
+    if (
+      this.data.plex.mediaServerType === 'jellyfin' &&
+      this.data.plex.ip &&
+      !this.data.jellyfin.ip
+    ) {
+      this.data.jellyfin = {
+        ...this.data.jellyfin,
+        ...this.data.plex,
+        mediaServerType: 'jellyfin',
+      };
+    }
+
+    if (this.data.plex.mediaServerType !== 'jellyfin' && this.data.plex.ip) {
+      this.data.plexProfile = {
+        ...this.data.plexProfile,
+        ...this.data.plex,
+        mediaServerType: 'plex',
+      };
+    }
+
+    this.data.plex.mediaServerType =
+      this.data.plex.mediaServerType === 'jellyfin' ? 'jellyfin' : 'plex';
+    this.data.jellyfin.mediaServerType = 'jellyfin';
   }
 
   private normalizeTagSettings(): void {
@@ -967,6 +1048,22 @@ class Settings {
 
   set plex(data: PlexSettings) {
     this.data.plex = data;
+  }
+
+  get plexProfile(): PlexSettings {
+    return this.data.plexProfile;
+  }
+
+  set plexProfile(data: PlexSettings) {
+    this.data.plexProfile = data;
+  }
+
+  get jellyfin(): PlexSettings {
+    return this.data.jellyfin;
+  }
+
+  set jellyfin(data: PlexSettings) {
+    this.data.jellyfin = data;
   }
 
   get tautulli(): TautulliSettings {
@@ -1150,6 +1247,7 @@ class Settings {
 
     if (data) {
       this.data = merge(this.data, JSON.parse(data));
+      this.normalizeMediaServerProfiles();
       this.save();
     }
     return this;

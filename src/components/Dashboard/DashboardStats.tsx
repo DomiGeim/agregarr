@@ -6,6 +6,7 @@ import {
   FilmIcon,
   PlayIcon,
   RectangleStackIcon as CollectionIcon,
+  ServerStackIcon,
   TvIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
@@ -26,9 +27,29 @@ const messages = defineMessages({
     'Configure Tautulli in your settings to view play statistics from your Plex server.',
   configureTautulli: 'Configure Tautulli',
   failedToLoadDashboardStats: 'Failed to load dashboard statistics',
+  mediaServer: 'Media Server',
+  libraries: 'libraries',
+  active: 'active',
 });
 
 interface DashboardData {
+  mediaServer?: {
+    activeType: 'plex' | 'jellyfin';
+    name?: string;
+    libraryCount: number;
+    lastGlobalSyncAt?: string;
+    globalSyncError?: string;
+    profiles: {
+      plex: {
+        configured: boolean;
+        libraryCount: number;
+      };
+      jellyfin: {
+        configured: boolean;
+        libraryCount: number;
+      };
+    };
+  };
   collections: {
     agregarr: number;
     preExisting: number;
@@ -124,21 +145,47 @@ const DashboardStats: React.FC = () => {
   // If Tautulli is not configured, show setup message
   if (!isTautulliConfigured) {
     return (
-      <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
-        <div className="flex flex-col items-center py-8 text-center">
-          <ExclamationCircleIcon className="mb-4 h-12 w-12 text-orange-400" />
-          <h4 className="mb-2 text-lg font-semibold text-white">
-            {intl.formatMessage(messages.tautulliRequired)}
-          </h4>
-          <p className="mb-6 max-w-md text-gray-400">
-            {intl.formatMessage(messages.tautulliDescriptionPlayStats)}
-          </p>
-          <Link href="/settings/sources" passHref>
-            <Button as="a" buttonType="primary">
-              <CogIcon className="mr-2 h-5 w-5" />
-              {intl.formatMessage(messages.configureTautulli)}
-            </Button>
-          </Link>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title={intl.formatMessage(messages.mediaServer)}
+            value={
+              dashboardData.mediaServer?.activeType === 'jellyfin'
+                ? 'Jellyfin'
+                : 'Plex'
+            }
+            icon={ServerStackIcon}
+            subtitle={`${
+              dashboardData.mediaServer?.libraryCount || 0
+            } ${intl.formatMessage(messages.libraries)} • ${intl.formatMessage(
+              messages.active
+            )}`}
+          />
+          <StatCard
+            title={intl.formatMessage(messages.collections)}
+            value={dashboardData.collections.agregarr}
+            icon={CollectionIcon}
+            subtitle={`${
+              dashboardData.collections.preExisting
+            } ${intl.formatMessage(messages.preExistingCollections)}`}
+          />
+        </div>
+        <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
+          <div className="flex flex-col items-center py-8 text-center">
+            <ExclamationCircleIcon className="mb-4 h-12 w-12 text-orange-400" />
+            <h4 className="mb-2 text-lg font-semibold text-white">
+              {intl.formatMessage(messages.tautulliRequired)}
+            </h4>
+            <p className="mb-6 max-w-md text-gray-400">
+              {intl.formatMessage(messages.tautulliDescriptionPlayStats)}
+            </p>
+            <Link href="/settings/sources" passHref>
+              <Button as="a" buttonType="primary">
+                <CogIcon className="mr-2 h-5 w-5" />
+                {intl.formatMessage(messages.configureTautulli)}
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -167,6 +214,21 @@ const DashboardStats: React.FC = () => {
 
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <StatCard
+        title={intl.formatMessage(messages.mediaServer)}
+        value={
+          dashboardData.mediaServer?.activeType === 'jellyfin'
+            ? 'Jellyfin'
+            : 'Plex'
+        }
+        icon={ServerStackIcon}
+        subtitle={`${
+          dashboardData.mediaServer?.libraryCount || 0
+        } ${intl.formatMessage(messages.libraries)} • ${intl.formatMessage(
+          messages.active
+        )}`}
+      />
+
       <StatCard
         title={intl.formatMessage(messages.collections)}
         value={dashboardData.collections.agregarr}
