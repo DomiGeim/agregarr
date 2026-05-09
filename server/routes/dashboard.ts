@@ -92,6 +92,46 @@ const getCollectionRatingKeys = (settings: ReturnType<typeof getSettings>) => {
   return [...new Set(collectionRatingKeys)];
 };
 
+const getCollectionMediaTypeByRatingKey = (
+  settings: ReturnType<typeof getSettings>
+) => {
+  const libraryTypes = new Map(
+    (settings.plex.libraries || []).map((library) => [
+      library.key,
+      library.type,
+    ])
+  );
+  const mediaTypeByRatingKey = new Map<string, 'movie' | 'show'>();
+  const collectionConfigs = [
+    ...(settings.plex.collectionConfigs || []),
+    ...(settings.plex.preExistingCollectionConfigs || []),
+  ];
+
+  for (const config of collectionConfigs) {
+    const mediaTypeValue =
+      'mediaType' in config && config.mediaType
+        ? config.mediaType
+        : libraryTypes.get(config.libraryId);
+    const mediaType = mediaTypeValue === 'tv' ? 'show' : mediaTypeValue;
+
+    if (!mediaType) {
+      continue;
+    }
+
+    if (config.collectionRatingKey) {
+      mediaTypeByRatingKey.set(config.collectionRatingKey, mediaType);
+    }
+
+    if ('collectionRatingKeys' in config && config.collectionRatingKeys) {
+      for (const ratingKey of config.collectionRatingKeys) {
+        mediaTypeByRatingKey.set(ratingKey, mediaType);
+      }
+    }
+  }
+
+  return mediaTypeByRatingKey;
+};
+
 const getCollectionHealth = (settings: ReturnType<typeof getSettings>) => {
   const issues: HealthIssue[] = [];
   const collectionConfigs = settings.plex.collectionConfigs || [];
@@ -242,6 +282,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
   try {
     const settings = getSettings();
     const collectionRatingKeys = getCollectionRatingKeys(settings);
+    const collectionMediaTypes = getCollectionMediaTypeByRatingKey(settings);
     const cacheKey = `stats:${collectionRatingKeys.join(',')}`;
     const cachedDashboardData = getCachedDashboardData(cacheKey);
 
@@ -299,16 +340,19 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
 
         collectionStats.forEach((collection) => {
           collectionTotalPlays += collection.total_plays;
+          const configuredMediaType = collectionMediaTypes.get(
+            collection.rating_key
+          );
 
-          // Determine if it's a movie or TV collection based on media_type or title
-          // This is a simple heuristic - could be improved with better metadata
           if (
+            configuredMediaType === 'movie' ||
             collection.media_type === 'movie' ||
             collection.title.toLowerCase().includes('movie') ||
             collection.title.toLowerCase().includes('film')
           ) {
             collectionMoviePlays += collection.total_plays;
           } else if (
+            configuredMediaType === 'show' ||
             collection.media_type === 'show' ||
             collection.title.toLowerCase().includes('tv') ||
             collection.title.toLowerCase().includes('show') ||
@@ -412,6 +456,101 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     });
   }
 });
+
+dashboardRoutes.get(
+  '/tautulli-recently-added',
+  isAuthenticated(),
+  async (req, res) => {
+    try {
+      const settings = getSettings();
+      const limit = parseInt(req.query.limit as string) || 10;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const requestedMediaType =
+        req.query.mediaType === 'tv' ? 'show' : 'movie';
+
+      if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
+        return res.status(200).json({
+          results: [],
+          total: 0,
+          limit,
+          offset,
+          configured: false,
+        });
+      }
+
+      const tautulli = new TautulliAPI(settings.tautulli);
+      const matchingLibraries = (settings.plex.libraries || []).filter(
+        (library) => library.type === requestedMediaType
+      );
+      const items = (
+        await Promise.all(
+          matchingLibraries.length > 0
+            ? matchingLibraries.map((library) =>
+                tautulli.getRecentlyAdded(limit + offset, 0, library.key)
+              )
+            : [tautulli.getRecentlyAdded(limit + offset, 0)]
+        )
+      )
+        .flat()
+        .filter((item) =>
+          requestedMediaType === 'movie'
+            ? item.media_type === 'movie'
+            : item.media_type === 'show' || item.media_type === 'episode'
+        )
+        .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0))
+        .slice(offset, offset + limit);
+
+      const results = items.map((item, index) => {
+        const numericAddedAt = Number(item.added_at);
+        const createdAt = !Number.isNaN(numericAddedAt)
+          ? new Date(numericAddedAt * 1000).toISOString()
+          : new Date().toISOString();
+
+        return {
+          id: Number(item.rating_key) || index,
+          tmdbId: 0,
+          mediaType: requestedMediaType === 'movie' ? 'movie' : 'tv',
+          title:
+            item.media_type === 'episode'
+              ? item.grandparent_title || item.full_title || item.title
+              : item.title,
+          posterPath: undefined,
+          posterUrl: undefined,
+          year: item.year ? Number(item.year) : undefined,
+          collectionName: item.section_name || 'Tautulli',
+          collectionSource: 'Tautulli',
+          requestService: 'Tautulli',
+          requestMethod: 'auto',
+          requestStatus: 'available',
+          createdAt,
+          requestedAt: createdAt,
+        };
+      });
+
+      return res.status(200).json({
+        results,
+        total: results.length,
+        limit,
+        offset,
+        configured: true,
+      });
+    } catch (error) {
+      logger.error('Failed to retrieve Tautulli recently added items', {
+        label: 'Dashboard API',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      return res.status(200).json({
+        results: [],
+        total: 0,
+        limit: parseInt(req.query.limit as string) || 10,
+        offset: parseInt(req.query.offset as string) || 0,
+        configured: true,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+);
 
 dashboardRoutes.get('/health', isAuthenticated(), (_req, res) => {
   const settings = getSettings();

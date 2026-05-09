@@ -736,6 +736,7 @@
   "components.Dashboard.loadingDashboardStats": "Dashboard-Statistiken werden geladen...",
   "components.Dashboard.tautulliTimedOut": "Tautulli antwortet langsam. Sammlungsdaten werden ohne Wiedergabestatistiken angezeigt.",
   "components.Dashboard.failedToLoadMissingItems": "Fehlende Elemente konnten nicht geladen werden",
+  "components.Dashboard.failedToLoadTautulliRecentlyAdded": "Tautulli Recently Added konnte nicht geladen werden",
   "components.Dashboard.filter": "Filtern",
   "components.Dashboard.hours": "Stunden",
   "components.Dashboard.imdb": "IMDb",

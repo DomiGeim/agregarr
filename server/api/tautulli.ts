@@ -507,7 +507,7 @@ class TautulliAPI {
   public async getRecentlyAdded(
     count = 10,
     start = 0,
-    mediaType?: 'movie' | 'show' | 'artist'
+    sectionId?: string
   ): Promise<TautulliRecentlyAddedItem[]> {
     try {
       const response = await this.axios.get<TautulliRecentlyAddedResponse>(
@@ -517,7 +517,7 @@ class TautulliAPI {
             cmd: 'get_recently_added',
             count,
             start,
-            ...(mediaType ? { media_type: mediaType } : {}),
+            ...(sectionId ? { section_id: sectionId } : {}),
           },
         }
       );
@@ -537,7 +537,7 @@ class TautulliAPI {
           errorMessage: e.message,
           count,
           start,
-          mediaType,
+          sectionId,
         }
       );
       throw new Error(

@@ -38,6 +38,7 @@ const messages = defineMessages({
   autoRequest: 'Auto',
   manualRequest: 'Manual',
   failedToLoadMissingItems: 'Failed to load missing items',
+  failedToLoadTautulliRecentlyAdded: 'Failed to load Tautulli Recently Added',
   requestsCount: '{total} {mediaType} requests',
   showingRecent: 'Showing recent missing item requests',
   lastUpdatedNow: 'Last updated: {time}',
@@ -92,7 +93,7 @@ const MissingItemsFeed: React.FC = () => {
     error,
     mutate,
   } = useSWR<MissingItemsResponse>(
-    `/api/v1/missing-items/tautulli-recently-added?limit=${limit}&mediaType=${
+    `/api/v1/dashboard/tautulli-recently-added?limit=${limit}&mediaType=${
       activeTab === 'movies' ? 'movie' : 'tv'
     }&offset=0`
   );
@@ -183,7 +184,7 @@ const MissingItemsFeed: React.FC = () => {
         </div>
         <div className="p-6 text-center">
           <p className="mb-2 text-red-400">
-            {intl.formatMessage(messages.failedToLoadMissingItems)}
+            {intl.formatMessage(messages.failedToLoadTautulliRecentlyAdded)}
           </p>
           <p className="text-sm text-gray-400">{error.message}</p>
         </div>
