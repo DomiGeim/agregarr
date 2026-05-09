@@ -24,7 +24,70 @@ interface ScheduledJob {
   cancelFn?: () => void;
 }
 
+export interface JobHistoryItem {
+  id: JobId;
+  name: string;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  status: 'running' | 'success' | 'failed';
+  error?: string;
+}
+
 export const scheduledJobs: ScheduledJob[] = [];
+const jobHistory: JobHistoryItem[] = [];
+const MAX_JOB_HISTORY_ITEMS = 50;
+
+const recordJobRun = (item: JobHistoryItem) => {
+  jobHistory.unshift(item);
+  jobHistory.splice(MAX_JOB_HISTORY_ITEMS);
+};
+
+export const getJobHistory = (): JobHistoryItem[] => jobHistory;
+
+const runTrackedJob = async (
+  id: JobId,
+  name: string,
+  task: () => Promise<void> | void
+) => {
+  const startedAt = new Date();
+  const historyItem: JobHistoryItem = {
+    id,
+    name,
+    startedAt: startedAt.toISOString(),
+    status: 'running',
+  };
+
+  recordJobRun(historyItem);
+
+  try {
+    await task();
+    historyItem.status = 'success';
+  } catch (error) {
+    historyItem.status = 'failed';
+    historyItem.error = error instanceof Error ? error.message : String(error);
+    logger.error('Scheduled job failed', {
+      label: 'Jobs',
+      jobId: id,
+      jobName: name,
+      error: historyItem.error,
+    });
+  } finally {
+    const finishedAt = new Date();
+    historyItem.finishedAt = finishedAt.toISOString();
+    historyItem.durationMs = finishedAt.getTime() - startedAt.getTime();
+  }
+};
+
+const scheduleTrackedJob = (
+  id: JobId,
+  name: string,
+  cronSchedule: string,
+  task: () => Promise<void> | void
+) =>
+  schedule.scheduleJob(cronSchedule, () => {
+    runTrackedJob(id, name, task);
+  });
 
 export const startJobs = (): void => {
   const jobs = getSettings().jobs;
@@ -45,28 +108,33 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'hours',
     cronSchedule: jobs['plex-collections-sync'].schedule,
-    job: schedule.scheduleJob(jobs['plex-collections-sync'].schedule, () => {
-      // Check if any collections are configured before running
-      const settings = getSettings();
-      const hasCollections =
-        settings.plex.collectionConfigs &&
-        settings.plex.collectionConfigs.length > 0;
+    job: scheduleTrackedJob(
+      'plex-collections-sync',
+      'Plex Collections Sync',
+      jobs['plex-collections-sync'].schedule,
+      async () => {
+        // Check if any collections are configured before running
+        const settings = getSettings();
+        const hasCollections =
+          settings.plex.collectionConfigs &&
+          settings.plex.collectionConfigs.length > 0;
 
-      if (!hasCollections) {
-        logger.debug(
-          'Skipping scheduled Plex Collections Sync: No collections configured',
-          {
-            label: 'Jobs',
-          }
-        );
-        return;
+        if (!hasCollections) {
+          logger.debug(
+            'Skipping scheduled Plex Collections Sync: No collections configured',
+            {
+              label: 'Jobs',
+            }
+          );
+          return;
+        }
+
+        logger.info('Starting scheduled job: Plex Collections Sync', {
+          label: 'Jobs',
+        });
+        await collectionsSync.run();
       }
-
-      logger.info('Starting scheduled job: Plex Collections Sync', {
-        label: 'Jobs',
-      });
-      collectionsSync.run();
-    }),
+    ),
     running: () => collectionsSync.status.running,
     cancelFn: () => collectionsSync.cancel(),
   });
@@ -77,13 +145,15 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'minutes',
     cronSchedule: jobs['plex-collections-quick-sync'].schedule,
-    job: schedule.scheduleJob(
+    job: scheduleTrackedJob(
+      'plex-collections-quick-sync',
+      'Collections Quick Sync',
       jobs['plex-collections-quick-sync'].schedule,
-      () => {
+      async () => {
         logger.info('Starting scheduled job: Collections Quick Sync', {
           label: 'Jobs',
         });
-        collectionsQuickSync.run();
+        await collectionsQuickSync.run();
       }
     ),
     running: () => collectionsQuickSync.status.running,
@@ -96,13 +166,15 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'minutes',
     cronSchedule: jobs['plex-randomize-home-order'].schedule,
-    job: schedule.scheduleJob(
+    job: scheduleTrackedJob(
+      'plex-randomize-home-order',
+      'Plex Randomize Home Order',
       jobs['plex-randomize-home-order'].schedule,
-      () => {
+      async () => {
         logger.info('Starting scheduled job: Plex Randomize Home Order', {
           label: 'Jobs',
         });
-        randomizeHomeOrder.run();
+        await randomizeHomeOrder.run();
       }
     ),
     running: () => randomizeHomeOrder.status.running,
@@ -115,12 +187,17 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'hours',
     cronSchedule: jobs['overlay-application'].schedule,
-    job: schedule.scheduleJob(jobs['overlay-application'].schedule, () => {
-      logger.info('Starting scheduled job: Overlay Application', {
-        label: 'Jobs',
-      });
-      overlayApplication.run();
-    }),
+    job: scheduleTrackedJob(
+      'overlay-application',
+      'Overlay Application',
+      jobs['overlay-application'].schedule,
+      async () => {
+        logger.info('Starting scheduled job: Overlay Application', {
+          label: 'Jobs',
+        });
+        await overlayApplication.run();
+      }
+    ),
     running: () => overlayApplication.status.running,
     cancelFn: () => overlayApplication.cancel(),
   });
@@ -131,12 +208,17 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'minutes',
     cronSchedule: jobs['overlay-quick-sync'].schedule,
-    job: schedule.scheduleJob(jobs['overlay-quick-sync'].schedule, () => {
-      logger.info('Starting scheduled job: Overlay Quick Sync', {
-        label: 'Jobs',
-      });
-      overlaysQuickSync.run();
-    }),
+    job: scheduleTrackedJob(
+      'overlay-quick-sync',
+      'Overlay Quick Sync',
+      jobs['overlay-quick-sync'].schedule,
+      async () => {
+        logger.info('Starting scheduled job: Overlay Quick Sync', {
+          label: 'Jobs',
+        });
+        await overlaysQuickSync.run();
+      }
+    ),
     running: () => overlaysQuickSync.status.running,
     cancelFn: () => overlaysQuickSync.cancel(),
   });
@@ -147,12 +229,17 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'fixed',
     cronSchedule: jobs['plex-refresh-token'].schedule,
-    job: schedule.scheduleJob(jobs['plex-refresh-token'].schedule, () => {
-      logger.info('Starting scheduled job: Plex Refresh Token', {
-        label: 'Jobs',
-      });
-      refreshToken.run();
-    }),
+    job: scheduleTrackedJob(
+      'plex-refresh-token',
+      'Plex Refresh Token',
+      jobs['plex-refresh-token'].schedule,
+      async () => {
+        logger.info('Starting scheduled job: Plex Refresh Token', {
+          label: 'Jobs',
+        });
+        await refreshToken.run();
+      }
+    ),
   });
 
   scheduledJobs.push({
@@ -161,23 +248,28 @@ export const startJobs = (): void => {
     type: 'process',
     interval: 'hours',
     cronSchedule: jobs['watchlist-sync'].schedule,
-    job: schedule.scheduleJob(jobs['watchlist-sync'].schedule, () => {
-      // Check if watchlist sync is enabled
-      const settings = getSettings();
-      const syncSettings = settings.watchlistSync;
+    job: scheduleTrackedJob(
+      'watchlist-sync',
+      'Plex Watchlist Sync',
+      jobs['watchlist-sync'].schedule,
+      async () => {
+        // Check if watchlist sync is enabled
+        const settings = getSettings();
+        const syncSettings = settings.watchlistSync;
 
-      if (!syncSettings.enableOwner && !syncSettings.enableUsers) {
-        logger.debug('Skipping scheduled Watchlist Sync: Not enabled', {
+        if (!syncSettings.enableOwner && !syncSettings.enableUsers) {
+          logger.debug('Skipping scheduled Watchlist Sync: Not enabled', {
+            label: 'Jobs',
+          });
+          return;
+        }
+
+        logger.info('Starting scheduled job: Plex Watchlist Sync', {
           label: 'Jobs',
         });
-        return;
+        await watchlistSync.run();
       }
-
-      logger.info('Starting scheduled job: Plex Watchlist Sync', {
-        label: 'Jobs',
-      });
-      watchlistSync.run();
-    }),
+    ),
     running: () => watchlistSync.status.running,
     cancelFn: () => watchlistSync.cancel(),
   });
