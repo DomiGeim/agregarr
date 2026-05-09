@@ -6,6 +6,7 @@ import { Router } from 'express';
 
 const dashboardRoutes = Router();
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
+const TAUTULLI_DASHBOARD_TIMEOUT_MS = 8000;
 
 const dashboardCache = new Map<
   string,
@@ -35,6 +36,30 @@ const setCachedDashboardData = <T>(key: string, data: T): void => {
     expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS,
     data,
   });
+};
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> => {
+  let timeout: NodeJS.Timeout | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(timeoutMessage)),
+          timeoutMs
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 };
 
 const getCollectionRatingKeys = (settings: ReturnType<typeof getSettings>) => {
@@ -84,23 +109,27 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         const tautulli = new TautulliAPI(settings.tautulli);
 
         // Get collection stats and weekly activity stats
-        const [collectionStats, weeklyMovies, weeklyTV] = await Promise.all([
-          tautulli
-            .getTopCollections(50, 'plays', 7, collectionRatingKeys, {
-              includeMetadata: false,
-              includeUserStats: false,
-              concurrency: 6,
-            })
-            .catch((err) => {
-              logger.warn('Failed to get collection stats from Tautulli', {
-                label: 'Dashboard API',
-                error: err.message,
-              });
-              return [];
-            }),
-          tautulli.getHomeStats(7, 'plays', 'top_movies', 10).catch(() => []),
-          tautulli.getHomeStats(7, 'plays', 'top_tv', 10).catch(() => []),
-        ]);
+        const [collectionStats, weeklyMovies, weeklyTV] = await withTimeout(
+          Promise.all([
+            tautulli
+              .getTopCollections(50, 'plays', 7, collectionRatingKeys, {
+                includeMetadata: false,
+                includeUserStats: false,
+                concurrency: 6,
+              })
+              .catch((err) => {
+                logger.warn('Failed to get collection stats from Tautulli', {
+                  label: 'Dashboard API',
+                  error: err.message,
+                });
+                return [];
+              }),
+            tautulli.getHomeStats(7, 'plays', 'top_movies', 10).catch(() => []),
+            tautulli.getHomeStats(7, 'plays', 'top_tv', 10).catch(() => []),
+          ]),
+          TAUTULLI_DASHBOARD_TIMEOUT_MS,
+          'Tautulli dashboard request timed out'
+        );
 
         // Calculate weekly plays from server totals
         let moviePlaysCount = 0;
@@ -174,6 +203,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         tautulliStats = {
           isConnected: false,
           error: error.message,
+          timedOut: error.message.includes('timed out'),
         };
       }
     }

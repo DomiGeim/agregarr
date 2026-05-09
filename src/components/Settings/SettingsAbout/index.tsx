@@ -10,14 +10,17 @@ import globalMessages from '@app/i18n/globalMessages';
 import Error from '@app/pages/_error';
 import {
   ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/solid';
 import type {
   SettingsAboutResponse,
   StatusResponse,
 } from '@server/interfaces/api/settingsInterfaces';
-import { useState } from 'react';
+import axios from 'axios';
+import { useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
+import { useToasts } from 'react-toast-notifications';
 import useSWR from 'swr';
 
 const messages = defineMessages({
@@ -28,6 +31,13 @@ const messages = defineMessages({
   githubdiscussions: 'GitHub Discussions',
   agregarrdocs: 'Agregarr Documentation',
   exportdebug: 'Export Debugging Information',
+  repository: 'Repository',
+  dockerImage: 'Docker Image',
+  settingsBackup: 'Settings Backup',
+  exportSettingsBackup: 'Export Settings Backup',
+  restoreSettingsBackup: 'Restore Settings Backup',
+  toastSettingsBackupRestoreSuccess: 'Settings backup restored successfully.',
+  toastSettingsBackupRestoreFailure: 'Failed to restore settings backup.',
   timezone: 'Time Zone',
   appDataPath: 'Data Directory',
   supportagregarr: 'Support Agregarr',
@@ -44,7 +54,9 @@ const messages = defineMessages({
 
 const SettingsAbout = () => {
   const intl = useIntl();
+  const { addToast } = useToasts();
   const [showExportModal, setShowExportModal] = useState(false);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
   const { data, error } = useSWR<SettingsAboutResponse>(
     '/api/v1/settings/about'
   );
@@ -58,6 +70,32 @@ const SettingsAbout = () => {
   if (!data) {
     return <Error statusCode={500} />;
   }
+
+  const restoreSettingsBackup = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const backup = JSON.parse(await file.text());
+      await axios.post('/api/v1/settings/backup/restore', backup);
+      addToast(intl.formatMessage(messages.toastSettingsBackupRestoreSuccess), {
+        autoDismiss: true,
+        appearance: 'success',
+      });
+    } catch (error) {
+      addToast(intl.formatMessage(messages.toastSettingsBackupRestoreFailure), {
+        autoDismiss: true,
+        appearance: 'error',
+      });
+    } finally {
+      event.target.value = '';
+    }
+  };
 
   return (
     <>
@@ -147,6 +185,19 @@ const SettingsAbout = () => {
           <List.Item title={intl.formatMessage(messages.appDataPath)}>
             <code>{data.appDataPath}</code>
           </List.Item>
+          <List.Item title={intl.formatMessage(messages.repository)}>
+            <a
+              href="https://github.com/DomiGeim/agregarr"
+              target="_blank"
+              rel="noreferrer"
+              className="text-orange-500 transition duration-300 hover:underline"
+            >
+              https://github.com/DomiGeim/agregarr
+            </a>
+          </List.Item>
+          <List.Item title={intl.formatMessage(messages.dockerImage)}>
+            <code>ghcr.io/domigeim/agregarr:latest</code>
+          </List.Item>
           {data.tz && (
             <List.Item title={intl.formatMessage(messages.timezone)}>
               <code>{data.tz}</code>
@@ -194,6 +245,33 @@ const SettingsAbout = () => {
               <ArrowDownTrayIcon className="mr-2 h-5 w-5" />
               {intl.formatMessage(messages.exportDebugInfo)}
             </Button>
+          </List.Item>
+          <List.Item title={intl.formatMessage(messages.settingsBackup)}>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                as="a"
+                buttonType="default"
+                href="/api/v1/settings/backup"
+              >
+                <ArrowDownTrayIcon className="mr-2 h-5 w-5" />
+                {intl.formatMessage(messages.exportSettingsBackup)}
+              </Button>
+              <Button
+                buttonType="default"
+                type="button"
+                onClick={() => restoreInputRef.current?.click()}
+              >
+                <ArrowUpTrayIcon className="mr-2 h-5 w-5" />
+                {intl.formatMessage(messages.restoreSettingsBackup)}
+              </Button>
+              <input
+                ref={restoreInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={restoreSettingsBackup}
+              />
+            </div>
           </List.Item>
         </List>
       </div>

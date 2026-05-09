@@ -181,13 +181,13 @@ jobs:
             -d '{
               "content": "@everyone",
               "embeds": [{
-                "title": "🎉 Agregarr v${{ needs.version-check.outputs.new_release_version }} Released!",
-                "description": "A new version of Agregarr is now available!\n\n**[📝 View Release Notes](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.version-check.outputs.new_release_version }})**",
+                "title": "Agregarr v${{ needs.version-check.outputs.new_release_version }} Released!",
+                "description": "A new version of Agregarr is now available!\n\n**[View Release Notes](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.version-check.outputs.new_release_version }})**",
                 "color": 15105570,
                 "fields": [
-                  {"name": "🐳 Update your Docker image", "value": "```docker pull agregarr/agregarr:latest```", "inline": false}
+                  {"name": "Update your Docker image", "value": "```docker pull ghcr.io/domigeim/agregarr:latest```", "inline": false}
                 ],
-                "thumbnail": {"url": "https://raw.githubusercontent.com/agregarr/agregarr/develop/public/android-chrome-512x512.png"}
+                "thumbnail": {"url": "https://raw.githubusercontent.com/DomiGeim/agregarr/develop/public/android-chrome-512x512.png"}
               }]
             }' \
             "$DISCORD_WEBHOOK"
