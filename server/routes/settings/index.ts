@@ -16,7 +16,7 @@ import type {
   LogsResultsResponse,
   SettingsAboutResponse,
 } from '@server/interfaces/api/settingsInterfaces';
-import { scheduledJobs } from '@server/job/schedule';
+import { getJobHistory, scheduledJobs } from '@server/job/schedule';
 import type { AvailableCacheIds } from '@server/lib/cache';
 import cacheManager from '@server/lib/cache';
 // ImageProxy removed - not needed for collections-only app
@@ -1444,6 +1444,10 @@ settingsRoutes.get('/jobs', (_req, res) => {
   );
 });
 
+settingsRoutes.get('/jobs/history', (_req, res) => {
+  return res.status(200).json(getJobHistory());
+});
+
 settingsRoutes.post<{ jobId: string }>('/jobs/:jobId/run', (req, res, next) => {
   const scheduledJob = scheduledJobs.find((job) => job.id === req.params.jobId);
 
@@ -1827,12 +1831,30 @@ settingsRoutes.post('/backup/restore', isAuthenticated(), (req, res, next) => {
     }
 
     const settings = getSettings();
+    const configPath = appDataPath();
+    const settingsPath = path.join(configPath, 'settings.json');
+    const backupsPath = path.join(configPath, 'backups');
+    let safetyBackupPath: string | undefined;
+
+    if (fs.existsSync(settingsPath)) {
+      fs.mkdirSync(backupsPath, { recursive: true });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      safetyBackupPath = path.join(
+        backupsPath,
+        `settings-before-restore-${timestamp}.json`
+      );
+      fs.copyFileSync(settingsPath, safetyBackupPath);
+    }
+
     settings.load(backup);
     settings.save();
 
-    logger.info('Settings backup restored', { label: 'Settings' });
+    logger.info('Settings backup restored', {
+      label: 'Settings',
+      safetyBackupPath,
+    });
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, safetyBackupPath });
   } catch (error) {
     logger.error('Failed to restore settings backup', {
       label: 'Settings',

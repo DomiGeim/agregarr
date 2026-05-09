@@ -82,6 +82,15 @@ const messages: { [messageName: string]: MessageDescriptor } = defineMessages({
     'Following execution in {count} {count, plural, one {hour} other {hours}}',
   followingExecutionDays:
     'Following execution in {count} {count, plural, one {day} other {days}}',
+  jobHistory: 'Job History',
+  jobHistoryDescription: 'Recent scheduled and manual job runs.',
+  startedAt: 'Started',
+  duration: 'Duration',
+  status: 'Status',
+  success: 'Success',
+  failed: 'Failed',
+  running: 'Running',
+  noJobHistory: 'No job history yet.',
 });
 
 interface Job {
@@ -93,6 +102,16 @@ interface Job {
   nextExecutionTime: string;
   followingExecutionTime: string | null;
   running: boolean;
+}
+
+interface JobHistoryItem {
+  id: JobId;
+  name: string;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  status: 'running' | 'success' | 'failed';
+  error?: string;
 }
 
 type JobModalState = {
@@ -250,6 +269,12 @@ const SettingsJobs = () => {
   } = useSWR<Job[]>('/api/v1/settings/jobs', {
     refreshInterval: 5000,
   });
+  const { data: history, mutate: revalidateHistory } = useSWR<JobHistoryItem[]>(
+    '/api/v1/settings/jobs/history',
+    {
+      refreshInterval: 5000,
+    }
+  );
 
   const [jobModalState, dispatch] = useReducer(jobModalReducer, {
     isOpen: false,
@@ -287,6 +312,7 @@ const SettingsJobs = () => {
       }
     );
     revalidate();
+    revalidateHistory();
   };
 
   const cancelJob = async (job: Job) => {
@@ -301,6 +327,7 @@ const SettingsJobs = () => {
       }
     );
     revalidate();
+    revalidateHistory();
   };
 
   const scheduleJob = async () => {
@@ -766,6 +793,78 @@ const SettingsJobs = () => {
                 </Table.TD>
               </tr>
             ))}
+          </Table.TBody>
+        </Table>
+      </div>
+      <div className="mt-10 mb-6">
+        <h3 className="heading">{intl.formatMessage(messages.jobHistory)}</h3>
+        <p className="description">
+          {intl.formatMessage(messages.jobHistoryDescription)}
+        </p>
+      </div>
+      <div className="section">
+        <Table>
+          <thead>
+            <tr>
+              <Table.TH>{intl.formatMessage(messages.jobname)}</Table.TH>
+              <Table.TH>{intl.formatMessage(messages.startedAt)}</Table.TH>
+              <Table.TH>{intl.formatMessage(messages.duration)}</Table.TH>
+              <Table.TH>{intl.formatMessage(messages.status)}</Table.TH>
+            </tr>
+          </thead>
+          <Table.TBody>
+            {history && history.length > 0 ? (
+              history.slice(0, 10).map((item, index) => (
+                <tr key={`job-history-${item.startedAt}-${index}`}>
+                  <Table.TD>
+                    <div className="text-sm leading-5 text-white">
+                      {intl.formatMessage(
+                        messages[item.id] ?? messages.unknownJob
+                      )}
+                    </div>
+                    {item.error && (
+                      <div className="mt-1 text-xs text-red-300">
+                        {item.error}
+                      </div>
+                    )}
+                  </Table.TD>
+                  <Table.TD>
+                    <div className="text-sm leading-5 text-gray-300">
+                      {new Date(item.startedAt).toLocaleString()}
+                    </div>
+                  </Table.TD>
+                  <Table.TD>
+                    <div className="text-sm leading-5 text-gray-300">
+                      {item.durationMs !== undefined
+                        ? `${Math.round(item.durationMs / 1000)}s`
+                        : '-'}
+                    </div>
+                  </Table.TD>
+                  <Table.TD>
+                    <Badge
+                      badgeType={
+                        item.status === 'success'
+                          ? 'success'
+                          : item.status === 'failed'
+                          ? 'danger'
+                          : 'primary'
+                      }
+                      className="uppercase"
+                    >
+                      {intl.formatMessage(messages[item.status])}
+                    </Badge>
+                  </Table.TD>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <Table.TD colSpan={4}>
+                  <div className="text-sm text-gray-400">
+                    {intl.formatMessage(messages.noJobHistory)}
+                  </div>
+                </Table.TD>
+              </tr>
+            )}
           </Table.TBody>
         </Table>
       </div>

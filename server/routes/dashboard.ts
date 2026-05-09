@@ -8,6 +8,14 @@ const dashboardRoutes = Router();
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 const TAUTULLI_DASHBOARD_TIMEOUT_MS = 8000;
 
+type HealthSeverity = 'error' | 'warning' | 'info';
+
+interface HealthIssue {
+  severity: HealthSeverity;
+  area: string;
+  message: string;
+}
+
 const dashboardCache = new Map<
   string,
   {
@@ -82,6 +90,103 @@ const getCollectionRatingKeys = (settings: ReturnType<typeof getSettings>) => {
   }
 
   return [...new Set(collectionRatingKeys)];
+};
+
+const getCollectionHealth = (settings: ReturnType<typeof getSettings>) => {
+  const issues: HealthIssue[] = [];
+  const collectionConfigs = settings.plex.collectionConfigs || [];
+  const preExistingConfigs = settings.plex.preExistingCollectionConfigs || [];
+  const allConfigs = [...collectionConfigs, ...preExistingConfigs];
+  const libraries = settings.plex.libraries || [];
+  const libraryKeys = new Set(libraries.map((library) => library.key));
+  const nameCounts = new Map<string, number>();
+
+  if (!settings.plex.ip) {
+    issues.push({
+      severity: 'error',
+      area: 'media-server',
+      message: 'Kein aktiver Medienserver ist konfiguriert.',
+    });
+  }
+
+  if (libraries.length === 0) {
+    issues.push({
+      severity: 'warning',
+      area: 'libraries',
+      message:
+        'Fuer den aktiven Medienserver sind keine Bibliotheken synchronisiert.',
+    });
+  }
+
+  for (const config of allConfigs) {
+    const name = config.name?.trim() || 'Unnamed collection';
+    nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+
+    if (!config.libraryId) {
+      issues.push({
+        severity: 'warning',
+        area: 'collections',
+        message: `${name} hat keine Zielbibliothek ausgewaehlt.`,
+      });
+    } else if (!libraryKeys.has(config.libraryId)) {
+      issues.push({
+        severity: 'error',
+        area: 'collections',
+        message: `${name} nutzt eine Bibliothek, die nicht mehr synchronisiert ist.`,
+      });
+    }
+
+    const syncState = config as {
+      lastSyncError?: string;
+      needsSync?: boolean;
+    };
+
+    if (syncState.lastSyncError) {
+      issues.push({
+        severity: 'error',
+        area: 'sync',
+        message: `${name} ist beim letzten Sync fehlgeschlagen: ${syncState.lastSyncError}`,
+      });
+    } else if (syncState.needsSync) {
+      issues.push({
+        severity: 'info',
+        area: 'sync',
+        message: `${name} hat ausstehende Aenderungen und benoetigt einen Sync.`,
+      });
+    }
+  }
+
+  for (const [name, count] of nameCounts.entries()) {
+    if (count > 1) {
+      issues.push({
+        severity: 'warning',
+        area: 'collections',
+        message: `${count} Sammlungen verwenden den Namen "${name}".`,
+      });
+    }
+  }
+
+  if (settings.main.globalSyncError) {
+    issues.push({
+      severity: 'error',
+      area: 'sync',
+      message: `Letzter globaler Sync fehlgeschlagen: ${settings.main.globalSyncError}`,
+    });
+  }
+
+  const totals = {
+    errors: issues.filter((issue) => issue.severity === 'error').length,
+    warnings: issues.filter((issue) => issue.severity === 'warning').length,
+    info: issues.filter((issue) => issue.severity === 'info').length,
+  };
+
+  return {
+    status:
+      totals.errors > 0 ? 'error' : totals.warnings > 0 ? 'warning' : 'ok',
+    totals,
+    issues: issues.slice(0, 10),
+    checkedAt: new Date().toISOString(),
+  };
 };
 
 /**
@@ -193,6 +298,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
 
         tautulliStats = {
           isConnected: true,
+          configured: true,
           weeklyActivity: weeklyStats,
         };
       } catch (error) {
@@ -202,6 +308,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         });
         tautulliStats = {
           isConnected: false,
+          configured: true,
           error: error.message,
           timedOut: error.message.includes('timed out'),
         };
@@ -240,6 +347,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       },
       activity: weeklyStats,
       tautulli: tautulliStats,
+      health: getCollectionHealth(settings),
       timestamp: new Date().toISOString(),
     };
 
@@ -256,6 +364,11 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
+});
+
+dashboardRoutes.get('/health', isAuthenticated(), (_req, res) => {
+  const settings = getSettings();
+  return res.status(200).json(getCollectionHealth(settings));
 });
 
 /**

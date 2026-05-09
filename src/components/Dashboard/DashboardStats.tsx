@@ -25,8 +25,15 @@ const messages = defineMessages({
   tautulliRequired: 'Tautulli Setup Required',
   tautulliDescriptionPlayStats:
     'Configure Tautulli in your settings to view play statistics from your Plex server.',
+  tautulliUnavailable:
+    'Tautulli is configured, but play statistics could not be loaded.',
   configureTautulli: 'Configure Tautulli',
   failedToLoadDashboardStats: 'Failed to load dashboard statistics',
+  collectionHealth: 'Collection Health',
+  healthOk: 'No collection issues found',
+  healthIssues: '{count} issue(s) found',
+  errors: 'errors',
+  warnings: 'warnings',
   loadingDashboardStats: 'Loading dashboard statistics...',
   tautulliTimedOut:
     'Tautulli is responding slowly. Showing collection data without play statistics.',
@@ -75,6 +82,7 @@ interface DashboardData {
   };
   tautulli?: {
     isConnected: boolean;
+    configured?: boolean;
     error?: string;
     timedOut?: boolean;
     weeklyActivity?: {
@@ -83,6 +91,19 @@ interface DashboardData {
       tvPlays: number;
       collectionPlays: number;
     };
+  };
+  health?: {
+    status: 'ok' | 'warning' | 'error';
+    totals: {
+      errors: number;
+      warnings: number;
+      info: number;
+    };
+    issues: {
+      severity: 'error' | 'warning' | 'info';
+      area: string;
+      message: string;
+    }[];
   };
   timestamp: string;
 }
@@ -148,6 +169,7 @@ const DashboardStats: React.FC = () => {
 
   // Check if Tautulli is not configured
   const isTautulliConfigured =
+    dashboardData.tautulli?.configured === true ||
     dashboardData.tautulli?.isConnected === true ||
     dashboardData.activity !== null;
 
@@ -220,6 +242,10 @@ const DashboardStats: React.FC = () => {
     dashboardData.activity?.tvPlays ||
     dashboardData.tautulli?.weeklyActivity?.tvPlays ||
     0;
+  const healthIssueCount =
+    (dashboardData.health?.totals.errors || 0) +
+    (dashboardData.health?.totals.warnings || 0) +
+    (dashboardData.health?.totals.info || 0);
 
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -274,6 +300,68 @@ const DashboardStats: React.FC = () => {
           <p className="text-sm text-orange-300">
             {intl.formatMessage(messages.tautulliTimedOut)}
           </p>
+        </div>
+      )}
+      {isTautulliConfigured &&
+        dashboardData.tautulli?.isConnected === false && (
+          <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+            <p className="text-sm text-orange-300">
+              {intl.formatMessage(messages.tautulliUnavailable)}
+            </p>
+            {dashboardData.tautulli.error && (
+              <p className="mt-1 text-xs text-gray-500">
+                {dashboardData.tautulli.error}
+              </p>
+            )}
+          </div>
+        )}
+      {dashboardData.health && (
+        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-gray-400">
+                {intl.formatMessage(messages.collectionHealth)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {healthIssueCount === 0
+                  ? intl.formatMessage(messages.healthOk)
+                  : intl.formatMessage(messages.healthIssues, {
+                      count: healthIssueCount,
+                    })}
+              </p>
+            </div>
+            {healthIssueCount > 0 && (
+              <div className="text-sm text-gray-400">
+                {dashboardData.health.totals.errors}{' '}
+                {intl.formatMessage(messages.errors)} /{' '}
+                {dashboardData.health.totals.warnings}{' '}
+                {intl.formatMessage(messages.warnings)}
+              </div>
+            )}
+          </div>
+          {dashboardData.health.issues.length > 0 && (
+            <div className="space-y-2">
+              {dashboardData.health.issues.slice(0, 5).map((issue, index) => (
+                <div
+                  key={`${issue.area}-${index}`}
+                  className="rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300"
+                >
+                  <span
+                    className={
+                      issue.severity === 'error'
+                        ? 'font-medium text-red-300'
+                        : issue.severity === 'warning'
+                        ? 'font-medium text-orange-300'
+                        : 'font-medium text-gray-400'
+                    }
+                  >
+                    {issue.area}
+                  </span>
+                  <span className="ml-2">{issue.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
