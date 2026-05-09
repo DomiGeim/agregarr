@@ -11156,6 +11156,58 @@ paths:
                     timestamp:
                       type: string
                       example: '2020-12-15T16:20:00.069Z'
+  /settings/backup:
+    get:
+      summary: Export settings backup
+      description: Downloads the current Agregarr settings as a JSON backup file.
+      tags:
+        - settings-system
+      responses:
+        '200':
+          description: Settings backup JSON file
+          content:
+            application/json:
+              schema:
+                type: object
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="agregarr-settings-2026-05-09T10-30-45-000Z.json"'
+        '500':
+          description: Server error during settings backup export
+  /settings/backup/restore:
+    post:
+      summary: Restore settings backup
+      description: Restores Agregarr settings from a previously exported JSON backup.
+      tags:
+        - settings-system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Settings backup restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  safetyBackupPath:
+                    type: string
+                    nullable: true
+                    example: /app/config/backups/settings-before-restore-2026-05-09T10-30-45-000Z.json
+        '400':
+          description: Invalid settings backup
+        '500':
+          description: Server error during settings backup restore
   /settings/export-debug:
     post:
       summary: Export debugging information
