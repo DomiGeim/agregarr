@@ -149,16 +149,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.version-check.outputs.new_release_version }}
         run: |
+          {
+            echo "## Docker Images"
+            echo
+            echo '```sh'
+            echo "docker pull ghcr.io/domigeim/agregarr:v${VERSION}"
+            echo "docker pull ghcr.io/domigeim/agregarr:latest"
+            echo '```'
+            echo
+            gh api repos/${GITHUB_REPOSITORY}/releases/generate-notes \
+              -f tag_name="v${VERSION}" \
+              -f target_commitish="${GITHUB_SHA}" \
+              --jq .body
+          } > release-notes.md
+
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             gh release edit "v${VERSION}" \
               --target "${GITHUB_SHA}" \
               --title "Agregarr v${VERSION}" \
-              --generate-notes
+              --notes-file release-notes.md
           else
             gh release create "v${VERSION}" \
               --target "${GITHUB_SHA}" \
               --title "Agregarr v${VERSION}" \
-              --generate-notes
+              --notes-file release-notes.md
           fi
 
   discord:
@@ -185,7 +199,7 @@ jobs:
                 "description": "A new version of Agregarr is now available!\n\n**[View Release Notes](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.version-check.outputs.new_release_version }})**",
                 "color": 15105570,
                 "fields": [
-                  {"name": "Update your Docker image", "value": "```docker pull ghcr.io/domigeim/agregarr:latest```", "inline": false}
+                  {"name": "Update your Docker image", "value": "```docker pull ghcr.io/domigeim/agregarr:v${{ needs.version-check.outputs.new_release_version }}\ndocker pull ghcr.io/domigeim/agregarr:latest```", "inline": false}
                 ],
                 "thumbnail": {"url": "https://raw.githubusercontent.com/DomiGeim/agregarr/develop/public/android-chrome-512x512.png"}
               }]

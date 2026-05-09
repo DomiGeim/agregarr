@@ -1,6 +1,8 @@
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import {
+  ArrowUpCircleIcon,
+  CheckCircleIcon,
   CogIcon,
   ExclamationCircleIcon,
   FilmIcon,
@@ -8,7 +10,9 @@ import {
   RectangleStackIcon as CollectionIcon,
   ServerStackIcon,
   TvIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
+import type { StatusResponse } from '@server/interfaces/api/settingsInterfaces';
 import Link from 'next/link';
 import type React from 'react';
 import { defineMessages, useIntl } from 'react-intl';
@@ -40,6 +44,12 @@ const messages = defineMessages({
   mediaServer: 'Media Server',
   libraries: 'libraries',
   active: 'active',
+  sourceStatus: 'Source Status',
+  sourcesConfigured: '{configured} of {total} configured',
+  configured: 'Configured',
+  missing: 'Missing',
+  updateAvailable: 'Update Available',
+  updateDockerImage: 'A newer version is available for your Docker image.',
 });
 
 interface DashboardData {
@@ -83,6 +93,7 @@ interface DashboardData {
   tautulli?: {
     isConnected: boolean;
     configured?: boolean;
+    statsAvailable?: boolean;
     error?: string;
     timedOut?: boolean;
     weeklyActivity?: {
@@ -91,6 +102,15 @@ interface DashboardData {
       tvPlays: number;
       collectionPlays: number;
     };
+  };
+  sourceStatus?: {
+    configured: number;
+    total: number;
+    sources: {
+      id: string;
+      name: string;
+      configured: boolean;
+    }[];
   };
   health?: {
     status: 'ok' | 'warning' | 'error';
@@ -138,6 +158,9 @@ const DashboardStats: React.FC = () => {
   const { data: dashboardData, error } = useSWR<DashboardData>(
     '/api/v1/dashboard/stats'
   );
+  const { data: statusData } = useSWR<StatusResponse>('/api/v1/status', {
+    refreshInterval: 60 * 1000,
+  });
 
   if (error) {
     return (
@@ -171,7 +194,7 @@ const DashboardStats: React.FC = () => {
   const isTautulliConfigured =
     dashboardData.tautulli?.configured === true ||
     dashboardData.tautulli?.isConnected === true ||
-    dashboardData.activity !== null;
+    dashboardData.activity != null;
 
   // If Tautulli is not configured, show setup message
   if (!isTautulliConfigured) {
@@ -242,6 +265,9 @@ const DashboardStats: React.FC = () => {
     dashboardData.activity?.tvPlays ||
     dashboardData.tautulli?.weeklyActivity?.tvPlays ||
     0;
+  const hasTautulliStats =
+    dashboardData.tautulli?.isConnected === true ||
+    dashboardData.activity != null;
   const healthIssueCount =
     (dashboardData.health?.totals.errors || 0) +
     (dashboardData.health?.totals.warnings || 0) +
@@ -273,7 +299,7 @@ const DashboardStats: React.FC = () => {
       />
       <StatCard
         title={intl.formatMessage(messages.collectionPlays)}
-        value={collectionPlays}
+        value={hasTautulliStats ? collectionPlays : '-'}
         icon={PlayIcon}
         subtitle={`${totalPlays} ${intl.formatMessage(
           messages.totalServer
@@ -281,7 +307,7 @@ const DashboardStats: React.FC = () => {
       />
       <StatCard
         title={intl.formatMessage(messages.movieCollectionPlays)}
-        value={movieCollectionPlays}
+        value={hasTautulliStats ? movieCollectionPlays : '-'}
         icon={FilmIcon}
         subtitle={`${totalMoviePlays} ${intl.formatMessage(
           messages.totalServer
@@ -289,12 +315,30 @@ const DashboardStats: React.FC = () => {
       />
       <StatCard
         title={intl.formatMessage(messages.tvCollectionPlays)}
-        value={tvCollectionPlays}
+        value={hasTautulliStats ? tvCollectionPlays : '-'}
         icon={TvIcon}
         subtitle={`${totalTvPlays} ${intl.formatMessage(
           messages.totalServer
         )} • ${intl.formatMessage(messages.thisWeek)}`}
       />
+      {statusData?.updateAvailable && (
+        <div className="rounded-lg border border-orange-500/40 bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-orange-300">
+                {intl.formatMessage(messages.updateAvailable)}
+              </p>
+              <p className="mt-1 text-sm text-gray-300">
+                {intl.formatMessage(messages.updateDockerImage)}
+              </p>
+            </div>
+            <ArrowUpCircleIcon className="h-8 w-8 text-orange-400" />
+          </div>
+          <code className="mt-4 block overflow-x-auto rounded-md bg-stone-900 px-3 py-2 text-sm text-gray-200">
+            docker pull ghcr.io/domigeim/agregarr:latest
+          </code>
+        </div>
+      )}
       {dashboardData.tautulli?.timedOut && (
         <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
           <p className="text-sm text-orange-300">
@@ -362,6 +406,47 @@ const DashboardStats: React.FC = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+      {dashboardData.sourceStatus && (
+        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-gray-400">
+                {intl.formatMessage(messages.sourceStatus)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {intl.formatMessage(messages.sourcesConfigured, {
+                  configured: dashboardData.sourceStatus.configured,
+                  total: dashboardData.sourceStatus.total,
+                })}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {dashboardData.sourceStatus.sources.map((source) => (
+              <div
+                key={source.id}
+                className="flex items-center justify-between rounded-md border border-gray-700 px-3 py-2 text-sm"
+              >
+                <span className="font-medium text-gray-200">{source.name}</span>
+                <span
+                  className={`flex items-center ${
+                    source.configured ? 'text-green-300' : 'text-gray-500'
+                  }`}
+                >
+                  {source.configured ? (
+                    <CheckCircleIcon className="mr-1 h-4 w-4" />
+                  ) : (
+                    <XCircleIcon className="mr-1 h-4 w-4" />
+                  )}
+                  {source.configured
+                    ? intl.formatMessage(messages.configured)
+                    : intl.formatMessage(messages.missing)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

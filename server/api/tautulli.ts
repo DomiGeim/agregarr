@@ -117,6 +117,7 @@ interface TautulliHomeStatRow {
   rating_key: string;
   title: string;
   total_plays: number;
+  play_count?: number;
   media_type: string;
   grandparent_rating_key?: string;
   grandparent_title?: string;
@@ -225,7 +226,7 @@ class TautulliAPI {
     this.axios = axios.create({
       baseURL: `${protocol}://${settings.hostname}${port}${urlBase}`,
       params: { apikey: settings.apiKey },
-      timeout: 30000, // 30 second timeout to match OverseerrAPI
+      timeout: 60000,
     });
   }
 
