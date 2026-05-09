@@ -140,15 +140,61 @@ export async function discoverPlaceholdersFromMarkers(
         continue;
       }
 
-      const plexItem = plexMatches.get(`${marker.tmdbId}-tv`);
+      let plexItem: { ratingKey: string; title: string } | undefined =
+        plexMatches.get(`${marker.tmdbId}-tv`);
+
+      // Title fallback for items without TMDB GUID in Plex
+      // Marker file on disk proves this is an Agregarr-created placeholder —
+      // don't gate on isPlaceholderItem() which returns false for TV shows
+      // when Children metadata is missing from the Plex API response.
+      if (!plexItem) {
+        const titleMatches = await findPlexItemsByTitle(
+          plexClient,
+          marker.title,
+          marker.year,
+          libraryId,
+          'tv',
+          libraryCache
+        );
+        // Prefer candidates without TMDB GUID (more likely the unmatched placeholder)
+        const candidate =
+          titleMatches.find((m) => !m.hasTmdbGuid) || titleMatches[0];
+        if (candidate) {
+          plexItem = {
+            ratingKey: candidate.ratingKey,
+            title: candidate.title,
+          };
+          logger.info('Tier 1: Found Plex item by title fallback', {
+            label: 'PlaceholderService',
+            title: marker.title,
+            year: marker.year,
+            ratingKey: candidate.ratingKey,
+            hasTmdbGuid: candidate.hasTmdbGuid,
+          });
+        }
+      }
+
+      // Check if *arr reports content as downloaded (works even if content is in different Plex library)
+      // Fall back to DB record's tvdbId when marker file lacks it
+      let effectiveTvdbId = marker.tvdbId;
+      if (!effectiveTvdbId) {
+        const dbRecord = await repository.findOne({
+          where: { tmdbId: marker.tmdbId },
+          select: ['tvdbId'],
+        });
+        if (dbRecord?.tvdbId) {
+          effectiveTvdbId = dbRecord.tvdbId;
+        }
+      }
+      const arrStatus = effectiveTvdbId
+        ? showsByTvdbId.get(effectiveTvdbId)
+        : undefined;
+      const isDownloadedInArr = arrStatus?.downloaded === true;
 
       // Marker file on disk proves this is an Agregarr-created placeholder.
       // Don't re-verify via isPlaceholderItem — returns false for TV shows
       // when Children metadata is missing from the Plex API response.
-      let needsTitleFix = false;
-      if (plexItem) {
-        needsTitleFix = true;
-      }
+      const needsTitleFix = Boolean(plexItem && !isDownloadedInArr);
 
       discovered.push({
         marker,

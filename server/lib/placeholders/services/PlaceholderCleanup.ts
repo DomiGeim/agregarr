@@ -10,13 +10,16 @@ import path from 'path';
 import { Like, Not } from 'typeorm';
 
 /**
- * Helper function to clean up a placeholder when real content is detected
- * Deletes the placeholder file and ALL database records for this TMDB ID across all collections
+ * Helper function to clean up a placeholder when real content is detected.
+ * Removes the Plex label, deletes the placeholder file, and deletes ALL
+ * database records for this TMDB ID across all collections.
  */
 export async function cleanupPlaceholderForRealContent(
   tmdbId: number,
   placeholderPath: string,
-  mediaType: 'movie' | 'tv'
+  mediaType: 'movie' | 'tv',
+  plexClient?: PlexAPI,
+  plexRatingKey?: string
 ): Promise<void> {
   const { removePlaceholder } = await import(
     '@server/lib/placeholders/placeholderManager'
@@ -24,7 +27,23 @@ export async function cleanupPlaceholderForRealContent(
   const repository = getRepository(ComingSoonItem);
 
   try {
-    // Delete the placeholder file
+    if (plexClient && plexRatingKey) {
+      try {
+        await plexClient.removeLabelFromItem(
+          plexRatingKey,
+          'trailer-placeholder'
+        );
+      } catch (error) {
+        logger.warn('Failed to remove placeholder label, deferring cleanup', {
+          label: 'PlaceholderService',
+          tmdbId,
+          ratingKey: plexRatingKey,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        return;
+      }
+    }
+
     await removePlaceholder(placeholderPath, mediaType);
 
     logger.info('Deleted placeholder file - real content detected', {
@@ -34,7 +53,6 @@ export async function cleanupPlaceholderForRealContent(
       placeholderPath,
     });
 
-    // Delete ALL database records for this TMDB ID (across all collections)
     const allRecords = await repository.find({
       where: { tmdbId },
     });
@@ -460,6 +478,69 @@ export async function cleanupOrphanedPlaceholderFiles(): Promise<number> {
     });
     return 0;
   }
+}
+
+/**
+ * Delete the stale Plex episode entry for a TV placeholder.
+ * Navigates show → Season 00 → Episode 0 and deletes the episode.
+ * Non-fatal: logs warnings on failure.
+ */
+async function deletePlexPlaceholderEpisode(
+  plexClient: PlexAPI,
+  showRatingKey: string,
+  title: string
+): Promise<void> {
+  try {
+    try {
+      await plexClient.removeLabelFromItem(
+        showRatingKey,
+        'trailer-placeholder'
+      );
+    } catch {
+      // Best-effort — don't block episode deletion
+    }
+
+    const seasons = await plexClient.getChildrenMetadata(showRatingKey);
+    const season00 = seasons.find((s) => s.index === 0);
+    if (!season00) return;
+
+    const episodes = await plexClient.getChildrenMetadata(season00.ratingKey);
+    const placeholderEp = episodes.find((ep) => ep.index === 0);
+    if (!placeholderEp) return;
+
+    await plexClient.deleteItem(placeholderEp.ratingKey);
+    logger.info('Deleted stale Plex placeholder episode', {
+      label: 'PlaceholderCleanup',
+      title,
+      showRatingKey,
+      episodeRatingKey: placeholderEp.ratingKey,
+    });
+  } catch (error) {
+    logger.warn('Failed to delete Plex placeholder episode', {
+      label: 'PlaceholderCleanup',
+      title,
+      showRatingKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Check if any retroactively-applicable placeholder filters are configured.
+ * Rating filters are excluded because retroactive evaluation uses
+ * skipRatingFilters (unreleased content has no ratings).
+ */
+function hasPlaceholderFilters(config: CollectionConfig): boolean {
+  if (config.placeholderMinimumYear && config.placeholderMinimumYear > 0)
+    return true;
+
+  const pfs = config.placeholderFilterSettings;
+  if (pfs?.genres?.values?.length) return true;
+  if (pfs?.countries?.values?.length) return true;
+  if (pfs?.languages?.values?.length) return true;
+  if (pfs?.keywords?.values?.length) return true;
+
+  return false;
 }
 
 /**
