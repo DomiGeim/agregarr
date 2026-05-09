@@ -5382,7 +5382,7 @@ components:
           example: 'trending'
         requestService:
           type: string
-          enum: [overseerr, radarr, sonarr]
+          enum: [overseerr, radarr, sonarr, tautulli]
           example: 'overseerr'
         requestMethod:
           type: string
@@ -12419,6 +12419,43 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/MissingItemRequest'
+  /missing-items/tautulli-recently-added:
+    get:
+      summary: Get Tautulli recently added items
+      description: |
+        Returns recently added movies or TV items from Tautulli for dashboard display.
+      tags:
+        - missing-items
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 5
+            minimum: 1
+            maximum: 50
+          description: Number of recently added items to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of items to skip
+        - in: query
+          name: mediaType
+          schema:
+            type: string
+            enum: [movie, tv]
+            default: movie
+          description: Media type to return
+      responses:
+        '200':
+          description: Tautulli recently added items returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissingItemsResponse'
   /missing-items/stats:
     get:
       summary: Get missing item statistics
@@ -12490,6 +12527,43 @@ paths:
                   message:
                     type: string
                     example: 'Tautulli connection failed'
+  /dashboard/tautulli-recently-added:
+    get:
+      summary: Get dashboard Tautulli recently added items
+      description: |
+        Returns recently added movies or TV items from Tautulli for the dashboard.
+      tags:
+        - dashboard
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 5
+            minimum: 1
+            maximum: 50
+          description: Number of recently added items to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of items to skip
+        - in: query
+          name: mediaType
+          schema:
+            type: string
+            enum: [movie, tv]
+            default: movie
+          description: Media type to return
+      responses:
+        '200':
+          description: Tautulli recently added items returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissingItemsResponse'
   /dashboard/collections:
     get:
       summary: Get collection statistics
