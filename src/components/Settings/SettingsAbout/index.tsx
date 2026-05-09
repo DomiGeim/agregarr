@@ -71,6 +71,29 @@ const SettingsAbout = () => {
     return <Error statusCode={500} />;
   }
 
+  const exportSettingsBackup = async () => {
+    try {
+      const response = await axios.get('/api/v1/settings/backup', {
+        responseType: 'blob',
+      });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = `agregarr-settings-${timestamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      addToast(intl.formatMessage(messages.toastSettingsBackupRestoreFailure), {
+        autoDismiss: true,
+        appearance: 'error',
+      });
+    }
+  };
+
   const restoreSettingsBackup = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -249,9 +272,9 @@ const SettingsAbout = () => {
           <List.Item title={intl.formatMessage(messages.settingsBackup)}>
             <div className="flex flex-wrap gap-2">
               <Button
-                as="a"
                 buttonType="default"
-                href="/api/v1/settings/backup"
+                type="button"
+                onClick={exportSettingsBackup}
               >
                 <ArrowDownTrayIcon className="mr-2 h-5 w-5" />
                 {intl.formatMessage(messages.exportSettingsBackup)}
