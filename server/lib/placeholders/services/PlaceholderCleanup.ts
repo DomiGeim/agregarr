@@ -34,13 +34,12 @@ export async function cleanupPlaceholderForRealContent(
           'trailer-placeholder'
         );
       } catch (error) {
-        logger.warn('Failed to remove placeholder label, deferring cleanup', {
+        logger.warn('Failed to remove placeholder label, continuing cleanup', {
           label: 'PlaceholderService',
           tmdbId,
           ratingKey: plexRatingKey,
           error: error instanceof Error ? error.message : 'Unknown error',
         });
-        return;
       }
     }
 

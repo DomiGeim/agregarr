@@ -38,6 +38,7 @@ const messages = defineMessages({
   restoreSettingsBackup: 'Restore Settings Backup',
   toastSettingsBackupRestoreSuccess: 'Settings backup restored successfully.',
   toastSettingsBackupRestoreFailure: 'Failed to restore settings backup.',
+  toastSettingsBackupExportFailure: 'Failed to export settings backup.',
   timezone: 'Time Zone',
   appDataPath: 'Data Directory',
   supportagregarr: 'Support Agregarr',
@@ -87,7 +88,7 @@ const SettingsAbout = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      addToast(intl.formatMessage(messages.toastSettingsBackupRestoreFailure), {
+      addToast(intl.formatMessage(messages.toastSettingsBackupExportFailure), {
         autoDismiss: true,
         appearance: 'error',
       });

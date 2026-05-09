@@ -12,6 +12,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import { PlayIcon } from '@heroicons/react/24/solid';
+import axios from 'axios';
 import type React from 'react';
 import { useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
@@ -81,6 +82,41 @@ interface MissingItemsResponse {
   offset: number;
 }
 
+const fetchTautulliRecentlyAdded = async (
+  url: string
+): Promise<MissingItemsResponse> => {
+  try {
+    return (await axios.get<MissingItemsResponse>(url)).data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      const fallbackUrl = url.replace(
+        '/api/v1/dashboard/tautulli-recently-added',
+        '/api/v1/missing-items/tautulli-recently-added'
+      );
+
+      try {
+        return (await axios.get<MissingItemsResponse>(fallbackUrl)).data;
+      } catch (fallbackError) {
+        if (
+          axios.isAxiosError(fallbackError) &&
+          fallbackError.response?.status === 404
+        ) {
+          return {
+            results: [],
+            total: 0,
+            limit: 0,
+            offset: 0,
+          };
+        }
+
+        throw fallbackError;
+      }
+    }
+
+    throw error;
+  }
+};
+
 const MissingItemsFeed: React.FC = () => {
   const intl = useIntl();
   const [activeTab, setActiveTab] = useState<'movies' | 'tv'>('movies');
@@ -95,7 +131,8 @@ const MissingItemsFeed: React.FC = () => {
   } = useSWR<MissingItemsResponse>(
     `/api/v1/dashboard/tautulli-recently-added?limit=${limit}&mediaType=${
       activeTab === 'movies' ? 'movie' : 'tv'
-    }&offset=0`
+    }&offset=0`,
+    fetchTautulliRecentlyAdded
   );
 
   const handleRefresh = async () => {
