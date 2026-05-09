@@ -159,12 +159,7 @@ interface TautulliRecentlyAddedResponse {
   response: {
     result: string;
     message?: string;
-    data:
-      | TautulliRecentlyAddedItem[]
-      | {
-          recently_added?: TautulliRecentlyAddedItem[];
-          data?: TautulliRecentlyAddedItem[];
-        };
+    data: unknown;
   };
 }
 
@@ -507,7 +502,8 @@ class TautulliAPI {
   public async getRecentlyAdded(
     count = 10,
     start = 0,
-    sectionId?: string
+    sectionId?: string,
+    mediaType?: 'movie' | 'show' | 'artist'
   ): Promise<TautulliRecentlyAddedItem[]> {
     try {
       const response = await this.axios.get<TautulliRecentlyAddedResponse>(
@@ -517,18 +513,13 @@ class TautulliAPI {
             cmd: 'get_recently_added',
             count,
             start,
+            ...(mediaType ? { media_type: mediaType } : {}),
             ...(sectionId ? { section_id: sectionId } : {}),
           },
         }
       );
 
-      const data = response.data.response.data;
-
-      if (Array.isArray(data)) {
-        return data;
-      }
-
-      return data.recently_added || data.data || [];
+      return this.normalizeRecentlyAdded(response.data.response.data);
     } catch (e) {
       logger.error(
         'Something went wrong fetching recently added from Tautulli',
@@ -538,12 +529,65 @@ class TautulliAPI {
           count,
           start,
           sectionId,
+          mediaType,
         }
       );
       throw new Error(
         `[Tautulli] Failed to fetch recently added: ${e.message}`
       );
     }
+  }
+
+  private normalizeRecentlyAdded(data: unknown): TautulliRecentlyAddedItem[] {
+    const items = new Map<string, TautulliRecentlyAddedItem>();
+
+    const addItem = (value: unknown) => {
+      if (!value || typeof value !== 'object') {
+        return;
+      }
+
+      const item = value as Partial<TautulliRecentlyAddedItem>;
+      if (!item.rating_key || !item.title) {
+        return;
+      }
+
+      const key = `${item.rating_key}-${item.media_type ?? 'unknown'}-${
+        item.added_at ?? ''
+      }`;
+      items.set(key, item as TautulliRecentlyAddedItem);
+    };
+
+    const visit = (value: unknown) => {
+      if (!value) {
+        return;
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+
+      if (typeof value !== 'object') {
+        return;
+      }
+
+      addItem(value);
+
+      const record = value as Record<string, unknown>;
+      [
+        'recently_added',
+        'data',
+        'movie',
+        'show',
+        'season',
+        'episode',
+        'artist',
+      ].forEach((key) => visit(record[key]));
+    };
+
+    visit(data);
+
+    return [...items.values()];
   }
 
   public async getLibraryWatchTimeStats(

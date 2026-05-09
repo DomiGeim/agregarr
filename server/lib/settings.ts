@@ -1257,6 +1257,10 @@ class Settings {
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(this.data, undefined, ' '));
   }
 
+  public getAll(): AllSettings {
+    return this.data;
+  }
+
   /**
    * Update admin Plex user information for template variables
    */

@@ -465,8 +465,8 @@ dashboardRoutes.get(
       const settings = getSettings();
       const limit = parseInt(req.query.limit as string) || 10;
       const offset = parseInt(req.query.offset as string) || 0;
-      const requestedMediaType =
-        req.query.mediaType === 'tv' ? 'show' : 'movie';
+      const requestedMediaType = req.query.mediaType === 'tv' ? 'tv' : 'movie';
+      const tautulliMediaType = requestedMediaType === 'tv' ? 'show' : 'movie';
 
       if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
         return res.status(200).json({
@@ -479,23 +479,20 @@ dashboardRoutes.get(
       }
 
       const tautulli = new TautulliAPI(settings.tautulli);
-      const matchingLibraries = (settings.plex.libraries || []).filter(
-        (library) => library.type === requestedMediaType
-      );
       const items = (
-        await Promise.all(
-          matchingLibraries.length > 0
-            ? matchingLibraries.map((library) =>
-                tautulli.getRecentlyAdded(limit + offset, 0, library.key)
-              )
-            : [tautulli.getRecentlyAdded(limit + offset, 0)]
+        await tautulli.getRecentlyAdded(
+          limit + offset,
+          0,
+          undefined,
+          tautulliMediaType
         )
       )
-        .flat()
         .filter((item) =>
           requestedMediaType === 'movie'
             ? item.media_type === 'movie'
-            : item.media_type === 'show' || item.media_type === 'episode'
+            : item.media_type === 'show' ||
+              item.media_type === 'season' ||
+              item.media_type === 'episode'
         )
         .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0))
         .slice(offset, offset + limit);
@@ -509,7 +506,7 @@ dashboardRoutes.get(
         return {
           id: Number(item.rating_key) || index,
           tmdbId: 0,
-          mediaType: requestedMediaType === 'movie' ? 'movie' : 'tv',
+          mediaType: requestedMediaType,
           title:
             item.media_type === 'episode'
               ? item.grandparent_title || item.full_title || item.title
