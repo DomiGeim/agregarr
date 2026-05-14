@@ -20,7 +20,7 @@ import useSWR from 'swr';
 import MissingItemsModal from './MissingItemsModal';
 
 const messages = defineMessages({
-  recentlyAddedMissing: 'Recently Added von Tautulli',
+  recentlyAddedMissing: 'Recently Added from Tautulli',
   movies: 'Movies',
   tvShows: 'TV Shows',
   noRecentlyAddedItems: 'No recently added items',

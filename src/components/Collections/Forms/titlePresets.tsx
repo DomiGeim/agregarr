@@ -1202,12 +1202,12 @@ export const getTemplatePresets = (
             value: `${displayName} Overall Top 10`,
           },
           {
-            label: `Top 10 auf ${displayName}`,
-            value: `Top 10 auf ${displayName}`,
+            label: `Top 10 on ${displayName}`,
+            value: `Top 10 on ${displayName}`,
           },
           {
-            label: `Beliebt auf ${displayName}`,
-            value: `Beliebt auf ${displayName}`,
+            label: `Popular on ${displayName}`,
+            value: `Popular on ${displayName}`,
           },
           { label: 'Custom', value: 'custom' },
         ];
@@ -1242,16 +1242,16 @@ export const getTemplatePresets = (
 
         return [
           {
-            label: `Neu auf ${displayName}`,
-            value: `Neu auf ${displayName}`,
+            label: `New on ${displayName}`,
+            value: `New on ${displayName}`,
           },
           {
-            label: `${displayName} Neu hinzugefügt`,
-            value: `${displayName} Neu hinzugefügt`,
+            label: `${displayName} Newly Added`,
+            value: `${displayName} Newly Added`,
           },
           {
-            label: `Neue {mediaType}s auf ${displayName}`,
-            value: `Neue {mediaType}s auf ${displayName}`,
+            label: `New {mediaType}s on ${displayName}`,
+            value: `New {mediaType}s on ${displayName}`,
           },
           { label: 'Custom', value: 'custom' },
         ];

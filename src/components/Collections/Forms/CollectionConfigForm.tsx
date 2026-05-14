@@ -151,10 +151,9 @@ const messages = defineMessages({
     'Please enter a valid TMDB URL (collection, list, network, or company page)',
   validationImdbUrlInvalid:
     'Please enter a valid IMDb list or watchlist URL (e.g., https://www.imdb.com/list/ls123456789/ or https://www.imdb.com/user/ur12345678/watchlist)',
-  validationImdbTitleIdsRequired:
-    'Bitte mindestens eine IMDb Title ID eingeben',
+  validationImdbTitleIdsRequired: 'Please enter at least one IMDb title ID',
   validationImdbTitleIdsInvalid:
-    'Bitte gültige IMDb Title IDs wie tt0111161 eingeben',
+    'Please enter valid IMDb title IDs such as tt0111161',
   validationLetterboxdUrlInvalid:
     'Please enter a valid Letterboxd URL (e.g., https://letterboxd.com/username/list/list-name/ or https://letterboxd.com/username/films/rated/4.5-5/)',
   validationLetterboxdWatchlistUrlInvalid:
@@ -165,10 +164,10 @@ const messages = defineMessages({
   validationSourceTypeRequired: 'Source type is required',
   validationSourcePriorityRequired: 'Source priority is required',
   collectionTitleTemplate: 'Collection Title Template',
-  collectionSortTitle: 'Plex Sortiertitel',
+  collectionSortTitle: 'Plex Sort Title',
   collectionSortTitleHelp:
-    'Optionaler Titel für die alphabetische Plex-Sortierung. Leer lassen, um den generierten Sammlungstitel zu verwenden.',
-  removeLeadingArticlesFromSortTitle: 'A/An/The beim Sortieren ignorieren',
+    'Optional title for alphabetical Plex sorting. Leave empty to use the generated collection title.',
+  removeLeadingArticlesFromSortTitle: 'Ignore A/An/The When Sorting',
   itemOrder: 'Item Order',
   tmdbMovieSortOrder: 'Movie Sort Order',
   tmdbTvSortOrder: 'TV Sort Order',
