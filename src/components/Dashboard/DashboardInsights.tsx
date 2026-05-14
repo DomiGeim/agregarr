@@ -31,6 +31,7 @@ const messages = defineMessages({
   sourceReliability: 'Source Reliability',
   placeholderLifecycle: 'Placeholder Lifecycle',
   explainNumbers: 'Explain This Number',
+  operationsSuite: 'Operations Suite',
   recommendations: 'Smart Recommendations',
   syncDryRun: 'Sync Dry Run',
   cleanupPreview: 'Cleanup Preview',
@@ -55,6 +56,9 @@ const messages = defineMessages({
   heatScore: 'heat',
   snoozeRecommendation: 'Recommendation: {recommendation}',
   placeholderAge: '{days} days old',
+  moduleReady: 'Ready',
+  moduleWatch: 'Watch',
+  moduleAttention: 'Attention',
   open: 'Open',
 });
 
@@ -170,6 +174,16 @@ interface DashboardInsightData {
       source: string;
       updatedAt: string;
     }[];
+    operationsSuite: {
+      id: string;
+      number: number;
+      title: string;
+      category: string;
+      status: 'ready' | 'watch' | 'attention';
+      metric: string;
+      summary: string;
+      href: string;
+    }[];
   };
 }
 
@@ -192,6 +206,17 @@ const priorityColor = (priority: string): string => {
       return 'text-orange-300';
     default:
       return 'text-gray-300';
+  }
+};
+
+const operationStatusClass = (status: string): string => {
+  switch (status) {
+    case 'attention':
+      return 'border-red-500/40 text-red-300';
+    case 'watch':
+      return 'border-orange-500/40 text-orange-300';
+    default:
+      return 'border-green-500/40 text-green-300';
   }
 };
 
@@ -277,6 +302,50 @@ const DashboardInsights: React.FC = () => {
                   {collection.reasons[0]}
                 </p>
               </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <SparklesIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.operationsSuite)}
+          </h4>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {(intelligence?.operationsSuite || []).map((operation) => (
+              <a
+                key={operation.id}
+                href={operation.href}
+                className="rounded border border-gray-700 px-3 py-3 transition-colors hover:border-orange-500/60"
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase text-gray-500">
+                      {operation.number}. {operation.category}
+                    </p>
+                    <p className="line-clamp-2 mt-1 text-sm font-medium text-white">
+                      {operation.title}
+                    </p>
+                  </div>
+                  <span
+                    className={`flex-shrink-0 rounded border px-2 py-1 text-xs font-semibold ${operationStatusClass(
+                      operation.status
+                    )}`}
+                  >
+                    {operation.status === 'attention'
+                      ? intl.formatMessage(messages.moduleAttention)
+                      : operation.status === 'watch'
+                      ? intl.formatMessage(messages.moduleWatch)
+                      : intl.formatMessage(messages.moduleReady)}
+                  </span>
+                </div>
+                <p className="line-clamp-3 text-xs text-gray-400">
+                  {operation.summary}
+                </p>
+                <p className="mt-2 truncate text-xs text-orange-300">
+                  {operation.metric}
+                </p>
+              </a>
             ))}
           </div>
         </section>
