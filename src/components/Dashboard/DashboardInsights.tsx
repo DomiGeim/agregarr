@@ -76,6 +76,23 @@ const messages = defineMessages({
   downloadBackup: 'Download backup',
   actionSucceeded: 'Action completed.',
   actionFailed: 'Action failed.',
+  problemDetails: 'Problem Details',
+  repairCenter: 'Collection Repair Center',
+  tautulliDataQuality: 'Tautulli Data Quality',
+  releaseStatus: 'Release Status',
+  auditLog: 'Audit Log',
+  sourceTestHistory: 'Source Test History',
+  exportCollection: 'Export',
+  releaseUpdateAvailable: 'Update available: {version}',
+  installedVersion: 'Installed: {version}',
+  restoreDiff: 'Restore Diff',
+  matchedCollections: '{count} matched collections',
+  noItems: 'No items found.',
+  sourceSuccessRate: '{count}% success',
+  sourceFailures: '{count} failures',
+  averageLatency: '{count} ms avg',
+  missingRatingKeys: '{count} missing rating keys',
+  noTautulliMatch: '{count} no Tautulli match',
 });
 
 interface DashboardInsightData {
@@ -182,6 +199,56 @@ interface DashboardInsightData {
       testedAt: string;
       message: string;
       error?: string;
+    }[];
+    sourceTestHistory?: {
+      total: number;
+      failures: number;
+      successRate: number;
+      averageLatencyMs: number;
+    };
+    problemDetails?: {
+      id: string;
+      area: string;
+      title: string;
+      message: string;
+      severity: 'error' | 'warning';
+      action: string;
+      href: string;
+    }[];
+    repairCandidates?: {
+      id: string;
+      title: string;
+      type: string;
+      severity: 'attention' | 'watch';
+      message: string;
+      href: string;
+    }[];
+    tautulliDataQuality?: {
+      configuredCollections: number;
+      tautulliMatchedCollections: number;
+      missingRatingKeyCount: number;
+      noTautulliMatchCount: number;
+      missingRatingKeys: string[];
+      noTautulliMatches: string[];
+      artworkCache: {
+        enabled: boolean;
+        strategy: string;
+        candidateCount: number;
+      };
+    };
+    releaseStatus?: {
+      installedVersion: string;
+      latestVersion?: string;
+      latestUrl?: string;
+      updateAvailable: boolean;
+      publishedAt?: string;
+    };
+    auditLog?: {
+      id: string;
+      type: string;
+      title: string;
+      message: string;
+      at: string;
     }[];
     placeholderLifecycle: {
       total: number;
@@ -375,6 +442,24 @@ const DashboardInsights: React.FC = () => {
         </p>
       </div>
 
+      {data.maintenanceMode?.enabled && (
+        <div className="border-b border-orange-500/30 bg-orange-500/10 px-6 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-orange-100">
+              {intl.formatMessage(messages.maintenanceOn)}
+            </p>
+            <button
+              type="button"
+              disabled={runningAction === 'maintenance'}
+              onClick={toggleMaintenanceMode}
+              className="rounded border border-orange-400/60 px-3 py-1.5 text-xs font-semibold text-orange-100 transition-colors hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {intl.formatMessage(messages.disableMaintenance)}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-2">
         <section className="rounded-md border border-gray-700 p-4">
           <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
@@ -407,6 +492,20 @@ const DashboardInsights: React.FC = () => {
                 <p className="mt-1 truncate text-xs text-gray-400">
                   {collection.reasons[0]}
                 </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <a
+                    href={`/api/v1/dashboard/collection-diff/${collection.id}`}
+                    className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                  >
+                    {intl.formatMessage(messages.problemDetails)}
+                  </a>
+                  <a
+                    href={`/api/v1/dashboard/collections/${collection.id}/export`}
+                    className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                  >
+                    {intl.formatMessage(messages.exportCollection)}
+                  </a>
+                </div>
               </div>
             ))}
           </div>
@@ -564,6 +663,90 @@ const DashboardInsights: React.FC = () => {
             </div>
             {actionMessage && (
               <p className="mt-2 text-xs text-gray-400">{actionMessage}</p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ExclamationTriangleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.problemDetails)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.problemDetails || []).slice(0, 6).length ? (
+              (intelligence?.problemDetails || [])
+                .slice(0, 6)
+                .map((problem) => (
+                  <a
+                    key={problem.id}
+                    href={problem.href}
+                    className="block rounded border border-gray-700 px-3 py-2 transition-colors hover:border-orange-500/60"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p
+                        className={`truncate text-sm font-medium ${
+                          problem.severity === 'error'
+                            ? 'text-red-300'
+                            : 'text-orange-300'
+                        }`}
+                      >
+                        {problem.title}
+                      </p>
+                      <span className="text-xs text-gray-500">
+                        {problem.area}
+                      </span>
+                    </div>
+                    <p className="line-clamp-2 mt-1 text-xs text-gray-400">
+                      {problem.message}
+                    </p>
+                  </a>
+                ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <BoltIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.repairCenter)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.repairCandidates || []).slice(0, 6).length ? (
+              (intelligence?.repairCandidates || [])
+                .slice(0, 6)
+                .map((candidate) => (
+                  <a
+                    key={candidate.id}
+                    href={candidate.href}
+                    className="block rounded border border-gray-700 px-3 py-2 transition-colors hover:border-orange-500/60"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-medium text-white">
+                        {candidate.title}
+                      </p>
+                      <span
+                        className={`text-xs font-semibold ${
+                          candidate.severity === 'attention'
+                            ? 'text-red-300'
+                            : 'text-orange-300'
+                        }`}
+                      >
+                        {candidate.type}
+                      </span>
+                    </div>
+                    <p className="line-clamp-2 mt-1 text-xs text-gray-400">
+                      {candidate.message}
+                    </p>
+                  </a>
+                ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
             )}
           </div>
         </section>
@@ -944,6 +1127,119 @@ const DashboardInsights: React.FC = () => {
                 </p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <BeakerIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.sourceTestHistory)}
+          </h4>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.sourceSuccessRate, {
+                count: intelligence?.sourceTestHistory?.successRate || 0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.sourceFailures, {
+                count: intelligence?.sourceTestHistory?.failures || 0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.averageLatency, {
+                count: intelligence?.sourceTestHistory?.averageLatencyMs || 0,
+              })}
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ArrowTrendingUpIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.tautulliDataQuality)}
+          </h4>
+          <div className="space-y-2">
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.matchedCollections, {
+                count:
+                  intelligence?.tautulliDataQuality
+                    ?.tautulliMatchedCollections || 0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.missingRatingKeys, {
+                count:
+                  intelligence?.tautulliDataQuality?.missingRatingKeyCount || 0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.noTautulliMatch, {
+                count:
+                  intelligence?.tautulliDataQuality?.noTautulliMatchCount || 0,
+              })}
+            </p>
+            <p className="text-xs text-gray-500">
+              {intelligence?.tautulliDataQuality?.artworkCache.strategy}
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <SparklesIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.releaseStatus)}
+          </h4>
+          <div className="space-y-2">
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.installedVersion, {
+                version: intelligence?.releaseStatus?.installedVersion || '',
+              })}
+            </p>
+            {intelligence?.releaseStatus?.updateAvailable ? (
+              <a
+                href={intelligence.releaseStatus.latestUrl}
+                className="block rounded border border-orange-500/50 px-3 py-2 text-sm font-semibold text-orange-200 transition-colors hover:bg-orange-500/10"
+              >
+                {intl.formatMessage(messages.releaseUpdateAvailable, {
+                  version: intelligence.releaseStatus.latestVersion,
+                })}
+              </a>
+            ) : (
+              <p className="rounded bg-stone-900 px-3 py-2 text-sm text-green-300">
+                {intl.formatMessage(messages.moduleReady)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ClockIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.auditLog)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.auditLog || []).slice(0, 5).length ? (
+              (intelligence?.auditLog || []).slice(0, 5).map((event) => (
+                <div key={event.id} className="rounded bg-stone-900 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {event.title}
+                    </p>
+                    <span className="text-xs text-gray-500">
+                      {new Date(event.at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 mt-1 text-xs text-gray-500">
+                    {event.message}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
           </div>
         </section>
 

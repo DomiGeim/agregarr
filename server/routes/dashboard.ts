@@ -15,6 +15,7 @@ import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import { appDataPath } from '@server/utils/appDataVolume';
 import { getAppVersion } from '@server/utils/appVersion';
+import axios from 'axios';
 import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
@@ -81,6 +82,7 @@ interface DashboardEvent {
   title: string;
   message: string;
   at: string;
+  metadata?: Record<string, unknown>;
 }
 
 const getConfigType = (config: DashboardCollectionConfig): string =>
@@ -206,6 +208,226 @@ const validateSettingsBackup = (
       (plex?.collectionConfigs?.length || 0) +
       (plex?.preExistingCollectionConfigs?.length || 0),
   };
+};
+
+const buildSettingsRestoreDiff = (
+  current: Record<string, unknown>,
+  incoming: Record<string, unknown>
+) => {
+  const sections = ['main', 'plex', 'tautulli', 'radarr', 'sonarr', 'jobs'];
+
+  return sections
+    .map((section) => {
+      const currentSection = current[section];
+      const incomingSection = incoming[section];
+      const currentJson = JSON.stringify(currentSection ?? null);
+      const incomingJson = JSON.stringify(incomingSection ?? null);
+
+      return {
+        section,
+        changed: currentJson !== incomingJson,
+        currentSize: currentJson.length,
+        incomingSize: incomingJson.length,
+      };
+    })
+    .filter((section) => section.changed);
+};
+
+const getProblemDetails = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[],
+  sourceStatus: ReturnType<typeof getSourceStatus>
+) => {
+  const sourceProblems = sourceStatus.sources
+    .filter((source) => !source.configured)
+    .map((source) => ({
+      id: `source-${source.id}`,
+      area: 'source',
+      title: `${source.name} nicht konfiguriert`,
+      message:
+        'Diese Quelle ist in den Settings nicht vollstaendig hinterlegt.',
+      severity: 'warning' as const,
+      action: 'Settings pruefen',
+      href: '/settings/sources',
+    }));
+  const collectionProblems = collectionScores
+    .filter((score) => score.status !== 'healthy')
+    .slice(0, 8)
+    .map((score) => ({
+      id: `collection-${score.id}`,
+      area: 'collection',
+      title: score.name,
+      message: score.reasons.join(', '),
+      severity:
+        score.status === 'critical' ? ('error' as const) : ('warning' as const),
+      action: 'Collection pruefen',
+      href: `/api/v1/dashboard/collection-diff/${score.id}`,
+    }));
+
+  if (settings.main.globalSyncError) {
+    collectionProblems.unshift({
+      id: 'global-sync-error',
+      area: 'sync',
+      title: 'Globaler Sync-Fehler',
+      message: settings.main.globalSyncError,
+      severity: 'error',
+      action: 'Diagnose herunterladen',
+      href: '/api/v1/dashboard/diagnostics',
+    });
+  }
+
+  return [...sourceProblems, ...collectionProblems].slice(0, 12);
+};
+
+const getRepairCandidates = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[]
+) => {
+  const allConfigs = getAllCollectionConfigs(settings);
+  const duplicateNames = new Set<string>();
+  const seenNames = new Set<string>();
+
+  allConfigs.forEach((config) => {
+    const name = config.name.trim().toLowerCase();
+
+    if (seenNames.has(name)) {
+      duplicateNames.add(name);
+    }
+
+    seenNames.add(name);
+  });
+
+  return [
+    ...allConfigs
+      .filter(
+        (config) =>
+          !hasCollectionRatingKey(config) &&
+          getConfigType(config) !== 'filtered_hub' &&
+          !config.missing
+      )
+      .slice(0, 8)
+      .map((config) => ({
+        id: `rating-key-${config.id}`,
+        title: config.name,
+        type: 'missing-rating-key',
+        severity: 'attention' as const,
+        message:
+          'Plex Rating Key fehlt. Tautulli und Collection-Statistiken koennen dadurch ungenau sein.',
+        href: `/api/v1/dashboard/collection-diff/${config.id}`,
+      })),
+    ...allConfigs
+      .filter((config) => duplicateNames.has(config.name.trim().toLowerCase()))
+      .slice(0, 6)
+      .map((config) => ({
+        id: `duplicate-${config.id}`,
+        title: config.name,
+        type: 'duplicate-name',
+        severity: 'watch' as const,
+        message:
+          'Der Collection-Name kommt mehrfach vor und kann Auswertungen erschweren.',
+        href: '/allcollections',
+      })),
+    ...collectionScores
+      .filter((score) => score.score < 70)
+      .slice(0, 6)
+      .map((score) => ({
+        id: `health-${score.id}`,
+        title: score.name,
+        type: 'low-health',
+        severity:
+          score.status === 'critical'
+            ? ('attention' as const)
+            : ('watch' as const),
+        message: score.reasons[0],
+        href: `/api/v1/dashboard/collection-diff/${score.id}`,
+      })),
+  ].slice(0, 14);
+};
+
+const getTautulliDataQuality = (
+  settings: ReturnType<typeof getSettings>,
+  collectionStats: {
+    rating_key?: string;
+    title?: string;
+    total_plays?: number;
+  }[]
+) => {
+  const tautulliKeys = new Set(
+    collectionStats.map((item) => item.rating_key).filter(Boolean)
+  );
+  const allConfigs = getAllCollectionConfigs(settings);
+  const missingRatingKeys = allConfigs
+    .filter((config) => !hasCollectionRatingKey(config))
+    .map((config) => config.name)
+    .slice(0, 10);
+  const noTautulliMatches = allConfigs
+    .filter(
+      (config) =>
+        config.collectionRatingKey &&
+        !tautulliKeys.has(config.collectionRatingKey)
+    )
+    .map((config) => config.name)
+    .slice(0, 10);
+
+  return {
+    configuredCollections: allConfigs.length,
+    tautulliMatchedCollections: tautulliKeys.size,
+    missingRatingKeyCount: missingRatingKeys.length,
+    noTautulliMatchCount: noTautulliMatches.length,
+    missingRatingKeys,
+    noTautulliMatches,
+    artworkCache: {
+      enabled: true,
+      strategy:
+        'Plex image proxy URLs are reused by the dashboard to reduce direct Tautulli artwork calls.',
+      candidateCount: collectionStats.filter((item) => item.rating_key).length,
+    },
+  };
+};
+
+const getSourceTestHistory = (events: DashboardEvent[]) => {
+  const tests = events.filter((event) => event.type === 'source-test');
+  const failures = tests.filter((event) => event.metadata?.ok === false).length;
+  const latencies = tests
+    .map((event) => Number(event.metadata?.latencyMs || 0))
+    .filter((latency) => latency > 0);
+
+  return {
+    total: tests.length,
+    failures,
+    successRate:
+      tests.length > 0
+        ? Math.round(((tests.length - failures) / tests.length) * 100)
+        : 0,
+    averageLatencyMs:
+      latencies.length > 0
+        ? Math.round(
+            latencies.reduce((sum, latency) => sum + latency, 0) /
+              latencies.length
+          )
+        : 0,
+    items: tests.slice(0, 10),
+  };
+};
+
+const getLatestReleaseInfo = async () => {
+  try {
+    const response = await axios.get(
+      'https://api.github.com/repos/DomiGeim/agregarr/releases/latest',
+      {
+        timeout: 5000,
+        headers: { 'User-Agent': 'Agregarr Dashboard' },
+      }
+    );
+
+    return {
+      version: String(response.data?.tag_name || '').replace(/^v/, ''),
+      url: response.data?.html_url as string | undefined,
+      publishedAt: response.data?.published_at as string | undefined,
+    };
+  } catch (error) {
+    return null;
+  }
 };
 
 const runSourceTest = async (
@@ -896,7 +1118,12 @@ const getAdvancedIntelligence = async (
   settings: ReturnType<typeof getSettings>,
   collectionScores: CollectionHealthScore[],
   sourceStatus: ReturnType<typeof getSourceStatus>,
-  trends: TrendStats | null
+  trends: TrendStats | null,
+  tautulliCollectionStats: {
+    rating_key?: string;
+    title?: string;
+    total_plays?: number;
+  }[] = []
 ) => {
   const allConfigs = getAllCollectionConfigs(settings);
   const placeholderRepository = getRepository(PlaceholderItem);
@@ -904,19 +1131,25 @@ const getAdvancedIntelligence = async (
   const metadataRepository = getRepository(CollectionMetadata);
   const now = Date.now();
 
-  const [recentPlaceholders, recentRequests, recentMetadata, storedEvents] =
-    await Promise.all([
-      placeholderRepository
-        .find({ order: { updatedAt: 'DESC' }, take: 8 })
-        .catch(() => [] as PlaceholderItem[]),
-      missingItemRepository
-        .find({ order: { updatedAt: 'DESC' }, take: 8 })
-        .catch(() => [] as MissingItemRequest[]),
-      metadataRepository
-        .find({ order: { updatedAt: 'DESC' }, take: 8 })
-        .catch(() => [] as CollectionMetadata[]),
-      readDashboardEvents(25),
-    ]);
+  const [
+    recentPlaceholders,
+    recentRequests,
+    recentMetadata,
+    storedEvents,
+    latestRelease,
+  ] = await Promise.all([
+    placeholderRepository
+      .find({ order: { updatedAt: 'DESC' }, take: 8 })
+      .catch(() => [] as PlaceholderItem[]),
+    missingItemRepository
+      .find({ order: { updatedAt: 'DESC' }, take: 8 })
+      .catch(() => [] as MissingItemRequest[]),
+    metadataRepository
+      .find({ order: { updatedAt: 'DESC' }, take: 8 })
+      .catch(() => [] as CollectionMetadata[]),
+    readDashboardEvents(25),
+    getLatestReleaseInfo(),
+  ]);
 
   const staleCollections = collectionScores.filter((score) =>
     score.reasons.some((reason) =>
@@ -1082,6 +1315,17 @@ const getAdvancedIntelligence = async (
         : 'Quelle ist nicht konfiguriert',
     };
   });
+  const problemDetails = getProblemDetails(
+    settings,
+    collectionScores,
+    sourceStatus
+  );
+  const repairCandidates = getRepairCandidates(settings, collectionScores);
+  const tautulliDataQuality = getTautulliDataQuality(
+    settings,
+    tautulliCollectionStats
+  );
+  const sourceTestHistory = getSourceTestHistory(storedEvents);
 
   const placeholderLifecycle = {
     total: recentPlaceholders.length,
@@ -1158,16 +1402,13 @@ const getAdvancedIntelligence = async (
   const sourceAttentionCount = sourceReliability.filter(
     (source) => source.status !== 'ok'
   ).length;
-  const failedRequestCount = recentRequests.filter(
-    (request) => request.requestStatus === 'failed'
-  ).length;
   const rootFolderConfigured =
     (settings.radarr || []).some((server) => server.activeDirectory) ||
     (settings.sonarr || []).some((server) => server.activeDirectory);
   const operationsSuite = [
     {
       id: 'collection-diff-preview',
-      title: 'Collection Diff Preview',
+      title: 'Echte Collection Diff Preview',
       category: 'Sync',
       status: needsSync.length ? 'ready' : 'watch',
       metric: `${needsSync.length} changed`,
@@ -1177,7 +1418,7 @@ const getAdvancedIntelligence = async (
     },
     {
       id: 'diagnostic-export',
-      title: 'Diagnosebericht',
+      title: 'Diagnosebericht Download',
       category: 'Support',
       status: errorConfigs.length ? 'ready' : 'watch',
       metric: `${errorConfigs.length} errors`,
@@ -1187,7 +1428,7 @@ const getAdvancedIntelligence = async (
     },
     {
       id: 'source-test-center',
-      title: 'Source Test Center',
+      title: 'Ausfuehrbares Source Test Center',
       category: 'Sources',
       status: sourceAttentionCount ? 'attention' : 'ready',
       metric: `${sourceAttentionCount} attention`,
@@ -1197,7 +1438,7 @@ const getAdvancedIntelligence = async (
     },
     {
       id: 'clickable-actions',
-      title: 'Klickbare Action-Center-Aktionen',
+      title: 'Action Center mit echten Aktionen',
       category: 'Workflow',
       status: actionCenter.length ? 'ready' : 'watch',
       metric: `${actionCenter.length} actions`,
@@ -1207,12 +1448,11 @@ const getAdvancedIntelligence = async (
     },
     {
       id: 'detail-drawer',
-      title: 'Detail-Drawer Grundlagen',
+      title: 'Problem Details',
       category: 'UX',
-      status: explainers.length ? 'ready' : 'watch',
-      metric: `${explainers.length} explanations`,
-      summary:
-        'Erklaerungen liefern die Basis fuer Detailansichten pro Kennzahl.',
+      status: problemDetails.length ? 'ready' : 'watch',
+      metric: `${problemDetails.length} problems`,
+      summary: 'Warnungen bekommen Ursache, Bereich, Aktion und Ziel-Link.',
       href: '/dashboard',
     },
     {
@@ -1227,7 +1467,7 @@ const getAdvancedIntelligence = async (
     },
     {
       id: 'activity-log',
-      title: 'Per-Collection Activity Log',
+      title: 'Persistente Collection Timeline',
       category: 'Timeline',
       status: collectionTimeline.length ? 'ready' : 'watch',
       metric: `${collectionTimeline.length} events`,
@@ -1237,23 +1477,21 @@ const getAdvancedIntelligence = async (
     },
     {
       id: 'smart-notifications',
-      title: 'Smart Notifications',
+      title: 'Source-Test Verlauf',
       category: 'Alerts',
-      status: actionCenter.length || failedRequestCount ? 'ready' : 'watch',
-      metric: `${actionCenter.length + failedRequestCount} notices`,
-      summary:
-        'Aktuelle Empfehlungen koennen als In-App Hinweise genutzt werden.',
+      status: sourceTestHistory.total ? 'ready' : 'watch',
+      metric: `${sourceTestHistory.successRate}% success`,
+      summary: 'Speichert Tests mit Erfolgsquote, Fehlern und Latenzsignalen.',
       href: '/dashboard',
     },
     {
       id: 'pin-to-dashboard',
-      title: 'Pin to Dashboard',
+      title: 'Wartungsmodus Banner',
       category: 'UX',
-      status: 'watch',
-      metric: `${collectionScores.length} candidates`,
-      summary:
-        'Health Scores zeigen Kandidaten, die sich fuer dauerhaftes Monitoring eignen.',
-      href: '/allcollections',
+      status: settings.main.maintenanceMode ? 'attention' : 'ready',
+      metric: settings.main.maintenanceMode ? 'visible' : 'ready',
+      summary: 'Zeigt den aktiven Wartungsmodus sichtbar oben im Dashboard.',
+      href: '/dashboard',
     },
     {
       id: 'maintenance-mode',
@@ -1414,7 +1652,7 @@ const getAdvancedIntelligence = async (
     },
     {
       id: 'backup-restore-preview',
-      title: 'Backup mit Restore-Vorschau',
+      title: 'Restore-Dry-Run mit Diff',
       category: 'Backup',
       status: 'ready',
       metric: `${allConfigs.length} configs`,
@@ -1476,6 +1714,51 @@ const getAdvancedIntelligence = async (
         'Collections, Placeholder und Requests werden als Suchbasis zusammengefuehrt.',
       href: '/dashboard',
     },
+    {
+      id: 'tautulli-data-quality',
+      title: 'Tautulli Datenqualitaet pro Collection',
+      category: 'Tautulli',
+      status: tautulliDataQuality.noTautulliMatchCount ? 'watch' : 'ready',
+      metric: `${tautulliDataQuality.tautulliMatchedCollections} matched`,
+      summary:
+        'Zeigt Collections ohne Rating Key oder ohne Treffer in Tautulli.',
+      href: '/dashboard',
+    },
+    {
+      id: 'release-update-hint',
+      title: 'Release/Update Hinweis',
+      category: 'Release',
+      status:
+        latestRelease && latestRelease.version !== getAppVersion()
+          ? 'attention'
+          : 'ready',
+      metric: latestRelease?.version || getAppVersion(),
+      summary:
+        'Vergleicht die installierte Version mit dem neuesten GitHub Release.',
+      href: latestRelease?.url || '/settings/about',
+    },
+    {
+      id: 'audit-log',
+      title: 'Audit Log',
+      category: 'Audit',
+      status: storedEvents.length ? 'ready' : 'watch',
+      metric: `${storedEvents.length} events`,
+      summary:
+        'Zeichnet Dashboard-Aktionen wie Tests, Wartung und Sync-Starts dauerhaft auf.',
+      href: '/dashboard',
+    },
+    {
+      id: 'tautulli-artwork-cache',
+      title: 'Tautulli Artwork Cache',
+      category: 'Tautulli',
+      status: tautulliDataQuality.artworkCache.candidateCount
+        ? 'ready'
+        : 'watch',
+      metric: `${tautulliDataQuality.artworkCache.candidateCount} candidates`,
+      summary:
+        'Dashboard nutzt stabile Proxy-URLs, damit Poster wiederverwendbar geladen werden.',
+      href: '/dashboard',
+    },
   ].map((item, index) => ({
     ...item,
     number: index + 1,
@@ -1499,6 +1782,19 @@ const getAdvancedIntelligence = async (
     sourceTests: Array.from(sourceTestResults.values()).sort(
       (a, b) => new Date(b.testedAt).getTime() - new Date(a.testedAt).getTime()
     ),
+    sourceTestHistory,
+    problemDetails,
+    repairCandidates,
+    tautulliDataQuality,
+    releaseStatus: {
+      installedVersion: getAppVersion(),
+      latestVersion: latestRelease?.version,
+      latestUrl: latestRelease?.url,
+      updateAvailable:
+        !!latestRelease && latestRelease.version !== getAppVersion(),
+      publishedAt: latestRelease?.publishedAt,
+    },
+    auditLog: storedEvents.slice(0, 10),
     placeholderLifecycle,
     explainers,
     availableActions: [
@@ -1543,6 +1839,11 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     let collectionStatsData = null;
     let weeklyStats = null;
     let trendStats: TrendStats | null = null;
+    let tautulliCollectionStats: {
+      rating_key?: string;
+      title?: string;
+      total_plays?: number;
+    }[] = [];
 
     // Get Tautulli stats if configured
     if (settings.tautulli.hostname && settings.tautulli.apiKey) {
@@ -1641,6 +1942,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
             collectionTvPlays += collection.total_plays;
           }
         });
+        tautulliCollectionStats = collectionStats;
 
         collectionStatsData = {
           topCollections: collectionStats.slice(0, 5),
@@ -1712,7 +2014,8 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       settings,
       collectionHealthScores,
       sourceStatus,
-      trendStats
+      trendStats,
+      tautulliCollectionStats
     );
 
     const dashboardData = {
@@ -1915,6 +2218,81 @@ dashboardRoutes.get('/placeholders', isAuthenticated(), async (req, res) => {
   });
 });
 
+dashboardRoutes.get('/problems', isAuthenticated(), (_req, res) => {
+  const settings = getSettings();
+  const collectionHealthScores = getCollectionHealthScores(settings);
+  const sourceStatus = getSourceStatus(settings);
+
+  return res.status(200).json({
+    problems: getProblemDetails(settings, collectionHealthScores, sourceStatus),
+  });
+});
+
+dashboardRoutes.get('/repair-candidates', isAuthenticated(), (_req, res) => {
+  const settings = getSettings();
+  const collectionHealthScores = getCollectionHealthScores(settings);
+
+  return res.status(200).json({
+    candidates: getRepairCandidates(settings, collectionHealthScores),
+  });
+});
+
+dashboardRoutes.get('/audit-log', isAuthenticated(), async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit as string) || 100, 250);
+
+  return res.status(200).json({
+    events: await readDashboardEvents(limit),
+  });
+});
+
+dashboardRoutes.get('/version-check', isAuthenticated(), async (_req, res) => {
+  const latestRelease = await getLatestReleaseInfo();
+
+  return res.status(200).json({
+    installedVersion: getAppVersion(),
+    latestVersion: latestRelease?.version,
+    latestUrl: latestRelease?.url,
+    updateAvailable:
+      !!latestRelease && latestRelease.version !== getAppVersion(),
+    publishedAt: latestRelease?.publishedAt,
+  });
+});
+
+dashboardRoutes.get(
+  '/collections/:id/export',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const config = getAllCollectionConfigs(settings).find(
+      (item) => item.id === req.params.id
+    );
+
+    if (!config) {
+      return res.status(404).json({ message: 'Collection config not found' });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-collection-${config.id}-${timestamp}.json"`
+    );
+
+    return res.status(200).send(
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          version: getAppVersion(),
+          type: getConfigType(config),
+          collection: config,
+        },
+        undefined,
+        ' '
+      )
+    );
+  }
+);
+
 dashboardRoutes.post(
   '/source-test/:sourceId',
   isAuthenticated(),
@@ -1925,6 +2303,11 @@ dashboardRoutes.post(
       type: 'source-test',
       title: `${result.name} getestet`,
       message: result.ok ? result.message : result.error || result.message,
+      metadata: {
+        sourceId: result.id,
+        ok: result.ok,
+        latencyMs: result.latencyMs,
+      },
     });
     dashboardCache.clear();
 
@@ -1960,6 +2343,9 @@ dashboardRoutes.post(
         type: 'action',
         title: 'Collections Sync gestartet',
         message: 'Dashboard Action Center hat einen Collection Sync gestartet.',
+        metadata: {
+          actionId,
+        },
       });
       dashboardCache.clear();
 
@@ -1977,6 +2363,11 @@ dashboardRoutes.post(
         type: 'source-test',
         title: 'Tautulli getestet',
         message: result.ok ? result.message : result.error || result.message,
+        metadata: {
+          sourceId: result.id,
+          ok: result.ok,
+          latencyMs: result.latencyMs,
+        },
       });
       dashboardCache.clear();
 
@@ -2034,6 +2425,10 @@ dashboardRoutes.post(
 
     return res.status(backupStatus.valid ? 200 : 400).json({
       ...backupStatus,
+      changedSections: buildSettingsRestoreDiff(
+        currentSettings as unknown as Record<string, unknown>,
+        req.body as Record<string, unknown>
+      ),
       current: {
         locale: currentSettings.main.locale,
         collectionCount:
@@ -2070,6 +2465,9 @@ dashboardRoutes.post('/maintenance', isAuthenticated(), async (req, res) => {
     message: enabled
       ? 'Neue Dashboard-Sync-Aktionen werden pausiert.'
       : 'Dashboard-Sync-Aktionen sind wieder erlaubt.',
+    metadata: {
+      enabled,
+    },
   });
   dashboardCache.clear();
 
