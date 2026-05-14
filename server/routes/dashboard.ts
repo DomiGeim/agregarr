@@ -85,6 +85,15 @@ interface DashboardEvent {
   metadata?: Record<string, unknown>;
 }
 
+interface HealthSnapshot {
+  date: string;
+  at: string;
+  totalCollections: number;
+  criticalCollections: number;
+  warningCollections: number;
+  averageScore: number;
+}
+
 const getConfigType = (config: DashboardCollectionConfig): string =>
   'type' in config ? config.type : 'pre-existing';
 
@@ -128,6 +137,9 @@ const sourceTestResults = new Map<string, SourceTestResult>();
 const dashboardEventsPath = (): string =>
   path.join(appDataPath(), 'dashboard-events.jsonl');
 
+const healthSnapshotsPath = (): string =>
+  path.join(appDataPath(), 'dashboard-health-snapshots.jsonl');
+
 const readDashboardEvents = async (limit = 50): Promise<DashboardEvent[]> => {
   try {
     const file = await fs.readFile(dashboardEventsPath(), 'utf-8');
@@ -166,6 +178,56 @@ const appendDashboardEvent = async (
       error: error instanceof Error ? error.message : String(error),
     });
   }
+};
+
+const readHealthSnapshots = async (limit = 60): Promise<HealthSnapshot[]> => {
+  try {
+    const file = await fs.readFile(healthSnapshotsPath(), 'utf-8');
+
+    return file
+      .split('\n')
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => JSON.parse(line) as HealthSnapshot);
+  } catch (error) {
+    return [];
+  }
+};
+
+const writeDailyHealthSnapshot = async (
+  scores: CollectionHealthScore[]
+): Promise<HealthSnapshot[]> => {
+  const snapshots = await readHealthSnapshots(90);
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (snapshots.some((snapshot) => snapshot.date === today)) {
+    return snapshots;
+  }
+
+  const snapshot: HealthSnapshot = {
+    date: today,
+    at: new Date().toISOString(),
+    totalCollections: scores.length,
+    criticalCollections: scores.filter((score) => score.status === 'critical')
+      .length,
+    warningCollections: scores.filter((score) => score.status === 'warning')
+      .length,
+    averageScore:
+      scores.length > 0
+        ? Math.round(
+            scores.reduce((sum, score) => sum + score.score, 0) / scores.length
+          )
+        : 0,
+  };
+
+  await fs.mkdir(appDataPath(), { recursive: true });
+  await fs.appendFile(
+    healthSnapshotsPath(),
+    `${JSON.stringify(snapshot)}\n`,
+    'utf-8'
+  );
+
+  return [...snapshots, snapshot].slice(-90);
 };
 
 const sanitizeSettings = (settings: unknown): unknown =>
@@ -1309,7 +1371,8 @@ const getAdvancedIntelligence = async (
     rating_key?: string;
     title?: string;
     total_plays?: number;
-  }[] = []
+  }[] = [],
+  healthSnapshots: HealthSnapshot[] = []
 ) => {
   const allConfigs = getAllCollectionConfigs(settings);
   const placeholderRepository = getRepository(PlaceholderItem);
@@ -1991,6 +2054,23 @@ const getAdvancedIntelligence = async (
       strategy:
         'Fast settings and database signals render first; Tautulli-heavy data is cached for short dashboard refreshes.',
     },
+    healthSnapshots,
+    notifications: [
+      ...problemDetails.map((problem) => ({
+        id: problem.id,
+        title: problem.title,
+        message: problem.message,
+        severity: problem.severity,
+        href: problem.href,
+      })),
+      ...settingsConsistency.map((issue) => ({
+        id: issue.id,
+        title: issue.title,
+        message: issue.message,
+        severity: issue.severity,
+        href: '/dashboard',
+      })),
+    ].slice(0, 12),
     releaseStatus: {
       installedVersion: getAppVersion(),
       latestVersion: latestRelease?.version,
@@ -2215,12 +2295,16 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       settings.plex.preExistingCollectionConfigs?.length || 0;
 
     const sourceStatus = getSourceStatus(settings);
+    const healthSnapshots = await writeDailyHealthSnapshot(
+      collectionHealthScores
+    );
     const advancedIntelligence = await getAdvancedIntelligence(
       settings,
       collectionHealthScores,
       sourceStatus,
       trendStats,
-      tautulliCollectionStats
+      tautulliCollectionStats,
+      healthSnapshots
     );
 
     const dashboardData = {
@@ -2529,9 +2613,61 @@ dashboardRoutes.get('/first-aid', isAuthenticated(), async (_req, res) => {
   });
 });
 
+dashboardRoutes.get(
+  '/first-aid/report',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+    const collectionHealthScores = getCollectionHealthScores(settings);
+    const sourceStatus = getSourceStatus(settings);
+    const consistency = getSettingsConsistency(
+      settings,
+      collectionHealthScores
+    );
+    const problems = getProblemDetails(
+      settings,
+      collectionHealthScores,
+      sourceStatus
+    );
+    const report = {
+      generatedAt: new Date().toISOString(),
+      version: getAppVersion(),
+      status: problems.length || consistency.length ? 'attention' : 'healthy',
+      likelyCause:
+        problems[0]?.message ||
+        consistency[0]?.message ||
+        'Keine offensichtliche Ursache gefunden.',
+      sourceStatus,
+      consistency,
+      problems,
+      collectionHealthScores,
+      settings: sanitizeSettings(settings.getAll()),
+    };
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-first-aid-${timestamp}.json"`
+    );
+
+    return res.status(200).send(JSON.stringify(report, undefined, ' '));
+  }
+);
+
 dashboardRoutes.get('/sync-dry-run', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(await getDetailedSyncDryRun(getSettings()));
 });
+
+dashboardRoutes.get(
+  '/health-snapshots',
+  isAuthenticated(),
+  async (_req, res) => {
+    return res.status(200).json({
+      snapshots: await readHealthSnapshots(90),
+    });
+  }
+);
 
 dashboardRoutes.get(
   '/tautulli-mapping',
@@ -2570,6 +2706,69 @@ dashboardRoutes.get(
 
     return res.status(200).json({
       mapping: getTautulliMappingDebugger(settings, collectionStats),
+    });
+  }
+);
+
+dashboardRoutes.post(
+  '/tautulli-mapping/autofix',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+    const collectionRatingKeys = getCollectionRatingKeys(settings);
+    let fixed = 0;
+    let inspected = 0;
+
+    if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tautulli is not configured.',
+      });
+    }
+
+    const collectionStats = await new TautulliAPI(settings.tautulli)
+      .getTopCollections(200, 'plays', 365, collectionRatingKeys, {
+        includeMetadata: false,
+        includeUserStats: false,
+        concurrency: 4,
+      })
+      .catch(() => []);
+    const unmatchedConfigs = getAllCollectionConfigs(settings).filter(
+      (config) => !config.collectionRatingKey
+    ) as (DashboardCollectionConfig & { collectionRatingKey?: string })[];
+
+    unmatchedConfigs.forEach((config) => {
+      inspected += 1;
+      const match = collectionStats.find(
+        (item) =>
+          item.title?.trim().toLowerCase() === config.name.trim().toLowerCase()
+      );
+
+      if (match?.rating_key) {
+        config.collectionRatingKey = match.rating_key;
+        (
+          config as DashboardCollectionConfig & { needsSync?: boolean }
+        ).needsSync = true;
+        fixed += 1;
+      }
+    });
+
+    if (fixed > 0) {
+      settings.save();
+      dashboardCache.clear();
+    }
+
+    await appendDashboardEvent({
+      type: 'repair',
+      title: 'Tautulli Mapping Auto-Fix ausgefuehrt',
+      message: `${fixed} von ${inspected} Collections wurden gemappt.`,
+      metadata: { fixed, inspected },
+    });
+
+    return res.status(200).json({
+      success: true,
+      fixed,
+      inspected,
     });
   }
 );
@@ -2732,6 +2931,9 @@ dashboardRoutes.post(
 
     settings.save();
     dashboardCache.clear();
+    const verificationScore = getCollectionHealthScores(settings).find(
+      (score) => score.id === configId
+    );
     await appendDashboardEvent({
       type: 'repair',
       title: 'Repair-Aktion vorgemerkt',
@@ -2747,6 +2949,12 @@ dashboardRoutes.post(
       configId,
       actionId,
       needsSync: config.needsSync,
+      verification: {
+        score: verificationScore?.score,
+        status: verificationScore?.status,
+        remainingReasons: verificationScore?.reasons || [],
+        stillProblem: (verificationScore?.score || 100) < 85,
+      },
     });
   }
 );
