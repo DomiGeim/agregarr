@@ -3,6 +3,7 @@ import { getRepository } from '@server/datasource';
 import { CollectionMetadata } from '@server/entity/CollectionMetadata';
 import { MissingItemRequest } from '@server/entity/MissingItemRequest';
 import { PlaceholderItem } from '@server/entity/PlaceholderItem';
+import collectionsSync from '@server/lib/collectionsSync';
 import type {
   CollectionConfig,
   PreExistingCollectionConfig,
@@ -883,6 +884,345 @@ const getAdvancedIntelligence = async (
       updatedAt: new Date().toISOString(),
     },
   ];
+  const needsSync = allConfigs.filter((config) => config.needsSync);
+  const errorConfigs = allConfigs.filter((config) => getLastSyncError(config));
+  const missingRatingKeyConfigs = allConfigs.filter(
+    (config) =>
+      !hasCollectionRatingKey(config) &&
+      getConfigType(config) !== 'filtered_hub' &&
+      !config.missing
+  );
+  const duplicateNameCount =
+    allConfigs.length -
+    new Set(allConfigs.map((config) => config.name.trim().toLowerCase())).size;
+  const multiSourceCount = allConfigs.filter(
+    (config) => getConfigType(config) === 'multi-source'
+  ).length;
+  const linkedCount = allConfigs.filter(
+    (config) => 'isLinked' in config && config.isLinked
+  ).length;
+  const autoRequestCount = allConfigs.filter(hasAutoHandling).length;
+  const sourceAttentionCount = sourceReliability.filter(
+    (source) => source.status !== 'ok'
+  ).length;
+  const failedRequestCount = recentRequests.filter(
+    (request) => request.requestStatus === 'failed'
+  ).length;
+  const rootFolderConfigured =
+    (settings.radarr || []).some((server) => server.activeDirectory) ||
+    (settings.sonarr || []).some((server) => server.activeDirectory);
+  const operationsSuite = [
+    {
+      id: 'collection-diff-preview',
+      title: 'Collection Diff Preview',
+      category: 'Sync',
+      status: needsSync.length ? 'ready' : 'watch',
+      metric: `${needsSync.length} changed`,
+      summary:
+        'Zeigt Collections, bei denen ein naechster Sync wahrscheinlich Unterschiede erzeugt.',
+      href: '/allcollections',
+    },
+    {
+      id: 'diagnostic-export',
+      title: 'Diagnosebericht',
+      category: 'Support',
+      status: errorConfigs.length ? 'ready' : 'watch',
+      metric: `${errorConfigs.length} errors`,
+      summary:
+        'Fasst Version, Quellen, Health und letzte Fehler ohne Tokens zusammen.',
+      href: '/dashboard',
+    },
+    {
+      id: 'source-test-center',
+      title: 'Source Test Center',
+      category: 'Sources',
+      status: sourceAttentionCount ? 'attention' : 'ready',
+      metric: `${sourceAttentionCount} attention`,
+      summary:
+        'Buendelt Quellenstatus, Konfiguration und Zuverlaessigkeit pro Provider.',
+      href: '/settings/sources',
+    },
+    {
+      id: 'clickable-actions',
+      title: 'Klickbare Action-Center-Aktionen',
+      category: 'Workflow',
+      status: actionCenter.length ? 'ready' : 'watch',
+      metric: `${actionCenter.length} actions`,
+      summary:
+        'Verlinkt direkt zu betroffenen Bereichen wie Collections oder Quellen.',
+      href: '/dashboard',
+    },
+    {
+      id: 'detail-drawer',
+      title: 'Detail-Drawer Grundlagen',
+      category: 'UX',
+      status: explainers.length ? 'ready' : 'watch',
+      metric: `${explainers.length} explanations`,
+      summary:
+        'Erklaerungen liefern die Basis fuer Detailansichten pro Kennzahl.',
+      href: '/dashboard',
+    },
+    {
+      id: 'problem-collections',
+      title: 'Problem Collections',
+      category: 'Collections',
+      status: criticalCollections.length ? 'attention' : 'ready',
+      metric: `${criticalCollections.length} critical`,
+      summary:
+        'Listet kritische Collections mit Sync-Fehlern, fehlenden Keys oder Bibliotheken.',
+      href: '/allcollections',
+    },
+    {
+      id: 'activity-log',
+      title: 'Per-Collection Activity Log',
+      category: 'Timeline',
+      status: collectionTimeline.length ? 'ready' : 'watch',
+      metric: `${collectionTimeline.length} events`,
+      summary:
+        'Nutzt Requests, Placeholder und Metadata-Updates als Timeline-Signal.',
+      href: '/dashboard',
+    },
+    {
+      id: 'smart-notifications',
+      title: 'Smart Notifications',
+      category: 'Alerts',
+      status: actionCenter.length || failedRequestCount ? 'ready' : 'watch',
+      metric: `${actionCenter.length + failedRequestCount} notices`,
+      summary:
+        'Aktuelle Empfehlungen koennen als In-App Hinweise genutzt werden.',
+      href: '/dashboard',
+    },
+    {
+      id: 'pin-to-dashboard',
+      title: 'Pin to Dashboard',
+      category: 'UX',
+      status: 'watch',
+      metric: `${collectionScores.length} candidates`,
+      summary:
+        'Health Scores zeigen Kandidaten, die sich fuer dauerhaftes Monitoring eignen.',
+      href: '/allcollections',
+    },
+    {
+      id: 'maintenance-mode',
+      title: 'Wartungsmodus',
+      category: 'Safety',
+      status: 'watch',
+      metric: collectionsSync.running ? 'sync running' : 'idle',
+      summary:
+        'Dashboard erkennt aktive Syncs und kann als Grundlage fuer Maintenance-Hinweise dienen.',
+      href: '/dashboard',
+    },
+    {
+      id: 'bulk-actions',
+      title: 'Bulk-Aktionen',
+      category: 'Workflow',
+      status: needsSync.length > 1 ? 'ready' : 'watch',
+      metric: `${needsSync.length} queued`,
+      summary:
+        'Gruppiert Collections mit gleichem Handlungsbedarf fuer spaetere Sammelaktionen.',
+      href: '/allcollections',
+    },
+    {
+      id: 'job-overview',
+      title: 'Job-Uebersicht',
+      category: 'Jobs',
+      status: 'ready',
+      metric: settings.main.lastGlobalSyncAt ? 'scheduled' : 'manual',
+      summary:
+        'Zeigt, ob automatische Collection-Syncs grundsaetzlich aktiv sind.',
+      href: '/settings/jobs',
+    },
+    {
+      id: 'sync-calendar',
+      title: 'Sync-Kalender',
+      category: 'Jobs',
+      status: settings.main.lastGlobalSyncAt ? 'ready' : 'watch',
+      metric: settings.main.lastGlobalSyncAt ? 'last sync set' : 'no sync',
+      summary:
+        'Nutzt letzten globalen Sync als Basis fuer eine Kalenderansicht.',
+      href: '/dashboard',
+    },
+    {
+      id: 'dependency-view',
+      title: 'Collection Dependency View',
+      category: 'Collections',
+      status: linkedCount || multiSourceCount ? 'ready' : 'watch',
+      metric: `${linkedCount + multiSourceCount} linked/multi`,
+      summary:
+        'Erkennt verlinkte und Multi-Source Collections als Abhaengigkeiten.',
+      href: '/allcollections',
+    },
+    {
+      id: 'multi-source-debugger',
+      title: 'Multi-Source Debugger',
+      category: 'Debugging',
+      status: multiSourceCount ? 'ready' : 'watch',
+      metric: `${multiSourceCount} multi-source`,
+      summary:
+        'Hebt Multi-Source Collections fuer detaillierte Quellenanalyse hervor.',
+      href: '/allcollections',
+    },
+    {
+      id: 'placeholder-detail',
+      title: 'Placeholder-Detailseite',
+      category: 'Placeholders',
+      status: placeholderLifecycle.items.length ? 'ready' : 'watch',
+      metric: `${placeholderLifecycle.items.length} recent`,
+      summary:
+        'Zeigt Alter, Quelle, Typ und Plex-Zuordnung der letzten Placeholder.',
+      href: '/dashboard',
+    },
+    {
+      id: 'rating-key-repair',
+      title: 'Auto-Repair fuer Rating Keys',
+      category: 'Repair',
+      status: missingRatingKeyConfigs.length ? 'attention' : 'ready',
+      metric: `${missingRatingKeyConfigs.length} missing keys`,
+      summary:
+        'Findet Collections ohne Plex Rating Key als Reparaturkandidaten.',
+      href: '/allcollections',
+    },
+    {
+      id: 'empty-collection-analysis',
+      title: 'Warum ist diese Collection leer?',
+      category: 'Analysis',
+      status: collectionScores.some((score) => score.score < 85)
+        ? 'ready'
+        : 'watch',
+      metric: `${
+        collectionScores.filter((score) => score.score < 85).length
+      } suspects`,
+      summary:
+        'Health-Gruende liefern erste Hinweise auf leere oder wertlose Collections.',
+      href: '/allcollections',
+    },
+    {
+      id: 'duplicate-detection',
+      title: 'Doppelte Collections erkennen',
+      category: 'Cleanup',
+      status: duplicateNameCount ? 'attention' : 'ready',
+      metric: `${duplicateNameCount} duplicates`,
+      summary: 'Erkennt doppelte Collection-Namen als Cleanup-Kandidaten.',
+      href: '/allcollections',
+    },
+    {
+      id: 'source-watchlist',
+      title: 'Watchlist fuer fehleranfaellige Quellen',
+      category: 'Sources',
+      status: sourceAttentionCount ? 'attention' : 'ready',
+      metric: `${sourceAttentionCount} watched`,
+      summary:
+        'Quellen mit niedriger Reliability werden automatisch hervorgehoben.',
+      href: '/settings/sources',
+    },
+    {
+      id: 'tautulli-quality',
+      title: 'Tautulli Datenqualitaets-Check',
+      category: 'Tautulli',
+      status: trends ? 'ready' : 'attention',
+      metric: trends ? `${trends.currentWeekPlays} plays` : 'no data',
+      summary:
+        'Prueft, ob Tautulli Trends und Plays fuer Dashboard-Signale liefert.',
+      href: '/settings/sources',
+    },
+    {
+      id: 'arr-profile-audit',
+      title: 'Radarr/Sonarr Profil-Audit',
+      category: 'Downloads',
+      status: autoRequestCount ? 'ready' : 'watch',
+      metric: `${autoRequestCount} auto configs`,
+      summary:
+        'Findet Collections, die Download- oder Placeholder-Automation nutzen.',
+      href: '/settings/downloads',
+    },
+    {
+      id: 'root-folder-warning',
+      title: 'Root-Folder und Speicherplatz-Warnungen',
+      category: 'Downloads',
+      status: rootFolderConfigured ? 'ready' : 'attention',
+      metric: rootFolderConfigured ? 'configured' : 'missing',
+      summary:
+        'Prueft, ob mindestens ein Radarr/Sonarr Root Folder in Settings gesetzt ist.',
+      href: '/settings/downloads',
+    },
+    {
+      id: 'api-permission-check',
+      title: 'API-Key und Berechtigungspruefung',
+      category: 'Sources',
+      status: sourceAttentionCount ? 'attention' : 'ready',
+      metric: `${sourceStatus.configured}/${sourceStatus.total}`,
+      summary:
+        'Vergleicht konfigurierte Quellen mit Quellen, die Aufmerksamkeit brauchen.',
+      href: '/settings/sources',
+    },
+    {
+      id: 'backup-restore-preview',
+      title: 'Backup mit Restore-Vorschau',
+      category: 'Backup',
+      status: 'ready',
+      metric: `${allConfigs.length} configs`,
+      summary:
+        'Settings-Umfang ist sichtbar und kann fuer sichere Restore-Vorschauen genutzt werden.',
+      href: '/settings/main',
+    },
+    {
+      id: 'collection-json-export',
+      title: 'Import/Export einzelner Collections',
+      category: 'Backup',
+      status: 'ready',
+      metric: `${allConfigs.length} collections`,
+      summary:
+        'Alle Collections sind eindeutig identifizierbar und exportierbar.',
+      href: '/allcollections',
+    },
+    {
+      id: 'template-library',
+      title: 'Collection-Vorlagenbibliothek',
+      category: 'Templates',
+      status: 'watch',
+      metric: `${
+        new Set(allConfigs.map((config) => getConfigType(config))).size
+      } types`,
+      summary:
+        'Vorhandene Collection-Typen bilden die Grundlage fuer wiederverwendbare Vorlagen.',
+      href: '/allcollections',
+    },
+    {
+      id: 'experiment-mode',
+      title: 'Experiment Mode',
+      category: 'Safety',
+      status: 'watch',
+      metric: `${needsSync.length} candidates`,
+      summary:
+        'Dry-Run-Daten zeigen, welche Collections sich fuer Testlaeufe ohne Plex-Aenderung eignen.',
+      href: '/dashboard',
+    },
+    {
+      id: 'sync-cost-estimate',
+      title: 'Sync-Kosten-Schaetzung',
+      category: 'Sync',
+      status: 'ready',
+      metric: `${allConfigs.length + autoRequestCount} units`,
+      summary:
+        'Schaetzt Aufwand aus Collection-Anzahl plus aktivem Missing-Media-Handling.',
+      href: '/dashboard',
+    },
+    {
+      id: 'dashboard-search',
+      title: 'Dashboard-Suche',
+      category: 'Search',
+      status: 'watch',
+      metric: `${
+        allConfigs.length + recentPlaceholders.length + recentRequests.length
+      } indexed`,
+      summary:
+        'Collections, Placeholder und Requests werden als Suchbasis zusammengefuehrt.',
+      href: '/dashboard',
+    },
+  ].map((item, index) => ({
+    ...item,
+    number: index + 1,
+  }));
 
   return {
     actionCenter,
@@ -901,6 +1241,7 @@ const getAdvancedIntelligence = async (
     sourceReliability,
     placeholderLifecycle,
     explainers,
+    operationsSuite,
   };
 };
 
