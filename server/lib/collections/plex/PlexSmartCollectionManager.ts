@@ -284,6 +284,7 @@ class PlexSmartCollectionManager {
    * @param mediaType - 'movie' or 'tv'
    * @param subtype - Hub subtype ('recently_added', 'recently_released', or 'recently_released_episodes')
    * @param maxItems - Maximum number of items to include in the smart collection
+   * @param excludeCollectionTitles - Collection titles to exclude via Plex smart filter
    * @returns The rating key of the created smart collection or null if failed
    */
   public async createFilteredHub(
@@ -294,7 +295,8 @@ class PlexSmartCollectionManager {
       | 'recently_added'
       | 'recently_released'
       | 'recently_released_episodes',
-    maxItems?: number
+    maxItems?: number,
+    excludeCollectionTitles?: string[]
   ): Promise<string | null> {
     try {
       logger.debug(
@@ -357,6 +359,12 @@ class PlexSmartCollectionManager {
         }
       } else {
         throw new Error(`Unsupported filtered hub subtype: ${subtype}`);
+      }
+
+      if (excludeCollectionTitles?.length) {
+        for (const collectionTitle of excludeCollectionTitles) {
+          filterUri += `&collection!=${encodeURIComponent(collectionTitle)}`;
+        }
       }
 
       // Add limit parameter if specified
@@ -657,6 +665,7 @@ class PlexSmartCollectionManager {
    * @param mediaType - 'movie' or 'tv'
    * @param subtype - Hub subtype ('recently_added', 'recently_released', or 'recently_released_episodes')
    * @param maxItems - Maximum number of items to include in the smart collection
+   * @param excludeCollectionTitles - Collection titles to exclude via Plex smart filter
    * @returns Promise<void>
    */
   public async updateFilteredHubUri(
@@ -667,7 +676,8 @@ class PlexSmartCollectionManager {
       | 'recently_added'
       | 'recently_released'
       | 'recently_released_episodes',
-    maxItems?: number
+    maxItems?: number,
+    excludeCollectionTitles?: string[]
   ): Promise<void> {
     try {
       logger.debug(
@@ -731,6 +741,12 @@ class PlexSmartCollectionManager {
         }
       } else {
         throw new Error(`Unsupported filtered hub subtype: ${subtype}`);
+      }
+
+      if (excludeCollectionTitles?.length) {
+        for (const collectionTitle of excludeCollectionTitles) {
+          filterUri += `&collection!=${encodeURIComponent(collectionTitle)}`;
+        }
       }
 
       // Add limit parameter if specified
