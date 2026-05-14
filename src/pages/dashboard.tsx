@@ -5,6 +5,7 @@ import type { NextPage } from 'next';
 import { defineMessages, useIntl } from 'react-intl';
 // useSWR import removed - not used in simplified dashboard
 import CollectionStatsGrid from '@app/components/Dashboard/CollectionStatsGrid';
+import DashboardInsights from '@app/components/Dashboard/DashboardInsights';
 import DashboardStats from '@app/components/Dashboard/DashboardStats';
 import MissingItemsFeed from '@app/components/Dashboard/MissingItemsFeed';
 
@@ -51,6 +52,8 @@ const DashboardPage: NextPage = () => {
       <div className="space-y-6">
         {/* Overview Stats */}
         <DashboardStats />
+
+        <DashboardInsights />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Collection Statistics */}
