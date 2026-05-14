@@ -46,6 +46,30 @@ const setCachedDashboardData = <T>(key: string, data: T): void => {
   });
 };
 
+const getPlexImageProxyUrl = (imagePath?: string): string | undefined => {
+  if (!imagePath) {
+    return undefined;
+  }
+
+  let normalizedPath = imagePath;
+
+  try {
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      normalizedPath = new URL(imagePath).pathname;
+    }
+  } catch (error) {
+    normalizedPath = imagePath;
+  }
+
+  normalizedPath = normalizedPath.split('?')[0];
+
+  if (!normalizedPath.startsWith('/')) {
+    return undefined;
+  }
+
+  return `/api/v1/plex/image?path=${encodeURIComponent(normalizedPath)}`;
+};
+
 const withTimeout = async <T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -502,6 +526,12 @@ dashboardRoutes.get(
         const createdAt = !Number.isNaN(numericAddedAt)
           ? new Date(numericAddedAt * 1000).toISOString()
           : new Date().toISOString();
+        const imagePath =
+          item.media_type === 'episode'
+            ? item.grandparent_thumb || item.parent_thumb || item.thumb
+            : item.media_type === 'season'
+            ? item.parent_thumb || item.thumb
+            : item.thumb;
 
         return {
           id: Number(item.rating_key) || index,
@@ -512,7 +542,8 @@ dashboardRoutes.get(
               ? item.grandparent_title || item.full_title || item.title
               : item.title,
           posterPath: undefined,
-          posterUrl: undefined,
+          posterUrl: getPlexImageProxyUrl(imagePath),
+          thumb: imagePath,
           year: item.year ? Number(item.year) : undefined,
           collectionName: item.section_name || 'Tautulli',
           collectionSource: 'Tautulli',
@@ -615,9 +646,13 @@ dashboardRoutes.get('/collections', isAuthenticated(), async (req, res) => {
       collectionRatingKeys,
       { concurrency: 6 }
     );
+    const collectionsWithImages = collections.map((collection) => ({
+      ...collection,
+      posterUrl: getPlexImageProxyUrl(collection.thumb),
+    }));
 
     const collectionData = {
-      collections,
+      collections: collectionsWithImages,
       metadata: {
         limit: numericLimit,
         statType,

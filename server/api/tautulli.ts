@@ -150,6 +150,8 @@ export interface TautulliRecentlyAddedItem {
   added_at?: number | string;
   originally_available_at?: string;
   thumb?: string;
+  parent_thumb?: string;
+  grandparent_thumb?: string;
   art?: string;
   section_id?: number | string;
   section_name?: string;
@@ -224,6 +226,8 @@ interface TautulliCollectionStats {
   section_id: number;
   section_name: string;
   item_count: number;
+  thumb?: string;
+  art?: string;
   total_plays: number;
   total_duration: number;
   last_played?: number;
@@ -809,6 +813,8 @@ class TautulliAPI {
         section_id: collection.section_id,
         section_name: collection.section_name,
         item_count: collection.item_count,
+        thumb: collection.thumb,
+        art: collection.art,
         total_plays: totalPlays,
         total_duration: totalDuration,
         last_played: collection.last_played,
@@ -1016,6 +1022,8 @@ class TautulliAPI {
             section_id: metadata.section_id || collectionStat.section_id,
             section_name: metadata.library_name || collectionStat.section_name,
             item_count: metadata.children_count || collectionStat.item_count,
+            thumb: metadata.thumb || collectionStat.thumb,
+            art: metadata.art || collectionStat.art,
           }
         : {}),
       user_stats: userStats,
@@ -1027,6 +1035,8 @@ class TautulliAPI {
     section_id?: number;
     library_name?: string;
     children_count?: number;
+    thumb?: string;
+    art?: string;
   } | null> {
     try {
       const metadataResponse = await this.axios.get('/api/v2', {

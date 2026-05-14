@@ -55,6 +55,7 @@ interface MissingItem {
   collectionName: string;
   collectionSource: string;
   collectionSubtype?: string;
+  thumb?: string;
   posterUrl?: string;
   requestService: string;
   requestMethod: string;
@@ -303,20 +304,22 @@ const MissingItemsFeed: React.FC = () => {
                       <img
                         src={item.posterUrl || getTmdbImageUrl(item.posterPath)}
                         alt={item.title}
-                        className="h-18 w-12 rounded border border-gray-600 object-cover"
+                        className="h-16 w-11 rounded border border-gray-600 object-cover"
                         onError={(e) => {
                           e.currentTarget.style.display = 'none';
                           const iconDiv = e.currentTarget
                             .nextElementSibling as HTMLElement;
-                          if (iconDiv) iconDiv.style.display = 'block';
+                          if (iconDiv) iconDiv.style.display = 'flex';
                         }}
                       />
-                      <div className="hidden">
-                        {getMediaIcon(item.mediaType, 'w-12 h-12')}
+                      <div className="hidden h-16 w-11 items-center justify-center rounded border border-gray-700 bg-stone-900">
+                        {getMediaIcon(item.mediaType, 'w-8 h-8')}
                       </div>
                     </div>
                   ) : (
-                    getMediaIcon(item.mediaType, 'w-12 h-12')
+                    <div className="flex h-16 w-11 items-center justify-center rounded border border-gray-700 bg-stone-900">
+                      {getMediaIcon(item.mediaType, 'w-8 h-8')}
+                    </div>
                   )}
                 </div>
 
