@@ -471,10 +471,24 @@ class PlexHubManager {
               }
             } else {
               // Move succeeded - update our tracking of current order
-              const itemToMove = currentOrder.splice(currentPosition, 1)[0];
-              const predecessorNewPosition =
-                currentOrder.indexOf(expectedPredecessor);
-              currentOrder.splice(predecessorNewPosition + 1, 0, itemToMove);
+              if (currentPosition === -1) {
+                logger.warn(
+                  `Item ${currentItem} not found in tracking array, refreshing`,
+                  { label: 'Plex API', sectionId, hubId: currentItem }
+                );
+                const refreshed = await this.getHubManagement(sectionId);
+                currentOrder.length = 0;
+                currentOrder.push(
+                  ...refreshed.MediaContainer.Hub.map(
+                    (hub: { identifier: string }) => hub.identifier
+                  )
+                );
+              } else {
+                const itemToMove = currentOrder.splice(currentPosition, 1)[0];
+                const predecessorNewPosition =
+                  currentOrder.indexOf(expectedPredecessor);
+                currentOrder.splice(predecessorNewPosition + 1, 0, itemToMove);
+              }
             }
           } catch (error) {
             logger.error(

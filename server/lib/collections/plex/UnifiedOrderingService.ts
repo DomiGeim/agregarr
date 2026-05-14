@@ -228,8 +228,19 @@ export async function applyUnifiedOrderingToPlex(
         (a, b) => a.sortOrder - b.sortOrder
       );
 
-      // Extract identifiers in the desired order
-      const orderedIdentifiers = sortedItems.map((item) => item.identifier);
+      const seenIdentifiers = new Set<string>();
+      const orderedIdentifiers: string[] = [];
+      for (const item of sortedItems) {
+        if (seenIdentifiers.has(item.identifier)) {
+          logger.warn(
+            `Dropping duplicate hub identifier ${item.identifier} in library ${libraryId}`,
+            { label: 'Unified Ordering Service', libraryId }
+          );
+          continue;
+        }
+        seenIdentifiers.add(item.identifier);
+        orderedIdentifiers.push(item.identifier);
+      }
 
       // Determine library type from hub identifiers
       const libraryType = sortedItems.some(
