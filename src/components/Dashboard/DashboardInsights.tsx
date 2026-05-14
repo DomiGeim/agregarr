@@ -109,6 +109,13 @@ const messages = defineMessages({
   dryRunMissing: '{count} missing',
   dryRunPlaceholders: '{count} placeholders',
   cacheEntries: '{count} cache entries',
+  restoreBackup: 'Restore backup',
+  collectionDetail: 'Collection Detail',
+  loadDetails: 'Load details',
+  firstAidReport: 'Download First Aid report',
+  runMappingAutofix: 'Run mapping auto-fix',
+  notifications: 'Notifications',
+  healthSnapshots: 'Health Snapshots',
 });
 
 interface DashboardInsightData {
@@ -282,6 +289,21 @@ interface DashboardInsightData {
         href: string;
       }[];
     };
+    healthSnapshots?: {
+      date: string;
+      at: string;
+      totalCollections: number;
+      criticalCollections: number;
+      warningCollections: number;
+      averageScore: number;
+    }[];
+    notifications?: {
+      id: string;
+      title: string;
+      message: string;
+      severity: 'error' | 'warning' | 'info';
+      href: string;
+    }[];
     dashboardPerformance?: {
       cacheTtlMs: number;
       cacheEntries: number;
@@ -396,6 +418,27 @@ const DashboardInsights: React.FC = () => {
     current?: { collectionCount: number; locale?: string };
     incoming?: { collectionCount: number; locale?: string };
   } | null>(null);
+  const [backupPayload, setBackupPayload] = useState<unknown>(null);
+  const [collectionDetail, setCollectionDetail] = useState<{
+    collection: {
+      id: string;
+      name: string;
+      type: string;
+      libraryName?: string;
+      collectionRatingKey?: string;
+      needsSync: boolean;
+      lastSyncError?: string;
+    };
+    health?: {
+      score: number;
+      status: string;
+      reasons: string[];
+    };
+    missingItems: unknown[];
+    placeholders: unknown[];
+    exportUrl: string;
+    diffUrl: string;
+  } | null>(null);
   const filteredOperations = useMemo(() => {
     const query = operationQuery.trim().toLowerCase();
 
@@ -502,13 +545,65 @@ const DashboardInsights: React.FC = () => {
         '/api/v1/dashboard/settings-restore-preview',
         backup
       );
+      setBackupPayload(backup);
       setBackupPreview(response.data);
       setActionMessage(intl.formatMessage(messages.actionSucceeded));
     } catch (err) {
+      setBackupPayload(null);
       setBackupPreview(null);
       setActionMessage(intl.formatMessage(messages.actionFailed));
     } finally {
       event.target.value = '';
+    }
+  };
+  const restoreSettingsBackup = async () => {
+    if (!backupPayload) {
+      return;
+    }
+
+    setRunningAction('restore-backup');
+    setActionMessage(null);
+
+    try {
+      await axios.post('/api/v1/settings/backup/restore', backupPayload);
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const loadCollectionDetail = async (collectionId: string) => {
+    setRunningAction(`collection-detail-${collectionId}`);
+
+    try {
+      const response = await axios.get(
+        `/api/v1/dashboard/collections/${collectionId}/detail`
+      );
+      setCollectionDetail(response.data);
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const runMappingAutoFix = async () => {
+    setRunningAction('mapping-autofix');
+    setActionMessage(null);
+
+    try {
+      const response = await axios.post(
+        '/api/v1/dashboard/tautulli-mapping/autofix'
+      );
+      setActionMessage(
+        `${intl.formatMessage(messages.actionSucceeded)} ${
+          response.data.fixed
+        }/${response.data.inspected}`
+      );
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
     }
   };
 
@@ -521,15 +616,46 @@ const DashboardInsights: React.FC = () => {
 
     const sections = Array.from(root.querySelectorAll('section'));
 
-    sections.forEach((section, index) => {
+    sections.forEach((section) => {
       const heading = section.querySelector('h4');
 
       if (!heading || heading.querySelector('[data-collapse-button]')) {
         return;
       }
 
-      const key = `agregarr-dashboard-section-${index}`;
+      const key = `agregarr-dashboard-section-${heading.textContent
+        ?.trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')}`;
       const button = document.createElement('button');
+      const upButton = document.createElement('button');
+      const downButton = document.createElement('button');
+      const orderKey = 'agregarr-dashboard-section-order';
+      const sectionId = key.replace('agregarr-dashboard-section-', '');
+      const getOrder = (): string[] =>
+        JSON.parse(localStorage.getItem(orderKey) || '[]') as string[];
+      const saveOrder = (order: string[]) =>
+        localStorage.setItem(orderKey, JSON.stringify(order));
+      const applyOrder = () => {
+        const order = getOrder();
+
+        if (!order.includes(sectionId)) {
+          order.push(sectionId);
+          saveOrder(order);
+        }
+
+        sections.forEach((item) => {
+          const itemHeading = item.querySelector('h4');
+          const itemId = itemHeading?.textContent
+            ?.trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-');
+
+          (item as HTMLElement).style.order = String(
+            Math.max(0, order.indexOf(itemId || ''))
+          );
+        });
+      };
       const applyState = (collapsed: boolean) => {
         Array.from(section.children).forEach((child) => {
           if (child !== heading) {
@@ -552,9 +678,46 @@ const DashboardInsights: React.FC = () => {
         localStorage.setItem(key, nextCollapsed ? 'collapsed' : 'expanded');
         applyState(nextCollapsed);
       });
+      upButton.type = 'button';
+      upButton.textContent = '↑';
+      upButton.className =
+        'rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60';
+      upButton.addEventListener('click', () => {
+        const order = getOrder();
+        const currentIndex = order.indexOf(sectionId);
+
+        if (currentIndex > 0) {
+          [order[currentIndex - 1], order[currentIndex]] = [
+            order[currentIndex],
+            order[currentIndex - 1],
+          ];
+          saveOrder(order);
+          applyOrder();
+        }
+      });
+      downButton.type = 'button';
+      downButton.textContent = '↓';
+      downButton.className =
+        'rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60';
+      downButton.addEventListener('click', () => {
+        const order = getOrder();
+        const currentIndex = order.indexOf(sectionId);
+
+        if (currentIndex >= 0 && currentIndex < order.length - 1) {
+          [order[currentIndex + 1], order[currentIndex]] = [
+            order[currentIndex],
+            order[currentIndex + 1],
+          ];
+          saveOrder(order);
+          applyOrder();
+        }
+      });
       heading.classList.add('gap-2');
+      heading.appendChild(upButton);
+      heading.appendChild(downButton);
       heading.appendChild(button);
       applyState(collapsed);
+      applyOrder();
     });
   }, [data, intl]);
 
@@ -664,11 +827,58 @@ const DashboardInsights: React.FC = () => {
                   >
                     {intl.formatMessage(messages.exportCollection)}
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => loadCollectionDetail(collection.id)}
+                    className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                  >
+                    {intl.formatMessage(messages.loadDetails)}
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         </section>
+
+        {collectionDetail && (
+          <section className="rounded-md border border-gray-700 p-4">
+            <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+              <RectangleStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+              {intl.formatMessage(messages.collectionDetail)}
+            </h4>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-white">
+                {collectionDetail.collection.name}
+              </p>
+              <p className="text-xs text-gray-400">
+                {collectionDetail.collection.type} /{' '}
+                {collectionDetail.collection.libraryName || 'library'}
+              </p>
+              <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+                {collectionDetail.health?.score || 0} /{' '}
+                {collectionDetail.health?.status || 'unknown'}
+              </p>
+              <p className="text-xs text-gray-500">
+                {collectionDetail.health?.reasons?.join(', ') ||
+                  intl.formatMessage(messages.noItems)}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={collectionDetail.diffUrl}
+                  className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                >
+                  {intl.formatMessage(messages.problemDetails)}
+                </a>
+                <a
+                  href={collectionDetail.exportUrl}
+                  className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                >
+                  {intl.formatMessage(messages.exportCollection)}
+                </a>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
           <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
@@ -809,6 +1019,12 @@ const DashboardInsights: React.FC = () => {
               >
                 {intl.formatMessage(messages.firstAid)}
               </button>
+              <a
+                href="/api/v1/dashboard/first-aid/report"
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+              >
+                {intl.formatMessage(messages.firstAidReport)}
+              </a>
               <button
                 type="button"
                 onClick={() => backupInputRef.current?.click()}
@@ -838,6 +1054,16 @@ const DashboardInsights: React.FC = () => {
                     .map((section) => section.section)
                     .join(', ') || intl.formatMessage(messages.noItems)}
                 </p>
+                {backupPreview.valid && (
+                  <button
+                    type="button"
+                    onClick={restoreSettingsBackup}
+                    disabled={runningAction === 'restore-backup'}
+                    className="mt-2 rounded border border-orange-500/60 px-3 py-1.5 text-xs font-semibold text-orange-200 transition-colors hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {intl.formatMessage(messages.restoreBackup)}
+                  </button>
+                )}
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2 rounded bg-stone-900 px-3 py-2">
@@ -1446,6 +1672,14 @@ const DashboardInsights: React.FC = () => {
                 </div>
               ))}
           </div>
+          <button
+            type="button"
+            onClick={runMappingAutoFix}
+            disabled={runningAction === 'mapping-autofix'}
+            className="mt-3 rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {intl.formatMessage(messages.runMappingAutofix)}
+          </button>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">
@@ -1532,6 +1766,79 @@ const DashboardInsights: React.FC = () => {
             <p className="text-xs text-gray-500">
               {intelligence?.dashboardPerformance?.strategy}
             </p>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ExclamationTriangleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.notifications)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.notifications || []).slice(0, 6).length ? (
+              (intelligence?.notifications || []).slice(0, 6).map((item) => (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  className="block rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-900/70"
+                >
+                  <p
+                    className={`text-sm font-medium ${
+                      item.severity === 'error'
+                        ? 'text-red-300'
+                        : item.severity === 'warning'
+                        ? 'text-orange-300'
+                        : 'text-gray-300'
+                    }`}
+                  >
+                    {item.title}
+                  </p>
+                  <p className="line-clamp-2 mt-1 text-xs text-gray-500">
+                    {item.message}
+                  </p>
+                </a>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ArrowTrendingUpIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.healthSnapshots)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.healthSnapshots || []).slice(-5).length ? (
+              (intelligence?.healthSnapshots || [])
+                .slice(-5)
+                .map((snapshot) => (
+                  <div
+                    key={snapshot.date}
+                    className="rounded bg-stone-900 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-gray-200">
+                        {snapshot.date}
+                      </p>
+                      <span className="text-xs text-orange-300">
+                        {snapshot.averageScore}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {snapshot.criticalCollections} critical /{' '}
+                      {snapshot.warningCollections} warning
+                    </p>
+                  </div>
+                ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
           </div>
         </section>
 
