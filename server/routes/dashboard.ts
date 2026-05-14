@@ -1,5 +1,6 @@
 import TautulliAPI from '@server/api/tautulli';
 import { getRepository } from '@server/datasource';
+import { CollectionMetadata } from '@server/entity/CollectionMetadata';
 import { MissingItemRequest } from '@server/entity/MissingItemRequest';
 import { PlaceholderItem } from '@server/entity/PlaceholderItem';
 import type {
@@ -9,6 +10,7 @@ import type {
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { getAppVersion } from '@server/utils/appVersion';
 import { Router } from 'express';
 
 const dashboardRoutes = Router();
@@ -36,6 +38,25 @@ interface CollectionHealthScore {
 }
 
 type DashboardCollectionConfig = CollectionConfig | PreExistingCollectionConfig;
+
+interface TrendStats {
+  currentWeekPlays: number;
+  previousWeekPlays: number;
+  delta: number;
+  deltaPercent: number;
+  topMovies: {
+    title: string;
+    ratingKey?: string;
+    plays: number;
+    mediaType?: string;
+  }[];
+  topTv: {
+    title: string;
+    ratingKey?: string;
+    plays: number;
+    mediaType?: string;
+  }[];
+}
 
 const getConfigType = (config: DashboardCollectionConfig): string =>
   'type' in config ? config.type : 'pre-existing';
@@ -635,6 +656,254 @@ const getDashboardPreviews = async (
   };
 };
 
+const getAdvancedIntelligence = async (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[],
+  sourceStatus: ReturnType<typeof getSourceStatus>,
+  trends: TrendStats | null
+) => {
+  const allConfigs = getAllCollectionConfigs(settings);
+  const placeholderRepository = getRepository(PlaceholderItem);
+  const missingItemRepository = getRepository(MissingItemRequest);
+  const metadataRepository = getRepository(CollectionMetadata);
+  const now = Date.now();
+
+  const [recentPlaceholders, recentRequests, recentMetadata] =
+    await Promise.all([
+      placeholderRepository
+        .find({ order: { updatedAt: 'DESC' }, take: 8 })
+        .catch(() => [] as PlaceholderItem[]),
+      missingItemRepository
+        .find({ order: { updatedAt: 'DESC' }, take: 8 })
+        .catch(() => [] as MissingItemRequest[]),
+      metadataRepository
+        .find({ order: { updatedAt: 'DESC' }, take: 8 })
+        .catch(() => [] as CollectionMetadata[]),
+    ]);
+
+  const staleCollections = collectionScores.filter((score) =>
+    score.reasons.some((reason) =>
+      reason.includes('Tagen nicht synchronisiert')
+    )
+  );
+  const criticalCollections = collectionScores.filter(
+    (score) => score.status === 'critical'
+  );
+  const hiddenCollections = allConfigs.filter(
+    (config) =>
+      !config.visibilityConfig?.usersHome &&
+      !config.visibilityConfig?.serverOwnerHome &&
+      !config.visibilityConfig?.libraryRecommended
+  );
+  const actionCenter = [
+    ...criticalCollections.slice(0, 3).map((collection) => ({
+      id: `fix-${collection.id}`,
+      title: `${collection.name} pruefen`,
+      message: collection.reasons[0],
+      priority: 'high' as const,
+      href: '/allcollections',
+      actionLabel: 'Collection oeffnen',
+    })),
+    ...(settings.tautulli.hostname && settings.tautulli.apiKey
+      ? []
+      : [
+          {
+            id: 'configure-tautulli',
+            title: 'Tautulli konfigurieren',
+            message:
+              'Aktiviere Tautulli, damit Trends, Heat Scores und Collection Views genauer werden.',
+            priority: 'medium' as const,
+            href: '/settings/sources',
+            actionLabel: 'Quellen oeffnen',
+          },
+        ]),
+    ...(hiddenCollections.length
+      ? [
+          {
+            id: 'hidden-collections',
+            title: 'Unsichtbare Collections pruefen',
+            message: `${hiddenCollections.length} Collections sind aktuell in keinem Hub sichtbar.`,
+            priority: 'low' as const,
+            href: '/allcollections',
+            actionLabel: 'Collections oeffnen',
+          },
+        ]
+      : []),
+    ...(staleCollections.length
+      ? [
+          {
+            id: 'stale-collections',
+            title: 'Stale Collections synchronisieren',
+            message: `${staleCollections.length} Collections wurden lange nicht erfolgreich synchronisiert.`,
+            priority: 'medium' as const,
+            href: '/allcollections',
+            actionLabel: 'Sync pruefen',
+          },
+        ]
+      : []),
+  ].slice(0, 6);
+
+  const collectionTimeline = [
+    ...recentRequests.map((request) => ({
+      id: `request-${request.id}`,
+      type: 'request',
+      title: request.title,
+      message: `${request.collectionName} -> ${request.requestStatus}`,
+      at: request.updatedAt?.toISOString?.() || request.createdAt.toISOString(),
+    })),
+    ...recentPlaceholders.map((placeholder) => ({
+      id: `placeholder-${placeholder.id}`,
+      type: 'placeholder',
+      title: placeholder.title,
+      message: `${placeholder.source} placeholder in ${placeholder.mediaType}`,
+      at: placeholder.updatedAt.toISOString(),
+    })),
+    ...recentMetadata.map((metadata) => ({
+      id: `metadata-${metadata.plexCollectionRatingKey}`,
+      type: 'metadata',
+      title: metadata.collectionConfigId || metadata.plexCollectionRatingKey,
+      message: 'Poster/Wallpaper/Theme metadata aktualisiert',
+      at: metadata.updatedAt.toISOString(),
+    })),
+  ]
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, 10);
+
+  const heatItems = [
+    ...(trends?.topMovies || []).map((item) => ({
+      ...item,
+      mediaType: 'movie',
+    })),
+    ...(trends?.topTv || []).map((item) => ({
+      ...item,
+      mediaType: 'tv',
+    })),
+  ]
+    .map((item) => ({
+      title: item.title,
+      mediaType: item.mediaType,
+      plays: item.plays,
+      heatScore: Math.min(
+        100,
+        Math.round(item.plays * 10 + Math.max(0, trends?.deltaPercent || 0) / 2)
+      ),
+    }))
+    .sort((a, b) => b.heatScore - a.heatScore)
+    .slice(0, 8);
+
+  const autoSnoozeCandidates = collectionScores
+    .filter(
+      (score) =>
+        score.score < 75 ||
+        score.reasons.some(
+          (reason) =>
+            reason.includes('nicht synchronisiert') ||
+            reason.includes('Keine Sichtbarkeit')
+        )
+    )
+    .slice(0, 8)
+    .map((score) => ({
+      id: score.id,
+      name: score.name,
+      score: score.score,
+      reason: score.reasons[0],
+      recommendation:
+        score.score < 60
+          ? 'Aus Home/Recommended entfernen, bis der Fehler behoben ist'
+          : 'Beobachten oder temporaer ausblenden, wenn sie wenig Wert liefert',
+    }));
+
+  const sourceReliability = sourceStatus.sources.map((source) => {
+    const missingPenalty = source.configured ? 0 : 45;
+    const unusedPenalty = source.usedByCollections === 0 ? 10 : 0;
+    const score = Math.max(0, 100 - missingPenalty - unusedPenalty);
+
+    return {
+      id: source.id,
+      name: source.name,
+      score,
+      status: score >= 90 ? 'ok' : score >= 60 ? 'watch' : 'attention',
+      message: source.configured
+        ? `${source.usedByCollections || 0} Collections nutzen diese Quelle`
+        : 'Quelle ist nicht konfiguriert',
+    };
+  });
+
+  const placeholderLifecycle = {
+    total: recentPlaceholders.length,
+    items: recentPlaceholders.map((placeholder) => {
+      const ageDays = Math.max(
+        0,
+        Math.floor((now - placeholder.createdAt.getTime()) / 86400000)
+      );
+
+      return {
+        id: placeholder.id,
+        title: placeholder.title,
+        mediaType: placeholder.mediaType,
+        source: placeholder.source,
+        configId: placeholder.configId,
+        ageDays,
+        hasPlexRatingKey: !!placeholder.plexRatingKey,
+      };
+    }),
+  };
+
+  const explainers = [
+    {
+      id: 'collection-views',
+      label: 'Collection Views',
+      explanation:
+        'Summe der Tautulli Plays fuer Collections mit bekanntem Plex Rating Key im aktuellen 7-Tage-Fenster.',
+      source: 'Tautulli get_item_watch_time_stats',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'health-score',
+      label: 'Health Score',
+      explanation:
+        'Startet bei 100 und zieht Punkte fuer Sync-Fehler, fehlende Bibliotheken, fehlende Rating Keys, ausstehende Syncs und lange Inaktivitaet ab.',
+      source: 'Agregarr Settings + Sync Status',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'sync-dry-run',
+      label: 'Sync Dry Run',
+      explanation:
+        'Zaehlt Collections mit ausstehenden Aenderungen, bekannten Fehlern und aktivem Missing-Media-Handling, ohne Daten zu veraendern.',
+      source: 'Agregarr Settings + Missing Item Tracking',
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'heat-score',
+      label: 'Tautulli Heat Score',
+      explanation:
+        'Kombiniert aktuelle Plays mit dem Trend zur Vorwoche. Der Wert ist ein Dashboard-Signal, kein gespeicherter Plex-Wert.',
+      source: 'Tautulli Home Stats',
+      updatedAt: new Date().toISOString(),
+    },
+  ];
+
+  return {
+    actionCenter,
+    collectionTimeline,
+    changelog: {
+      version: getAppVersion(),
+      highlights: [
+        'Action Center fuer direkte naechste Schritte',
+        'Collection Timeline aus Requests, Placeholdern und Metadata-Updates',
+        'Heat Scores und Source Reliability fuer bessere Priorisierung',
+        'Placeholder Lifecycle View und Erklaerungen fuer Dashboard-Zahlen',
+      ],
+    },
+    heatScores: heatItems,
+    autoSnoozeCandidates,
+    sourceReliability,
+    placeholderLifecycle,
+    explainers,
+  };
+};
+
 /**
  * GET /api/v1/dashboard/stats
  * Get dashboard statistics including collection stats, user activity, etc.
@@ -655,7 +924,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     let tautulliStats = null;
     let collectionStatsData = null;
     let weeklyStats = null;
-    let trendStats = null;
+    let trendStats: TrendStats | null = null;
 
     // Get Tautulli stats if configured
     if (settings.tautulli.hostname && settings.tautulli.apiKey) {
@@ -820,6 +1089,14 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     const preExistingCollectionCount =
       settings.plex.preExistingCollectionConfigs?.length || 0;
 
+    const sourceStatus = getSourceStatus(settings);
+    const advancedIntelligence = await getAdvancedIntelligence(
+      settings,
+      collectionHealthScores,
+      sourceStatus,
+      trendStats
+    );
+
     const dashboardData = {
       mediaServer: {
         activeType: settings.plex.mediaServerType || 'plex',
@@ -854,7 +1131,8 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       ),
       previews: await getDashboardPreviews(settings),
       trends: trendStats,
-      sourceStatus: getSourceStatus(settings),
+      sourceStatus,
+      intelligence: advancedIntelligence,
       timestamp: new Date().toISOString(),
     };
 
