@@ -308,6 +308,7 @@ const getRepairCandidates = (
       .slice(0, 8)
       .map((config) => ({
         id: `rating-key-${config.id}`,
+        configId: config.id,
         title: config.name,
         type: 'missing-rating-key',
         severity: 'attention' as const,
@@ -320,6 +321,7 @@ const getRepairCandidates = (
       .slice(0, 6)
       .map((config) => ({
         id: `duplicate-${config.id}`,
+        configId: config.id,
         title: config.name,
         type: 'duplicate-name',
         severity: 'watch' as const,
@@ -332,6 +334,7 @@ const getRepairCandidates = (
       .slice(0, 6)
       .map((score) => ({
         id: `health-${score.id}`,
+        configId: score.id,
         title: score.name,
         type: 'low-health',
         severity:
@@ -384,6 +387,189 @@ const getTautulliDataQuality = (
     },
   };
 };
+
+const getTautulliMappingDebugger = (
+  settings: ReturnType<typeof getSettings>,
+  collectionStats: {
+    rating_key?: string;
+    title?: string;
+    total_plays?: number;
+  }[]
+) => {
+  const tautulliByKey = new Map(
+    collectionStats
+      .filter((item) => item.rating_key)
+      .map((item) => [item.rating_key, item])
+  );
+
+  return getAllCollectionConfigs(settings)
+    .slice(0, 50)
+    .map((config) => {
+      const tautulliItem = config.collectionRatingKey
+        ? tautulliByKey.get(config.collectionRatingKey)
+        : undefined;
+
+      return {
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        plexRatingKey: config.collectionRatingKey,
+        mapped: !!tautulliItem,
+        tautulliTitle: tautulliItem?.title,
+        plays: tautulliItem?.total_plays || 0,
+        reason: !config.collectionRatingKey
+          ? 'missing-rating-key'
+          : tautulliItem
+          ? 'mapped'
+          : 'not-returned-by-tautulli',
+      };
+    });
+};
+
+const getSettingsConsistency = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[]
+) => {
+  const issues: {
+    id: string;
+    severity: 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }[] = [];
+
+  if (settings.plex.mediaServerType === 'jellyfin' && settings.plex.machineId) {
+    issues.push({
+      id: 'jellyfin-plex-machine-id',
+      severity: 'warning',
+      title: 'Jellyfin mit Plex Machine ID',
+      message:
+        'Jellyfin ist aktiv, aber eine Plex Machine ID ist gesetzt. Das kann alte Plex-Reste anzeigen.',
+    });
+  }
+
+  if (
+    settings.tautulli.hostname &&
+    settings.tautulli.apiKey &&
+    settings.plex.mediaServerType === 'jellyfin'
+  ) {
+    issues.push({
+      id: 'tautulli-jellyfin',
+      severity: 'warning',
+      title: 'Tautulli mit Jellyfin',
+      message:
+        'Tautulli ist fuer Plex gedacht. Bei aktivem Jellyfin koennen Tautulli-Werte leer bleiben.',
+    });
+  }
+
+  if (
+    (settings.radarr || []).length > 0 &&
+    !(settings.radarr || []).some((server) => server.activeDirectory)
+  ) {
+    issues.push({
+      id: 'radarr-root-folder',
+      severity: 'warning',
+      title: 'Radarr Root Folder fehlt',
+      message:
+        'Mindestens ein Radarr-Server ist vorhanden, aber kein aktiver Root Folder gesetzt.',
+    });
+  }
+
+  if (
+    (settings.sonarr || []).length > 0 &&
+    !(settings.sonarr || []).some((server) => server.activeDirectory)
+  ) {
+    issues.push({
+      id: 'sonarr-root-folder',
+      severity: 'warning',
+      title: 'Sonarr Root Folder fehlt',
+      message:
+        'Mindestens ein Sonarr-Server ist vorhanden, aber kein aktiver Root Folder gesetzt.',
+    });
+  }
+
+  const missingLibraryCount = collectionScores.filter((score) =>
+    score.reasons.some((reason) => reason.includes('Bibliothek fehlt'))
+  ).length;
+
+  if (missingLibraryCount > 0) {
+    issues.push({
+      id: 'missing-libraries',
+      severity: 'error',
+      title: 'Collections mit fehlender Bibliothek',
+      message: `${missingLibraryCount} Collections verweisen auf nicht synchronisierte Bibliotheken.`,
+    });
+  }
+
+  return issues;
+};
+
+const getDetailedSyncDryRun = async (
+  settings: ReturnType<typeof getSettings>
+) => {
+  const missingItemRepository = getRepository(MissingItemRequest);
+  const placeholderRepository = getRepository(PlaceholderItem);
+  const allConfigs = getAllCollectionConfigs(settings);
+  const [pendingItems, placeholders] = await Promise.all([
+    missingItemRepository
+      .createQueryBuilder('missing')
+      .where('missing.requestStatus IN (:...statuses)', {
+        statuses: ['pending', 'processing', 'failed'],
+      })
+      .getMany()
+      .catch(() => [] as MissingItemRequest[]),
+    placeholderRepository.find().catch(() => [] as PlaceholderItem[]),
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    wouldCheckCollections:
+      allConfigs.filter((config) => config.needsSync).length ||
+      allConfigs.length,
+    wouldRetryErrors: allConfigs.filter((config) => getLastSyncError(config))
+      .length,
+    wouldProcessMissingItems: pendingItems.length,
+    wouldRevisitPlaceholders: placeholders.length,
+    plannedChanges: allConfigs
+      .filter((config) => config.needsSync || getLastSyncError(config))
+      .slice(0, 20)
+      .map((config) => ({
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        reason: getLastSyncError(config) || 'Aenderungen warten auf Sync',
+        href: `/api/v1/dashboard/collection-diff/${config.id}`,
+      })),
+  };
+};
+
+const getWhyExplanations = (
+  settings: ReturnType<typeof getSettings>,
+  trends: TrendStats | null,
+  tautulliDataQuality: ReturnType<typeof getTautulliDataQuality>
+) => [
+  {
+    id: 'zero-collection-views',
+    label: 'Warum 0 Collection Views?',
+    explanation:
+      tautulliDataQuality.missingRatingKeyCount > 0
+        ? 'Ein Teil der Collections hat keinen Plex Rating Key. Tautulli kann diese Collections nicht eindeutig zuordnen.'
+        : trends
+        ? 'Tautulli hat Daten geliefert, aber im aktuellen Zeitraum keine Collection Plays fuer gemappte Collections gefunden.'
+        : 'Tautulli hat keine verwertbaren Trenddaten geliefert oder ist nicht erreichbar.',
+    source: 'Tautulli Mapping + Dashboard Trends',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'zero-recently-added',
+    label: 'Warum keine Recently Added Items?',
+    explanation:
+      settings.tautulli.hostname && settings.tautulli.apiKey
+        ? 'Tautulli ist konfiguriert. Wenn hier nichts erscheint, pruefe Media Type, Tautulli API-Zugriff und ob Tautulli neue Items fuer diesen Zeitraum liefert.'
+        : 'Tautulli ist nicht vollstaendig konfiguriert.',
+    source: 'Tautulli Recently Added',
+    updatedAt: new Date().toISOString(),
+  },
+];
 
 const getSourceTestHistory = (events: DashboardEvent[]) => {
   const tests = events.filter((event) => event.type === 'source-test');
@@ -1325,7 +1511,16 @@ const getAdvancedIntelligence = async (
     settings,
     tautulliCollectionStats
   );
+  const tautulliMappingDebugger = getTautulliMappingDebugger(
+    settings,
+    tautulliCollectionStats
+  );
+  const settingsConsistency = getSettingsConsistency(
+    settings,
+    collectionScores
+  );
   const sourceTestHistory = getSourceTestHistory(storedEvents);
+  const detailedSyncDryRun = await getDetailedSyncDryRun(settings);
 
   const placeholderLifecycle = {
     total: recentPlaceholders.length,
@@ -1380,6 +1575,7 @@ const getAdvancedIntelligence = async (
       source: 'Tautulli Home Stats',
       updatedAt: new Date().toISOString(),
     },
+    ...getWhyExplanations(settings, trends, tautulliDataQuality),
   ];
   const needsSync = allConfigs.filter((config) => config.needsSync);
   const errorConfigs = allConfigs.filter((config) => getLastSyncError(config));
@@ -1786,6 +1982,15 @@ const getAdvancedIntelligence = async (
     problemDetails,
     repairCandidates,
     tautulliDataQuality,
+    tautulliMappingDebugger,
+    settingsConsistency,
+    detailedSyncDryRun,
+    dashboardPerformance: {
+      cacheTtlMs: DASHBOARD_CACHE_TTL_MS,
+      cacheEntries: dashboardCache.size,
+      strategy:
+        'Fast settings and database signals render first; Tautulli-heavy data is cached for short dashboard refreshes.',
+    },
     releaseStatus: {
       installedVersion: getAppVersion(),
       latestVersion: latestRelease?.version,
@@ -2237,6 +2442,149 @@ dashboardRoutes.get('/repair-candidates', isAuthenticated(), (_req, res) => {
   });
 });
 
+dashboardRoutes.get('/first-aid', isAuthenticated(), async (_req, res) => {
+  const settings = getSettings();
+  const collectionHealthScores = getCollectionHealthScores(settings);
+  const sourceStatus = getSourceStatus(settings);
+  const [tautulli, radarr, sonarr] = await Promise.all([
+    runSourceTest('tautulli', settings),
+    runSourceTest('radarr', settings),
+    runSourceTest('sonarr', settings),
+  ]);
+  const consistency = getSettingsConsistency(settings, collectionHealthScores);
+  const problems = getProblemDetails(
+    settings,
+    collectionHealthScores,
+    sourceStatus
+  );
+  const checks = [
+    {
+      id: 'media-server',
+      ok: !!settings.plex.ip,
+      title: 'Media Server',
+      message: settings.plex.ip
+        ? `${settings.plex.mediaServerType || 'plex'} konfiguriert`
+        : 'Media Server fehlt',
+    },
+    {
+      id: 'tautulli',
+      ok: tautulli.ok,
+      title: 'Tautulli',
+      message: tautulli.error || tautulli.message,
+    },
+    {
+      id: 'radarr',
+      ok: radarr.ok,
+      title: 'Radarr',
+      message: radarr.error || radarr.message,
+    },
+    {
+      id: 'sonarr',
+      ok: sonarr.ok,
+      title: 'Sonarr',
+      message: sonarr.error || sonarr.message,
+    },
+    {
+      id: 'collections',
+      ok: collectionHealthScores.some((score) => score.status === 'critical')
+        ? false
+        : true,
+      title: 'Collections',
+      message: `${collectionHealthScores.length} Collections geprueft`,
+    },
+    {
+      id: 'backup',
+      ok: true,
+      title: 'Backup',
+      message: 'Backup-Export und Restore-Preview Endpunkte sind verfuegbar.',
+    },
+  ];
+  const failedChecks = checks.filter((check) => !check.ok);
+
+  await appendDashboardEvent({
+    type: 'first-aid',
+    title: 'First Aid Diagnose ausgefuehrt',
+    message: `${failedChecks.length} Checks brauchen Aufmerksamkeit.`,
+    metadata: {
+      failedChecks: failedChecks.length,
+    },
+  });
+
+  return res.status(200).json({
+    generatedAt: new Date().toISOString(),
+    status:
+      failedChecks.length === 0
+        ? 'healthy'
+        : failedChecks.length <= 2
+        ? 'watch'
+        : 'attention',
+    likelyCause:
+      failedChecks[0]?.message ||
+      consistency[0]?.message ||
+      problems[0]?.message ||
+      'Keine offensichtliche Ursache gefunden.',
+    checks,
+    consistency,
+    problems,
+  });
+});
+
+dashboardRoutes.get('/sync-dry-run', isAuthenticated(), async (_req, res) => {
+  return res.status(200).json(await getDetailedSyncDryRun(getSettings()));
+});
+
+dashboardRoutes.get(
+  '/tautulli-mapping',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+    const collectionRatingKeys = getCollectionRatingKeys(settings);
+    let collectionStats: {
+      rating_key?: string;
+      title?: string;
+      total_plays?: number;
+    }[] = [];
+
+    if (settings.tautulli.hostname && settings.tautulli.apiKey) {
+      try {
+        collectionStats = await new TautulliAPI(settings.tautulli)
+          .getTopCollections(100, 'plays', 30, collectionRatingKeys, {
+            includeMetadata: false,
+            includeUserStats: false,
+            concurrency: 4,
+          })
+          .then((items) =>
+            items.map((item) => ({
+              rating_key: item.rating_key,
+              title: item.title,
+              total_plays: item.total_plays,
+            }))
+          );
+      } catch (error) {
+        logger.warn('Failed to load Tautulli mapping debugger data', {
+          label: 'Dashboard API',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return res.status(200).json({
+      mapping: getTautulliMappingDebugger(settings, collectionStats),
+    });
+  }
+);
+
+dashboardRoutes.get('/settings-consistency', isAuthenticated(), (_req, res) => {
+  const settings = getSettings();
+
+  return res.status(200).json({
+    issues: getSettingsConsistency(
+      settings,
+      getCollectionHealthScores(settings)
+    ),
+  });
+});
+
 dashboardRoutes.get('/audit-log', isAuthenticated(), async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 100, 250);
 
@@ -2290,6 +2638,116 @@ dashboardRoutes.get(
         ' '
       )
     );
+  }
+);
+
+dashboardRoutes.get(
+  '/collections/:id/detail',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const config = getAllCollectionConfigs(settings).find(
+      (item) => item.id === req.params.id
+    );
+
+    if (!config) {
+      return res.status(404).json({ message: 'Collection config not found' });
+    }
+
+    const scores = getCollectionHealthScores(settings);
+    const health = scores.find((score) => score.id === config.id);
+    const missingItemRepository = getRepository(MissingItemRequest);
+    const placeholderRepository = getRepository(PlaceholderItem);
+    const [missingItems, placeholders, events] = await Promise.all([
+      missingItemRepository
+        .createQueryBuilder('missing')
+        .where('missing.collectionName = :name', { name: config.name })
+        .orderBy('missing.updatedAt', 'DESC')
+        .limit(25)
+        .getMany()
+        .catch(() => [] as MissingItemRequest[]),
+      placeholderRepository
+        .createQueryBuilder('placeholder')
+        .where('placeholder.configId = :configId', { configId: config.id })
+        .orderBy('placeholder.updatedAt', 'DESC')
+        .limit(25)
+        .getMany()
+        .catch(() => [] as PlaceholderItem[]),
+      readDashboardEvents(100),
+    ]);
+
+    return res.status(200).json({
+      collection: {
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        libraryName: config.libraryName,
+        collectionRatingKey: config.collectionRatingKey,
+        needsSync: !!config.needsSync,
+        lastSyncError: getLastSyncError(config),
+      },
+      health,
+      missingItems,
+      placeholders,
+      events: events.filter((event) =>
+        JSON.stringify(event).toLowerCase().includes(config.id.toLowerCase())
+      ),
+      exportUrl: `/api/v1/dashboard/collections/${config.id}/export`,
+      diffUrl: `/api/v1/dashboard/collection-diff/${config.id}`,
+    });
+  }
+);
+
+dashboardRoutes.post(
+  '/repair/:actionId',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const actionId = req.params.actionId;
+    const configId = String(req.body?.configId || '');
+    const allConfigs = getAllCollectionConfigs(settings);
+    const config = allConfigs.find((item) => item.id === configId) as
+      | (DashboardCollectionConfig & {
+          needsSync?: boolean;
+          visibilityConfig?: DashboardCollectionConfig['visibilityConfig'];
+        })
+      | undefined;
+
+    if (!config) {
+      return res.status(404).json({ message: 'Collection config not found' });
+    }
+
+    if (actionId === 'retry-sync' || actionId === 'repair-rating-key') {
+      config.needsSync = true;
+    } else if (actionId === 'make-visible') {
+      config.visibilityConfig = {
+        ...(config.visibilityConfig || {}),
+        serverOwnerHome: true,
+        libraryRecommended: true,
+      };
+      config.needsSync = true;
+    } else {
+      return res.status(404).json({ message: 'Unknown repair action' });
+    }
+
+    settings.save();
+    dashboardCache.clear();
+    await appendDashboardEvent({
+      type: 'repair',
+      title: 'Repair-Aktion vorgemerkt',
+      message: `${actionId} fuer ${config.name}`,
+      metadata: {
+        actionId,
+        configId,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      configId,
+      actionId,
+      needsSync: config.needsSync,
+    });
   }
 );
 

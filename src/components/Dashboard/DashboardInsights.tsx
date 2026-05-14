@@ -16,7 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import type React from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import useSWR from 'swr';
 
@@ -93,6 +93,22 @@ const messages = defineMessages({
   averageLatency: '{count} ms avg',
   missingRatingKeys: '{count} missing rating keys',
   noTautulliMatch: '{count} no Tautulli match',
+  firstAid: 'Run First Aid',
+  backupPreview: 'Preview backup',
+  collapseSection: 'Collapse',
+  expandSection: 'Expand',
+  repairRetrySync: 'Retry sync',
+  repairRatingKey: 'Find rating key',
+  repairMakeVisible: 'Make visible',
+  syncDryRunDetails: 'Detailed Sync Dry Run',
+  settingsConsistency: 'Settings Consistency',
+  tautulliMapping: 'Tautulli Mapping Debugger',
+  dashboardPerformance: 'Dashboard Performance',
+  dryRunChecks: '{count} checks',
+  dryRunRetries: '{count} retries',
+  dryRunMissing: '{count} missing',
+  dryRunPlaceholders: '{count} placeholders',
+  cacheEntries: '{count} cache entries',
 });
 
 interface DashboardInsightData {
@@ -217,6 +233,7 @@ interface DashboardInsightData {
     }[];
     repairCandidates?: {
       id: string;
+      configId: string;
       title: string;
       type: string;
       severity: 'attention' | 'watch';
@@ -235,6 +252,40 @@ interface DashboardInsightData {
         strategy: string;
         candidateCount: number;
       };
+    };
+    tautulliMappingDebugger?: {
+      id: string;
+      name: string;
+      type: string;
+      plexRatingKey?: string;
+      mapped: boolean;
+      tautulliTitle?: string;
+      plays: number;
+      reason: string;
+    }[];
+    settingsConsistency?: {
+      id: string;
+      severity: 'error' | 'warning' | 'info';
+      title: string;
+      message: string;
+    }[];
+    detailedSyncDryRun?: {
+      wouldCheckCollections: number;
+      wouldRetryErrors: number;
+      wouldProcessMissingItems: number;
+      wouldRevisitPlaceholders: number;
+      plannedChanges: {
+        id: string;
+        name: string;
+        type: string;
+        reason: string;
+        href: string;
+      }[];
+    };
+    dashboardPerformance?: {
+      cacheTtlMs: number;
+      cacheEntries: number;
+      strategy: string;
     };
     releaseStatus?: {
       installedVersion: string;
@@ -326,6 +377,8 @@ const operationStatusClass = (status: string): string => {
 
 const DashboardInsights: React.FC = () => {
   const intl = useIntl();
+  const dashboardRootRef = useRef<HTMLDivElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
   const { data, error } = useSWR<DashboardInsightData>(
     '/api/v1/dashboard/stats'
   );
@@ -333,6 +386,16 @@ const DashboardInsights: React.FC = () => {
   const [operationStatus, setOperationStatus] = useState('all');
   const [runningAction, setRunningAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [backupPreview, setBackupPreview] = useState<{
+    valid: boolean;
+    changedSections?: {
+      section: string;
+      currentSize: number;
+      incomingSize: number;
+    }[];
+    current?: { collectionCount: number; locale?: string };
+    incoming?: { collectionCount: number; locale?: string };
+  } | null>(null);
   const filteredOperations = useMemo(() => {
     const query = operationQuery.trim().toLowerCase();
 
@@ -398,6 +461,102 @@ const DashboardInsights: React.FC = () => {
       setRunningAction(null);
     }
   };
+  const runFirstAid = async () => {
+    setRunningAction('first-aid');
+    setActionMessage(null);
+
+    try {
+      const response = await axios.get('/api/v1/dashboard/first-aid');
+      setActionMessage(`${response.data.status}: ${response.data.likelyCause}`);
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const runRepairAction = async (actionId: string, configId: string) => {
+    setRunningAction(`${actionId}-${configId}`);
+    setActionMessage(null);
+
+    try {
+      await axios.post(`/api/v1/dashboard/repair/${actionId}`, { configId });
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const previewSettingsBackup = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const backup = JSON.parse(await file.text());
+      const response = await axios.post(
+        '/api/v1/dashboard/settings-restore-preview',
+        backup
+      );
+      setBackupPreview(response.data);
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+    } catch (err) {
+      setBackupPreview(null);
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  useEffect(() => {
+    const root = dashboardRootRef.current;
+
+    if (!root) {
+      return;
+    }
+
+    const sections = Array.from(root.querySelectorAll('section'));
+
+    sections.forEach((section, index) => {
+      const heading = section.querySelector('h4');
+
+      if (!heading || heading.querySelector('[data-collapse-button]')) {
+        return;
+      }
+
+      const key = `agregarr-dashboard-section-${index}`;
+      const button = document.createElement('button');
+      const applyState = (collapsed: boolean) => {
+        Array.from(section.children).forEach((child) => {
+          if (child !== heading) {
+            (child as HTMLElement).style.display = collapsed ? 'none' : '';
+          }
+        });
+        button.textContent = collapsed
+          ? intl.formatMessage(messages.expandSection)
+          : intl.formatMessage(messages.collapseSection);
+      };
+      const collapsed = localStorage.getItem(key) === 'collapsed';
+
+      button.type = 'button';
+      button.dataset.collapseButton = 'true';
+      button.className =
+        'ml-auto rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60';
+      button.addEventListener('click', () => {
+        const nextCollapsed = localStorage.getItem(key) !== 'collapsed';
+
+        localStorage.setItem(key, nextCollapsed ? 'collapsed' : 'expanded');
+        applyState(nextCollapsed);
+      });
+      heading.classList.add('gap-2');
+      heading.appendChild(button);
+      applyState(collapsed);
+    });
+  }, [data, intl]);
 
   if (error) {
     return (
@@ -431,7 +590,7 @@ const DashboardInsights: React.FC = () => {
   const intelligence = data.intelligence;
 
   return (
-    <div className="rounded-lg bg-stone-800 shadow-sm">
+    <div ref={dashboardRootRef} className="rounded-lg bg-stone-800 shadow-sm">
       <div className="border-b border-gray-700 px-6 py-4">
         <h3 className="flex items-center text-lg font-medium text-white">
           <SparklesIcon className="mr-2 h-5 w-5 text-orange-400" />
@@ -642,7 +801,45 @@ const DashboardInsights: React.FC = () => {
               >
                 {intl.formatMessage(messages.downloadBackup)}
               </a>
+              <button
+                type="button"
+                onClick={runFirstAid}
+                disabled={runningAction === 'first-aid'}
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {intl.formatMessage(messages.firstAid)}
+              </button>
+              <button
+                type="button"
+                onClick={() => backupInputRef.current?.click()}
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+              >
+                {intl.formatMessage(messages.backupPreview)}
+              </button>
+              <input
+                ref={backupInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={previewSettingsBackup}
+              />
             </div>
+            {backupPreview && (
+              <div className="mb-3 rounded bg-stone-900 px-3 py-2 text-xs text-gray-300">
+                <p className="font-semibold text-white">
+                  {intl.formatMessage(messages.restoreDiff)}
+                </p>
+                <p className="mt-1">
+                  {backupPreview.current?.collectionCount || 0} -&gt;{' '}
+                  {backupPreview.incoming?.collectionCount || 0} collections
+                </p>
+                <p className="mt-1 text-gray-500">
+                  {(backupPreview.changedSections || [])
+                    .map((section) => section.section)
+                    .join(', ') || intl.formatMessage(messages.noItems)}
+                </p>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2 rounded bg-stone-900 px-3 py-2">
               <span className="text-xs font-semibold text-gray-300">
                 {intl.formatMessage(messages.maintenanceMode)}:{' '}
@@ -719,10 +916,9 @@ const DashboardInsights: React.FC = () => {
               (intelligence?.repairCandidates || [])
                 .slice(0, 6)
                 .map((candidate) => (
-                  <a
+                  <div
                     key={candidate.id}
-                    href={candidate.href}
-                    className="block rounded border border-gray-700 px-3 py-2 transition-colors hover:border-orange-500/60"
+                    className="rounded border border-gray-700 px-3 py-2"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-medium text-white">
@@ -741,7 +937,40 @@ const DashboardInsights: React.FC = () => {
                     <p className="line-clamp-2 mt-1 text-xs text-gray-400">
                       {candidate.message}
                     </p>
-                  </a>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <a
+                        href={candidate.href}
+                        className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                      >
+                        {intl.formatMessage(messages.problemDetails)}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runRepairAction(
+                            candidate.type === 'missing-rating-key'
+                              ? 'repair-rating-key'
+                              : 'retry-sync',
+                            candidate.configId
+                          )
+                        }
+                        className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                      >
+                        {candidate.type === 'missing-rating-key'
+                          ? intl.formatMessage(messages.repairRatingKey)
+                          : intl.formatMessage(messages.repairRetrySync)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runRepairAction('make-visible', candidate.configId)
+                        }
+                        className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                      >
+                        {intl.formatMessage(messages.repairMakeVisible)}
+                      </button>
+                    </div>
+                  </div>
                 ))
             ) : (
               <p className="text-sm text-gray-400">
@@ -1181,6 +1410,127 @@ const DashboardInsights: React.FC = () => {
             </p>
             <p className="text-xs text-gray-500">
               {intelligence?.tautulliDataQuality?.artworkCache.strategy}
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <RectangleStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.tautulliMapping)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.tautulliMappingDebugger || [])
+              .slice(0, 6)
+              .map((mapping) => (
+                <div
+                  key={mapping.id}
+                  className="rounded bg-stone-900 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {mapping.name}
+                    </p>
+                    <span
+                      className={`text-xs font-semibold ${
+                        mapping.mapped ? 'text-green-300' : 'text-orange-300'
+                      }`}
+                    >
+                      {mapping.reason}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-gray-500">
+                    {mapping.plexRatingKey || 'no rating key'} / {mapping.plays}{' '}
+                    plays
+                  </p>
+                </div>
+              ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <BeakerIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.syncDryRunDetails)}
+          </h4>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.dryRunChecks, {
+                count:
+                  intelligence?.detailedSyncDryRun?.wouldCheckCollections || 0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.dryRunRetries, {
+                count: intelligence?.detailedSyncDryRun?.wouldRetryErrors || 0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.dryRunMissing, {
+                count:
+                  intelligence?.detailedSyncDryRun?.wouldProcessMissingItems ||
+                  0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.dryRunPlaceholders, {
+                count:
+                  intelligence?.detailedSyncDryRun?.wouldRevisitPlaceholders ||
+                  0,
+              })}
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ExclamationTriangleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.settingsConsistency)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.settingsConsistency || []).slice(0, 5).length ? (
+              (intelligence?.settingsConsistency || [])
+                .slice(0, 5)
+                .map((issue) => (
+                  <div
+                    key={issue.id}
+                    className="rounded bg-stone-900 px-3 py-2"
+                  >
+                    <p
+                      className={`text-sm font-medium ${
+                        issue.severity === 'error'
+                          ? 'text-red-300'
+                          : 'text-orange-300'
+                      }`}
+                    >
+                      {issue.title}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {issue.message}
+                    </p>
+                  </div>
+                ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ServerStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.dashboardPerformance)}
+          </h4>
+          <div className="space-y-2">
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.cacheEntries, {
+                count: intelligence?.dashboardPerformance?.cacheEntries || 0,
+              })}
+            </p>
+            <p className="text-xs text-gray-500">
+              {intelligence?.dashboardPerformance?.strategy}
             </p>
           </div>
         </section>
