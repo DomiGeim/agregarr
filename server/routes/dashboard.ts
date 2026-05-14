@@ -1,4 +1,11 @@
 import TautulliAPI from '@server/api/tautulli';
+import { getRepository } from '@server/datasource';
+import { MissingItemRequest } from '@server/entity/MissingItemRequest';
+import { PlaceholderItem } from '@server/entity/PlaceholderItem';
+import type {
+  CollectionConfig,
+  PreExistingCollectionConfig,
+} from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
@@ -15,6 +22,28 @@ interface HealthIssue {
   area: string;
   message: string;
 }
+
+interface CollectionHealthScore {
+  id: string;
+  name: string;
+  type: string;
+  libraryName?: string;
+  score: number;
+  status: 'healthy' | 'warning' | 'critical';
+  reasons: string[];
+  lastSyncedAt?: string;
+  needsSync?: boolean;
+}
+
+type DashboardCollectionConfig = CollectionConfig | PreExistingCollectionConfig;
+
+const getConfigType = (config: DashboardCollectionConfig): string =>
+  'type' in config ? config.type : 'pre-existing';
+
+const getLastSyncError = (
+  config: DashboardCollectionConfig
+): string | undefined =>
+  'lastSyncError' in config ? config.lastSyncError : undefined;
 
 const dashboardCache = new Map<
   string,
@@ -44,6 +73,30 @@ const setCachedDashboardData = <T>(key: string, data: T): void => {
     expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS,
     data,
   });
+};
+
+const getPlexImageProxyUrl = (imagePath?: string): string | undefined => {
+  if (!imagePath) {
+    return undefined;
+  }
+
+  let normalizedPath = imagePath;
+
+  try {
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      normalizedPath = new URL(imagePath).pathname;
+    }
+  } catch (error) {
+    normalizedPath = imagePath;
+  }
+
+  normalizedPath = normalizedPath.split('?')[0];
+
+  if (!normalizedPath.startsWith('/')) {
+    return undefined;
+  }
+
+  return `/api/v1/plex/image?path=${encodeURIComponent(normalizedPath)}`;
 };
 
 const withTimeout = async <T>(
@@ -90,6 +143,126 @@ const getCollectionRatingKeys = (settings: ReturnType<typeof getSettings>) => {
   }
 
   return [...new Set(collectionRatingKeys)];
+};
+
+const getAllCollectionConfigs = (
+  settings: ReturnType<typeof getSettings>
+): DashboardCollectionConfig[] => [
+  ...(settings.plex.collectionConfigs || []),
+  ...(settings.plex.preExistingCollectionConfigs || []),
+];
+
+const getDaysSince = (dateValue?: string): number | null => {
+  if (!dateValue) {
+    return null;
+  }
+
+  const timestamp = new Date(dateValue).getTime();
+
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+
+  return Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000));
+};
+
+const hasCollectionRatingKey = (config: DashboardCollectionConfig): boolean =>
+  !!config.collectionRatingKey ||
+  ('collectionRatingKeys' in config &&
+    Array.isArray(config.collectionRatingKeys) &&
+    config.collectionRatingKeys.length > 0);
+
+const hasAutoHandling = (config: DashboardCollectionConfig): boolean =>
+  !!(
+    ('searchMissingMovies' in config && config.searchMissingMovies) ||
+    ('searchMissingTV' in config && config.searchMissingTV) ||
+    ('createPlaceholdersForMissing' in config &&
+      config.createPlaceholdersForMissing)
+  );
+
+const getCollectionHealthScores = (
+  settings: ReturnType<typeof getSettings>
+): CollectionHealthScore[] => {
+  const libraries = settings.plex.libraries || [];
+  const libraryKeys = new Set(libraries.map((library) => library.key));
+
+  return getAllCollectionConfigs(settings)
+    .map((config) => {
+      const reasons: string[] = [];
+      let score = 100;
+      const lastSyncError = getLastSyncError(config);
+      const daysSinceSync = getDaysSince(config.lastSyncedAt);
+      const visibilityEnabled =
+        config.visibilityConfig?.usersHome ||
+        config.visibilityConfig?.serverOwnerHome ||
+        config.visibilityConfig?.libraryRecommended;
+
+      if (lastSyncError) {
+        score -= 45;
+        reasons.push('Letzter Sync fehlgeschlagen');
+      }
+
+      if (config.missing) {
+        score -= 35;
+        reasons.push('Collection fehlt in Plex');
+      }
+
+      if (!config.libraryId || !libraryKeys.has(config.libraryId)) {
+        score -= 25;
+        reasons.push('Bibliothek fehlt oder ist nicht synchronisiert');
+      }
+
+      if (config.needsSync) {
+        score -= 12;
+        reasons.push('Aenderungen warten auf Sync');
+      }
+
+      if (
+        !hasCollectionRatingKey(config) &&
+        getConfigType(config) !== 'filtered_hub' &&
+        !config.missing
+      ) {
+        score -= 12;
+        reasons.push('Noch kein Plex Rating Key vorhanden');
+      }
+
+      if (!visibilityEnabled) {
+        score -= 8;
+        reasons.push('Keine Sichtbarkeit fuer Home/Recommended aktiv');
+      }
+
+      if (daysSinceSync !== null && daysSinceSync > 30) {
+        score -= 10;
+        reasons.push(`Seit ${daysSinceSync} Tagen nicht synchronisiert`);
+      }
+
+      if (config.isActive === false) {
+        score -= 5;
+        reasons.push('Durch Zeitregeln derzeit inaktiv');
+      }
+
+      const normalizedScore = Math.max(0, Math.min(100, score));
+      const status: CollectionHealthScore['status'] =
+        normalizedScore < 60
+          ? 'critical'
+          : normalizedScore < 85
+          ? 'warning'
+          : 'healthy';
+
+      return {
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        libraryName: config.libraryName,
+        score: normalizedScore,
+        status,
+        reasons: reasons.length ? reasons : ['Keine Auffaelligkeiten'],
+        lastSyncedAt: config.lastSyncedAt,
+        needsSync: !!config.needsSync,
+      };
+    })
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 12);
 };
 
 const getCollectionMediaTypeByRatingKey = (
@@ -230,16 +403,29 @@ const getCollectionHealth = (settings: ReturnType<typeof getSettings>) => {
 };
 
 const getSourceStatus = (settings: ReturnType<typeof getSettings>) => {
+  const collectionConfigs = getAllCollectionConfigs(settings);
+  const sourceUsage = collectionConfigs.reduce((acc, config) => {
+    const type = getConfigType(config);
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
   const sources = [
     {
       id: 'media-server',
       name: settings.plex.mediaServerType === 'jellyfin' ? 'Jellyfin' : 'Plex',
       configured: !!settings.plex.ip,
+      usedByCollections: collectionConfigs.length,
+      status: settings.plex.ip ? 'configured' : 'missing',
     },
     {
       id: 'tautulli',
       name: 'Tautulli',
       configured: !!settings.tautulli.hostname && !!settings.tautulli.apiKey,
+      usedByCollections: sourceUsage.tautulli || 0,
+      status:
+        settings.tautulli.hostname && settings.tautulli.apiKey
+          ? 'configured'
+          : 'missing',
     },
     {
       id: 'radarr',
@@ -247,6 +433,16 @@ const getSourceStatus = (settings: ReturnType<typeof getSettings>) => {
       configured: (settings.radarr || []).some(
         (server) => !!server.hostname && !!server.apiKey
       ),
+      usedByCollections: collectionConfigs.filter(
+        (config) =>
+          ('searchMissingMovies' in config && config.searchMissingMovies) ||
+          getConfigType(config) === 'radarrtag'
+      ).length,
+      status: (settings.radarr || []).some(
+        (server) => !!server.hostname && !!server.apiKey
+      )
+        ? 'configured'
+        : 'missing',
     },
     {
       id: 'sonarr',
@@ -254,16 +450,44 @@ const getSourceStatus = (settings: ReturnType<typeof getSettings>) => {
       configured: (settings.sonarr || []).some(
         (server) => !!server.hostname && !!server.apiKey
       ),
+      usedByCollections: collectionConfigs.filter(
+        (config) =>
+          ('searchMissingTV' in config && config.searchMissingTV) ||
+          getConfigType(config) === 'sonarrtag'
+      ).length,
+      status: (settings.sonarr || []).some(
+        (server) => !!server.hostname && !!server.apiKey
+      )
+        ? 'configured'
+        : 'missing',
     },
     {
       id: 'trakt',
       name: 'Trakt',
       configured: !!settings.trakt.apiKey || !!settings.trakt.accessToken,
+      usedByCollections: sourceUsage.trakt || 0,
+      status:
+        settings.trakt.apiKey || settings.trakt.accessToken
+          ? 'configured'
+          : 'missing',
     },
     {
       id: 'mdblist',
       name: 'MDBList',
       configured: !!settings.mdblist.apiKey,
+      usedByCollections: sourceUsage.mdblist || 0,
+      status: settings.mdblist.apiKey ? 'configured' : 'missing',
+    },
+    {
+      id: 'tmdb',
+      name: 'TMDB',
+      configured: true,
+      usedByCollections:
+        (sourceUsage.tmdb || 0) +
+        (sourceUsage.networks || 0) +
+        (sourceUsage.originals || 0) +
+        (sourceUsage.comingsoon || 0),
+      status: 'configured',
     },
   ];
 
@@ -271,6 +495,143 @@ const getSourceStatus = (settings: ReturnType<typeof getSettings>) => {
     configured: sources.filter((source) => source.configured).length,
     total: sources.length,
     sources,
+  };
+};
+
+const getDashboardRecommendations = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[]
+) => {
+  const collectionConfigs = settings.plex.collectionConfigs || [];
+  const recommendations: {
+    id: string;
+    title: string;
+    message: string;
+    priority: 'high' | 'medium' | 'low';
+  }[] = [];
+  const staleScores = collectionScores.filter((score) =>
+    score.reasons.some((reason) =>
+      reason.includes('Tagen nicht synchronisiert')
+    )
+  );
+  const brokenScores = collectionScores.filter(
+    (score) => score.status === 'critical'
+  );
+  const placeholderConfigs = collectionConfigs.filter(
+    (config) => config.createPlaceholdersForMissing
+  );
+  const autoHandlingConfigs = collectionConfigs.filter(hasAutoHandling);
+  const noVisibilityConfigs = collectionConfigs.filter(
+    (config) =>
+      !config.visibilityConfig?.usersHome &&
+      !config.visibilityConfig?.serverOwnerHome &&
+      !config.visibilityConfig?.libraryRecommended
+  );
+
+  if (brokenScores.length > 0) {
+    recommendations.push({
+      id: 'critical-collections',
+      title: 'Kritische Collections zuerst pruefen',
+      message: `${brokenScores.length} Collections haben Fehler, fehlende Bibliotheken oder fehlende Plex-Zuordnung.`,
+      priority: 'high',
+    });
+  }
+
+  if (staleScores.length > 0) {
+    recommendations.push({
+      id: 'stale-sync',
+      title: 'Stale Collections neu synchronisieren',
+      message: `${staleScores.length} Collections wurden seit ueber 30 Tagen nicht erfolgreich synchronisiert.`,
+      priority: 'medium',
+    });
+  }
+
+  if (placeholderConfigs.length > 0) {
+    recommendations.push({
+      id: 'placeholder-preview',
+      title: 'Placeholder Cleanup regelmaessig pruefen',
+      message: `${placeholderConfigs.length} Collections erstellen Placeholder. Die Cleanup-Vorschau zeigt dir alte Eintraege vor dem Entfernen.`,
+      priority: 'medium',
+    });
+  }
+
+  if (autoHandlingConfigs.length === 0 && collectionConfigs.length > 0) {
+    recommendations.push({
+      id: 'auto-handling',
+      title: 'Auto-Requests oder Placeholder gezielt aktivieren',
+      message:
+        'Keine Collection verarbeitet fehlende Medien automatisch. Fuer kuratierte Listen kann das viel Handarbeit sparen.',
+      priority: 'low',
+    });
+  }
+
+  if (noVisibilityConfigs.length > 0) {
+    recommendations.push({
+      id: 'hidden-collections',
+      title: 'Unsichtbare Collections aufraeumen',
+      message: `${noVisibilityConfigs.length} Collections sind weder Home noch Recommended zugeordnet.`,
+      priority: 'low',
+    });
+  }
+
+  return recommendations.slice(0, 6);
+};
+
+const getDashboardPreviews = async (
+  settings: ReturnType<typeof getSettings>
+) => {
+  const collectionConfigs = settings.plex.collectionConfigs || [];
+  const allConfigs = getAllCollectionConfigs(settings);
+  const placeholderRepository = getRepository(PlaceholderItem);
+  const missingItemRepository = getRepository(MissingItemRequest);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [placeholderCount, stalePlaceholderCount, pendingRequestCount] =
+    await Promise.all([
+      placeholderRepository.count().catch(() => 0),
+      placeholderRepository
+        .createQueryBuilder('placeholder')
+        .where('placeholder.createdAt < :date', { date: thirtyDaysAgo })
+        .getCount()
+        .catch(() => 0),
+      missingItemRepository
+        .createQueryBuilder('missing')
+        .where('missing.requestStatus IN (:...statuses)', {
+          statuses: ['pending', 'processing', 'failed'],
+        })
+        .getCount()
+        .catch(() => 0),
+    ]);
+
+  const needsSync = allConfigs.filter((config) => config.needsSync);
+  const withErrors = allConfigs.filter((config) => getLastSyncError(config));
+  const autoRequestConfigs = collectionConfigs.filter(hasAutoHandling);
+
+  return {
+    syncDryRun: {
+      collectionsToSync: needsSync.length || collectionConfigs.length,
+      changedCollections: needsSync.slice(0, 8).map((config) => ({
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        libraryName: config.libraryName,
+      })),
+      collectionsWithErrors: withErrors.length,
+      autoRequestEnabled: autoRequestConfigs.length,
+      estimatedActions: [
+        `${needsSync.length || collectionConfigs.length} Collections pruefen`,
+        `${autoRequestConfigs.length} Collections koennen fehlende Medien verarbeiten`,
+        `${withErrors.length} bekannte Sync-Fehler wuerden erneut versucht`,
+      ],
+    },
+    cleanupPreview: {
+      placeholderCount,
+      stalePlaceholderCount,
+      pendingRequestCount,
+      notes: [
+        `${stalePlaceholderCount} Placeholder sind aelter als 30 Tage`,
+        `${pendingRequestCount} Missing-Item Requests sind offen, in Bearbeitung oder fehlgeschlagen`,
+      ],
+    },
   };
 };
 
@@ -283,6 +644,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     const settings = getSettings();
     const collectionRatingKeys = getCollectionRatingKeys(settings);
     const collectionMediaTypes = getCollectionMediaTypeByRatingKey(settings);
+    const collectionHealthScores = getCollectionHealthScores(settings);
     const cacheKey = `stats:${collectionRatingKeys.join(',')}`;
     const cachedDashboardData = getCachedDashboardData(cacheKey);
 
@@ -293,6 +655,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     let tautulliStats = null;
     let collectionStatsData = null;
     let weeklyStats = null;
+    let trendStats = null;
 
     // Get Tautulli stats if configured
     if (settings.tautulli.hostname && settings.tautulli.apiKey) {
@@ -300,7 +663,13 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         const tautulli = new TautulliAPI(settings.tautulli);
 
         // Get collection stats and weekly activity stats
-        const [collectionStats, weeklyMovies, weeklyTV] = await withTimeout(
+        const [
+          collectionStats,
+          weeklyMovies,
+          weeklyTV,
+          previousMovies,
+          previousTV,
+        ] = await withTimeout(
           Promise.all([
             tautulli.getTopCollections(50, 'plays', 7, collectionRatingKeys, {
               includeMetadata: false,
@@ -309,6 +678,8 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
             }),
             tautulli.getHomeStats(7, 'plays', 'top_movies', 10),
             tautulli.getHomeStats(7, 'plays', 'top_tv', 10),
+            tautulli.getHomeStats(14, 'plays', 'top_movies', 10),
+            tautulli.getHomeStats(14, 'plays', 'top_tv', 10),
           ]),
           TAUTULLI_DASHBOARD_TIMEOUT_MS,
           'Tautulli dashboard request timed out'
@@ -332,6 +703,25 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         });
 
         const totalWeeklyPlays = moviePlaysCount + tvPlaysCount;
+        const previousMoviePlays = previousMovies.reduce(
+          (sum, item) => sum + getPlayCount(item),
+          0
+        );
+        const previousTvPlays = previousTV.reduce(
+          (sum, item) => sum + getPlayCount(item),
+          0
+        );
+        const previousWindowPlays = Math.max(
+          0,
+          previousMoviePlays + previousTvPlays - totalWeeklyPlays
+        );
+        const playDelta = totalWeeklyPlays - previousWindowPlays;
+        const playDeltaPercent =
+          previousWindowPlays > 0
+            ? Math.round((playDelta / previousWindowPlays) * 100)
+            : totalWeeklyPlays > 0
+            ? 100
+            : 0;
 
         // Calculate collection-specific plays
         let collectionTotalPlays = 0;
@@ -380,6 +770,25 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
           moviePlays: moviePlaysCount,
           tvPlays: tvPlaysCount,
           collectionPlays: collectionTotalPlays,
+        };
+
+        trendStats = {
+          currentWeekPlays: totalWeeklyPlays,
+          previousWeekPlays: previousWindowPlays,
+          delta: playDelta,
+          deltaPercent: playDeltaPercent,
+          topMovies: weeklyMovies.slice(0, 5).map((item) => ({
+            title: item.title,
+            ratingKey: item.rating_key,
+            plays: getPlayCount(item),
+            mediaType: item.media_type,
+          })),
+          topTv: weeklyTV.slice(0, 5).map((item) => ({
+            title: item.grandparent_title || item.title,
+            ratingKey: item.grandparent_rating_key || item.rating_key,
+            plays: getPlayCount(item),
+            mediaType: item.media_type,
+          })),
         };
 
         tautulliStats = {
@@ -438,6 +847,13 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       activity: weeklyStats,
       tautulli: tautulliStats,
       health: getCollectionHealth(settings),
+      collectionHealthScores,
+      recommendations: getDashboardRecommendations(
+        settings,
+        collectionHealthScores
+      ),
+      previews: await getDashboardPreviews(settings),
+      trends: trendStats,
       sourceStatus: getSourceStatus(settings),
       timestamp: new Date().toISOString(),
     };
@@ -502,6 +918,12 @@ dashboardRoutes.get(
         const createdAt = !Number.isNaN(numericAddedAt)
           ? new Date(numericAddedAt * 1000).toISOString()
           : new Date().toISOString();
+        const imagePath =
+          item.media_type === 'episode'
+            ? item.grandparent_thumb || item.parent_thumb || item.thumb
+            : item.media_type === 'season'
+            ? item.parent_thumb || item.thumb
+            : item.thumb;
 
         return {
           id: Number(item.rating_key) || index,
@@ -512,7 +934,8 @@ dashboardRoutes.get(
               ? item.grandparent_title || item.full_title || item.title
               : item.title,
           posterPath: undefined,
-          posterUrl: undefined,
+          posterUrl: getPlexImageProxyUrl(imagePath),
+          thumb: imagePath,
           year: item.year ? Number(item.year) : undefined,
           collectionName: item.section_name || 'Tautulli',
           collectionSource: 'Tautulli',
@@ -615,9 +1038,13 @@ dashboardRoutes.get('/collections', isAuthenticated(), async (req, res) => {
       collectionRatingKeys,
       { concurrency: 6 }
     );
+    const collectionsWithImages = collections.map((collection) => ({
+      ...collection,
+      posterUrl: getPlexImageProxyUrl(collection.thumb),
+    }));
 
     const collectionData = {
-      collections,
+      collections: collectionsWithImages,
       metadata: {
         limit: numericLimit,
         statType,

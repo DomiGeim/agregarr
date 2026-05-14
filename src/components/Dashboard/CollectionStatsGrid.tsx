@@ -41,6 +41,8 @@ interface CollectionStats {
   section_id: number;
   section_name: string;
   item_count: number;
+  thumb?: string;
+  posterUrl?: string;
   total_plays: number;
   total_duration: number;
   last_played?: number;
@@ -216,7 +218,28 @@ const CollectionStatsGrid: React.FC = () => {
                 className="flex items-center space-x-3 rounded-lg border border-gray-700 p-3 transition-colors hover:border-gray-600"
               >
                 <div className="flex-shrink-0">
-                  <CollectionIcon className="h-8 w-8 text-orange-400" />
+                  {collection.posterUrl ? (
+                    <div className="relative">
+                      <img
+                        src={collection.posterUrl}
+                        alt={collection.title}
+                        className="h-16 w-11 rounded border border-gray-600 object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const iconDiv = e.currentTarget
+                            .nextElementSibling as HTMLElement;
+                          if (iconDiv) iconDiv.style.display = 'flex';
+                        }}
+                      />
+                      <div className="hidden h-16 w-11 items-center justify-center rounded border border-gray-700 bg-stone-900">
+                        <CollectionIcon className="h-8 w-8 text-orange-400" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-16 w-11 items-center justify-center rounded border border-gray-700 bg-stone-900">
+                      <CollectionIcon className="h-8 w-8 text-orange-400" />
+                    </div>
+                  )}
                 </div>
 
                 <div className="min-w-0 flex-1">
