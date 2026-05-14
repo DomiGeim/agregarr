@@ -14,7 +14,9 @@ import {
   SparklesIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
+import axios from 'axios';
 import type React from 'react';
+import { useMemo, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import useSWR from 'swr';
 
@@ -60,6 +62,20 @@ const messages = defineMessages({
   moduleWatch: 'Watch',
   moduleAttention: 'Attention',
   open: 'Open',
+  searchOperations: 'Search operations',
+  allOperationStatuses: 'All statuses',
+  maintenanceMode: 'Maintenance Mode',
+  maintenanceOn: 'Maintenance active',
+  maintenanceOff: 'Maintenance off',
+  enableMaintenance: 'Enable maintenance',
+  disableMaintenance: 'Disable maintenance',
+  sourceTests: 'Source Test Center',
+  testSource: 'Test',
+  runAction: 'Run',
+  downloadDiagnostics: 'Download diagnostics',
+  downloadBackup: 'Download backup',
+  actionSucceeded: 'Action completed.',
+  actionFailed: 'Action failed.',
 });
 
 interface DashboardInsightData {
@@ -154,6 +170,18 @@ interface DashboardInsightData {
       score: number;
       status: 'ok' | 'watch' | 'attention';
       message: string;
+      lastLatencyMs?: number;
+      lastTestedAt?: string;
+    }[];
+    sourceTests?: {
+      id: string;
+      name: string;
+      configured: boolean;
+      ok: boolean;
+      latencyMs: number;
+      testedAt: string;
+      message: string;
+      error?: string;
     }[];
     placeholderLifecycle: {
       total: number;
@@ -184,6 +212,15 @@ interface DashboardInsightData {
       summary: string;
       href: string;
     }[];
+    availableActions?: {
+      id: string;
+      title: string;
+      danger?: boolean;
+    }[];
+  };
+  maintenanceMode?: {
+    enabled: boolean;
+    syncRunning: boolean;
   };
 }
 
@@ -225,6 +262,75 @@ const DashboardInsights: React.FC = () => {
   const { data, error } = useSWR<DashboardInsightData>(
     '/api/v1/dashboard/stats'
   );
+  const [operationQuery, setOperationQuery] = useState('');
+  const [operationStatus, setOperationStatus] = useState('all');
+  const [runningAction, setRunningAction] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const filteredOperations = useMemo(() => {
+    const query = operationQuery.trim().toLowerCase();
+
+    return (data?.intelligence?.operationsSuite || []).filter((operation) => {
+      const matchesStatus =
+        operationStatus === 'all' || operation.status === operationStatus;
+      const matchesQuery =
+        !query ||
+        operation.title.toLowerCase().includes(query) ||
+        operation.category.toLowerCase().includes(query) ||
+        operation.summary.toLowerCase().includes(query);
+
+      return matchesStatus && matchesQuery;
+    });
+  }, [data?.intelligence?.operationsSuite, operationQuery, operationStatus]);
+  const runDashboardAction = async (actionId: string) => {
+    setRunningAction(actionId);
+    setActionMessage(null);
+
+    try {
+      const response = await axios.post(
+        `/api/v1/dashboard/actions/${actionId}`
+      );
+
+      if (response.data?.url) {
+        window.location.href = response.data.url;
+      }
+
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const toggleMaintenanceMode = async () => {
+    setRunningAction('maintenance');
+    setActionMessage(null);
+
+    try {
+      await axios.post('/api/v1/dashboard/maintenance', {
+        enabled: !data?.maintenanceMode?.enabled,
+      });
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+      window.location.reload();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const testSource = async (sourceId: string) => {
+    setRunningAction(`source-${sourceId}`);
+    setActionMessage(null);
+
+    try {
+      await axios.post(`/api/v1/dashboard/source-test/${sourceId}`);
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+      window.location.reload();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
 
   if (error) {
     return (
@@ -311,8 +417,34 @@ const DashboardInsights: React.FC = () => {
             <SparklesIcon className="mr-2 h-4 w-4 text-orange-400" />
             {intl.formatMessage(messages.operationsSuite)}
           </h4>
+          <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px]">
+            <input
+              className="rounded border border-gray-700 bg-stone-900 px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-gray-500 focus:border-orange-500"
+              placeholder={intl.formatMessage(messages.searchOperations)}
+              value={operationQuery}
+              onChange={(event) => setOperationQuery(event.target.value)}
+            />
+            <select
+              className="rounded border border-gray-700 bg-stone-900 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-orange-500"
+              value={operationStatus}
+              onChange={(event) => setOperationStatus(event.target.value)}
+            >
+              <option value="all">
+                {intl.formatMessage(messages.allOperationStatuses)}
+              </option>
+              <option value="ready">
+                {intl.formatMessage(messages.moduleReady)}
+              </option>
+              <option value="watch">
+                {intl.formatMessage(messages.moduleWatch)}
+              </option>
+              <option value="attention">
+                {intl.formatMessage(messages.moduleAttention)}
+              </option>
+            </select>
+          </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {(intelligence?.operationsSuite || []).map((operation) => (
+            {filteredOperations.map((operation) => (
               <a
                 key={operation.id}
                 href={operation.href}
@@ -384,6 +516,54 @@ const DashboardInsights: React.FC = () => {
               <p className="text-sm text-gray-400">
                 {intl.formatMessage(messages.noActionItems)}
               </p>
+            )}
+          </div>
+          <div className="mt-4 border-t border-gray-700 pt-3">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {(intelligence?.availableActions || []).map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  disabled={runningAction === action.id}
+                  onClick={() => runDashboardAction(action.id)}
+                  className={`rounded border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    action.danger
+                      ? 'border-orange-500/60 text-orange-200 hover:bg-orange-500/10'
+                      : 'border-gray-600 text-gray-200 hover:border-orange-500/60'
+                  }`}
+                >
+                  {runningAction === action.id
+                    ? intl.formatMessage(messages.loading)
+                    : action.title}
+                </button>
+              ))}
+              <a
+                href="/api/v1/dashboard/settings-backup"
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+              >
+                {intl.formatMessage(messages.downloadBackup)}
+              </a>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 rounded bg-stone-900 px-3 py-2">
+              <span className="text-xs font-semibold text-gray-300">
+                {intl.formatMessage(messages.maintenanceMode)}:{' '}
+                {data.maintenanceMode?.enabled
+                  ? intl.formatMessage(messages.maintenanceOn)
+                  : intl.formatMessage(messages.maintenanceOff)}
+              </span>
+              <button
+                type="button"
+                disabled={runningAction === 'maintenance'}
+                onClick={toggleMaintenanceMode}
+                className="rounded border border-gray-600 px-3 py-1.5 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {data.maintenanceMode?.enabled
+                  ? intl.formatMessage(messages.disableMaintenance)
+                  : intl.formatMessage(messages.enableMaintenance)}
+              </button>
+            </div>
+            {actionMessage && (
+              <p className="mt-2 text-xs text-gray-400">{actionMessage}</p>
             )}
           </div>
         </section>
@@ -703,27 +883,65 @@ const DashboardInsights: React.FC = () => {
             {sourceStatus.map((source) => (
               <div
                 key={source.id}
-                className="flex items-center justify-between rounded bg-stone-900 px-3 py-2 text-sm"
+                className="rounded bg-stone-900 px-3 py-2 text-sm"
               >
-                <div>
-                  <p className="font-medium text-gray-200">{source.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {intl.formatMessage(messages.usedByCollections, {
-                      count: source.usedByCollections || 0,
-                    })}
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-gray-200">{source.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {intl.formatMessage(messages.usedByCollections, {
+                        count: source.usedByCollections || 0,
+                      })}
+                    </p>
+                  </div>
+                  <span
+                    className={
+                      source.configured ? 'text-green-300' : 'text-gray-500'
+                    }
+                  >
+                    {source.configured ? (
+                      <CheckCircleIcon className="h-5 w-5" />
+                    ) : (
+                      <ExclamationTriangleIcon className="h-5 w-5" />
+                    )}
+                  </span>
                 </div>
-                <span
-                  className={
-                    source.configured ? 'text-green-300' : 'text-gray-500'
-                  }
+                <button
+                  type="button"
+                  disabled={runningAction === `source-${source.id}`}
+                  onClick={() => testSource(source.id)}
+                  className="mt-2 rounded border border-gray-600 px-2 py-1 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {source.configured ? (
-                    <CheckCircleIcon className="h-5 w-5" />
-                  ) : (
-                    <ExclamationTriangleIcon className="h-5 w-5" />
-                  )}
-                </span>
+                  {intl.formatMessage(messages.testSource)}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <BeakerIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.sourceTests)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.sourceTests || []).slice(0, 6).map((test) => (
+              <div key={test.id} className="rounded bg-stone-900 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-gray-200">
+                    {test.name}
+                  </p>
+                  <span
+                    className={`text-xs font-semibold ${
+                      test.ok ? 'text-green-300' : 'text-red-300'
+                    }`}
+                  >
+                    {test.latencyMs} ms
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {test.error || test.message}
+                </p>
               </div>
             ))}
           </div>

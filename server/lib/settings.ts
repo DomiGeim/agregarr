@@ -645,6 +645,7 @@ export interface MainSettings {
   externalApplicationTitle?: string; // External Overseerr title
   defaultPage?: string; // Route to open after login/root redirect
   hideDashboard?: boolean; // Hide dashboard navigation entry
+  maintenanceMode?: boolean; // Temporarily block dashboard-triggered sync actions
   // Overseerr user label state tracking
   overseerrLabelsApplied?: boolean; // True if Overseerr user filter labels are currently applied to Plex users
   // Placeholder root folders (per-library)
