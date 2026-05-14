@@ -49,11 +49,11 @@ const messages = defineMessages({
   locale: 'Display Language',
   tmdbLanguage: 'TMDB Language',
   tmdbLanguageTip: 'Language for TMDB posters',
-  defaultPage: 'Startseite',
-  defaultPageTip: 'Seite, die beim Aufruf der Hauptseite geöffnet wird',
-  hideDashboard: 'Dashboard im Menü ausblenden',
+  defaultPage: 'Start Page',
+  defaultPageTip: 'Page opened when visiting the main page',
+  hideDashboard: 'Hide Dashboard in Menu',
   hideDashboardTip:
-    'Blendet den Dashboard-Link in der Seitenleiste aus und verhindert, dass er als Startseite gewählt wird.',
+    'Hides the Dashboard link in the sidebar and prevents it from being selected as the start page.',
   enableTmdbPosterCache: 'Enable TMDB Poster Cache',
   enableTmdbPosterCacheTip:
     'Cache TMDB posters for 7 days to reduce API calls and improve performance (recommended)',

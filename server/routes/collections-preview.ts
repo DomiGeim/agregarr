@@ -278,7 +278,7 @@ function getSourceDisplayName(source: {
               networkName.toLowerCase() === 'hbomax'
             ? 'HBO Max'
             : networkName;
-        return `${displayName} Neu hinzugefügt`;
+        return `${displayName} Newly Added`;
       }
 
       // Extract network name from subtype (e.g., "netflix_top_10" -> "Netflix")

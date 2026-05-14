@@ -1457,17 +1457,17 @@ class FlixPatrolAPI extends ExternalAPI {
    */
   private getGlobalPlatformOptions(): FlixPatrolPlatformOption[] {
     return [
-      { value: 'netflix_newly_added', label: 'Netflix Neu hinzugefügt' },
+      { value: 'netflix_newly_added', label: 'Netflix Newly Added' },
       { value: 'netflix_top_10', label: 'Netflix Top 10' },
       { value: 'netflix-overall_top_10', label: 'Netflix Overall Top 10' },
       {
         value: 'amazon_prime_newly_added',
-        label: 'Amazon Prime Neu hinzugefügt',
+        label: 'Amazon Prime Newly Added',
       },
-      { value: 'hbo_newly_added', label: 'HBO Max Neu hinzugefügt' },
+      { value: 'hbo_newly_added', label: 'HBO Max Newly Added' },
       { value: 'hbo_top_10', label: 'HBO Top 10' },
       { value: 'hbo-overall_top_10', label: 'HBO Max Overall Top 10' },
-      { value: 'disney_newly_added', label: 'Disney+ Neu hinzugefügt' },
+      { value: 'disney_newly_added', label: 'Disney+ Newly Added' },
       { value: 'disney_top_10', label: 'Disney+ Top 10' },
       { value: 'disney-overall_top_10', label: 'Disney+ Overall Top 10' },
       { value: 'amazon_prime_top_10', label: 'Amazon Prime Top 10' },
@@ -1475,19 +1475,19 @@ class FlixPatrolAPI extends ExternalAPI {
         value: 'amazon_prime-overall_top_10',
         label: 'Amazon Prime Overall Top 10',
       },
-      { value: 'apple_tv_newly_added', label: 'Apple TV+ Neu hinzugefügt' },
+      { value: 'apple_tv_newly_added', label: 'Apple TV+ Newly Added' },
       { value: 'apple_tv_top_10', label: 'Apple TV+ Top 10' },
       { value: 'apple_tv-overall_top_10', label: 'Apple TV+ Overall Top 10' },
       {
         value: 'paramount_newly_added',
-        label: 'Paramount+ Neu hinzugefügt',
+        label: 'Paramount+ Newly Added',
       },
       { value: 'paramount_top_10', label: 'Paramount+ Top 10' },
       {
         value: 'paramount-overall_top_10',
         label: 'Paramount+ Overall Top 10',
       },
-      { value: 'peacock_newly_added', label: 'Peacock Neu hinzugefügt' },
+      { value: 'peacock_newly_added', label: 'Peacock Newly Added' },
       { value: 'peacock_top_10', label: 'Peacock Top 10' },
       { value: 'peacock-overall_top_10', label: 'Peacock Overall Top 10' },
       { value: 'crunchyroll_top_10', label: 'Crunchyroll Top 10' },
@@ -1500,10 +1500,10 @@ class FlixPatrolAPI extends ExternalAPI {
         value: 'discovery_plus-overall_top_10',
         label: 'Discovery+ Overall Top 10',
       },
-      { value: 'hulu_newly_added', label: 'Hulu Neu hinzugefügt' },
+      { value: 'hulu_newly_added', label: 'Hulu Newly Added' },
       { value: 'hulu_top_10', label: 'Hulu Top 10' },
       { value: 'hulu-overall_top_10', label: 'Hulu Overall Top 10' },
-      { value: 'joyn_newly_added', label: 'Joyn Neu hinzugefügt' },
+      { value: 'joyn_newly_added', label: 'Joyn Newly Added' },
       { value: 'joyn_top_10', label: 'Joyn Top 10' },
       { value: 'joyn-overall_top_10', label: 'Joyn Overall Top 10' },
     ];
@@ -1937,77 +1937,77 @@ class FlixPatrolAPI extends ExternalAPI {
         {
           top10Value: 'paramount_top_10',
           value: 'paramount_newly_added',
-          label: 'Paramount+ Neu hinzugefügt',
+          label: 'Paramount+ Newly Added',
         },
         {
           top10Value: 'amazon_prime_top_10',
           value: 'amazon_prime_newly_added',
-          label: 'Amazon Prime Neu hinzugefügt',
+          label: 'Amazon Prime Newly Added',
         },
         {
           top10Value: 'amazon-prime_top_10',
           value: 'amazon-prime_newly_added',
-          label: 'Amazon Prime Neu hinzugefügt',
+          label: 'Amazon Prime Newly Added',
         },
         {
           top10Value: 'amazon_top_10',
           value: 'amazon_newly_added',
-          label: 'Amazon Prime Neu hinzugefügt',
+          label: 'Amazon Prime Newly Added',
         },
         {
           top10Value: 'netflix_top_10',
           value: 'netflix_newly_added',
-          label: 'Netflix Neu hinzugefügt',
+          label: 'Netflix Newly Added',
         },
         {
           top10Value: 'disney_top_10',
           value: 'disney_newly_added',
-          label: 'Disney+ Neu hinzugefügt',
+          label: 'Disney+ Newly Added',
         },
         {
           top10Value: 'joyn_top_10',
           value: 'joyn_newly_added',
-          label: 'Joyn Neu hinzugefügt',
+          label: 'Joyn Newly Added',
         },
         {
           top10Value: 'peacock_top_10',
           value: 'peacock_newly_added',
-          label: 'Peacock Neu hinzugefügt',
+          label: 'Peacock Newly Added',
         },
         {
           top10Value: 'hulu_top_10',
           value: 'hulu_newly_added',
-          label: 'Hulu Neu hinzugefügt',
+          label: 'Hulu Newly Added',
         },
         {
           top10Value: 'apple_tv_top_10',
           value: 'apple_tv_newly_added',
-          label: 'Apple TV+ Neu hinzugefügt',
+          label: 'Apple TV+ Newly Added',
         },
         {
           top10Value: 'apple-tv_top_10',
           value: 'apple-tv_newly_added',
-          label: 'Apple TV+ Neu hinzugefügt',
+          label: 'Apple TV+ Newly Added',
         },
         {
           top10Value: 'apple_top_10',
           value: 'apple_newly_added',
-          label: 'Apple TV+ Neu hinzugefügt',
+          label: 'Apple TV+ Newly Added',
         },
         {
           top10Value: 'hbo_top_10',
           value: 'hbo_newly_added',
-          label: 'HBO Max Neu hinzugefügt',
+          label: 'HBO Max Newly Added',
         },
         {
           top10Value: 'hbo-max_top_10',
           value: 'hbo-max_newly_added',
-          label: 'HBO Max Neu hinzugefügt',
+          label: 'HBO Max Newly Added',
         },
         {
           top10Value: 'hbomax_top_10',
           value: 'hbomax_newly_added',
-          label: 'HBO Max Neu hinzugefügt',
+          label: 'HBO Max Newly Added',
         },
       ].forEach((newlyAddedOption) => {
         if (
@@ -2306,7 +2306,7 @@ class FlixPatrolAPI extends ExternalAPI {
     const pageTitle = document.querySelector('title')?.textContent || '';
 
     const result: FlixPatrolPlatformData = {
-      platform: `${this.formatDynamicPlatformName(platform)} Neu hinzugefügt`,
+      platform: `${this.formatDynamicPlatformName(platform)} Newly Added`,
       region: 'Global',
       date: this.extractDateFromTitle(pageTitle) || 'Unknown',
       tvShows: [],

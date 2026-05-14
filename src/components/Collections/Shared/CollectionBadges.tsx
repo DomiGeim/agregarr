@@ -469,7 +469,7 @@ export const getSubtypeLabel = (type: string, subtype?: string): string => {
               platformName.toLowerCase() === 'hbomax'
             ? 'HBO Max'
             : platformName
-        } Neu hinzugefügt`;
+        } Newly Added`;
       }
 
       // Format platform names like "netflix_top_10" -> "Netflix"

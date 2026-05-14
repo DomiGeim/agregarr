@@ -765,7 +765,7 @@
   "components.Dashboard.previous": "Previous",
   "components.Dashboard.processing": "Processing",
   "components.Dashboard.radarr": "Radarr",
-  "components.Dashboard.recentlyAddedMissing": "Recently Added von Tautulli",
+  "components.Dashboard.recentlyAddedMissing": "Recently Added from Tautulli",
   "components.Dashboard.refresh": "Refresh",
   "components.Dashboard.refreshing": "Refreshing...",
   "components.Dashboard.requestedBy": "by {name}",
