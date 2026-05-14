@@ -116,6 +116,21 @@ const messages = defineMessages({
   runMappingAutofix: 'Run mapping auto-fix',
   notifications: 'Notifications',
   healthSnapshots: 'Health Snapshots',
+  resetLayout: 'Reset layout',
+  layoutPresetMinimal: 'Minimal',
+  layoutPresetTautulli: 'Tautulli Debug',
+  layoutPresetRepair: 'Backup & Repair',
+  layoutPresetFull: 'Admin Full',
+  repairQueue: 'Repair Queue',
+  addToQueue: 'Queue',
+  runQueue: 'Run queue',
+  firstAidStatus: 'First Aid Status',
+  mappingScore: 'Mapping Score',
+  backupHealth: 'Backup Health',
+  settingsFingerprint: 'Settings fingerprint',
+  runAllSourceTests: 'Test all sources',
+  releaseChanges: 'Release Changes',
+  backupRecommended: 'Backup recommended',
 });
 
 interface DashboardInsightData {
@@ -297,6 +312,21 @@ interface DashboardInsightData {
       warningCollections: number;
       averageScore: number;
     }[];
+    mappingScore?: {
+      mappedCollections: number;
+      totalCollections: number;
+      score: number;
+    };
+    backupHealth?: {
+      latestBackupAt?: string;
+      daysSinceBackup: number | null;
+      recommended: boolean;
+      settingsFingerprint: string;
+    };
+    releaseChanges?: {
+      version: string;
+      highlights: string[];
+    };
     notifications?: {
       id: string;
       title: string;
@@ -439,6 +469,9 @@ const DashboardInsights: React.FC = () => {
     exportUrl: string;
     diffUrl: string;
   } | null>(null);
+  const [repairQueue, setRepairQueue] = useState<
+    { actionId: string; configId: string; title: string }[]
+  >([]);
   const filteredOperations = useMemo(() => {
     const query = operationQuery.trim().toLowerCase();
 
@@ -606,6 +639,100 @@ const DashboardInsights: React.FC = () => {
       setRunningAction(null);
     }
   };
+  const resetLayout = () => {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('agregarr-dashboard-section'))
+      .forEach((key) => localStorage.removeItem(key));
+    localStorage.removeItem('agregarr-dashboard-section-order');
+    window.location.reload();
+  };
+  const applyLayoutPreset = (
+    preset: 'minimal' | 'tautulli' | 'repair' | 'full'
+  ) => {
+    const sections = Array.from(
+      dashboardRootRef.current?.querySelectorAll('section h4') || []
+    ).map((heading) =>
+      heading.textContent
+        ?.trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+    );
+    const visibleByPreset: Record<typeof preset, string[]> = {
+      minimal: [
+        'first-aid-status',
+        'notifications',
+        'collection-health-scores',
+      ],
+      tautulli: [
+        'tautulli-data-quality',
+        'tautulli-mapping-debugger',
+        'tautulli-trends',
+        'mapping-score',
+      ],
+      repair: [
+        'collection-repair-center',
+        'backup-health',
+        'restore-diff',
+        'detailed-sync-dry-run',
+      ],
+      full: sections.filter(Boolean) as string[],
+    };
+    const visible = visibleByPreset[preset];
+
+    sections.forEach((sectionId) => {
+      if (sectionId) {
+        localStorage.setItem(
+          `agregarr-dashboard-section-${sectionId}`,
+          visible.includes(sectionId) ? 'expanded' : 'collapsed'
+        );
+      }
+    });
+    window.location.reload();
+  };
+  const addRepairToQueue = (
+    actionId: string,
+    configId: string,
+    title: string
+  ) => {
+    setRepairQueue((queue) =>
+      queue.some(
+        (item) => item.actionId === actionId && item.configId === configId
+      )
+        ? queue
+        : [...queue, { actionId, configId, title }]
+    );
+  };
+  const runRepairQueue = async () => {
+    setRunningAction('repair-queue');
+    setActionMessage(null);
+
+    try {
+      for (const item of repairQueue) {
+        await axios.post(`/api/v1/dashboard/repair/${item.actionId}`, {
+          configId: item.configId,
+        });
+      }
+      setRepairQueue([]);
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const runAllSourceTests = async () => {
+    setRunningAction('source-test-all');
+    setActionMessage(null);
+
+    try {
+      await axios.post('/api/v1/dashboard/source-test-all');
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
 
   useEffect(() => {
     const root = dashboardRootRef.current;
@@ -762,6 +889,43 @@ const DashboardInsights: React.FC = () => {
         <p className="mt-1 text-sm text-gray-400">
           {intl.formatMessage(messages.subtitle)}
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => applyLayoutPreset('minimal')}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.layoutPresetMinimal)}
+          </button>
+          <button
+            type="button"
+            onClick={() => applyLayoutPreset('tautulli')}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.layoutPresetTautulli)}
+          </button>
+          <button
+            type="button"
+            onClick={() => applyLayoutPreset('repair')}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.layoutPresetRepair)}
+          </button>
+          <button
+            type="button"
+            onClick={() => applyLayoutPreset('full')}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.layoutPresetFull)}
+          </button>
+          <button
+            type="button"
+            onClick={resetLayout}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.resetLayout)}
+          </button>
+        </div>
       </div>
 
       {data.maintenanceMode?.enabled && (
@@ -783,6 +947,47 @@ const DashboardInsights: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-2">
+        <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <CheckCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.firstAidStatus)}
+          </h4>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded bg-stone-900 px-3 py-2">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.mappingScore)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {intelligence?.mappingScore?.score || 0}%
+              </p>
+            </div>
+            <div className="rounded bg-stone-900 px-3 py-2">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.backupHealth)}
+              </p>
+              <p
+                className={`mt-1 text-sm font-semibold ${
+                  intelligence?.backupHealth?.recommended
+                    ? 'text-orange-300'
+                    : 'text-green-300'
+                }`}
+              >
+                {intelligence?.backupHealth?.recommended
+                  ? intl.formatMessage(messages.backupRecommended)
+                  : intl.formatMessage(messages.moduleReady)}
+              </p>
+            </div>
+            <div className="rounded bg-stone-900 px-3 py-2">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.settingsFingerprint)}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-gray-200">
+                {intelligence?.backupHealth?.settingsFingerprint || '-'}
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-md border border-gray-700 p-4">
           <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
             <RectangleStackIcon className="mr-2 h-4 w-4 text-orange-400" />
@@ -1189,6 +1394,21 @@ const DashboardInsights: React.FC = () => {
                       <button
                         type="button"
                         onClick={() =>
+                          addRepairToQueue(
+                            candidate.type === 'missing-rating-key'
+                              ? 'repair-rating-key'
+                              : 'retry-sync',
+                            candidate.configId,
+                            candidate.title
+                          )
+                        }
+                        className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                      >
+                        {intl.formatMessage(messages.addToQueue)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
                           runRepairAction('make-visible', candidate.configId)
                         }
                         className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
@@ -1204,6 +1424,40 @@ const DashboardInsights: React.FC = () => {
               </p>
             )}
           </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <BoltIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.repairQueue)}
+          </h4>
+          <div className="space-y-2">
+            {repairQueue.length ? (
+              repairQueue.map((item) => (
+                <div
+                  key={`${item.actionId}-${item.configId}`}
+                  className="rounded bg-stone-900 px-3 py-2"
+                >
+                  <p className="text-sm font-medium text-gray-200">
+                    {item.title}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">{item.actionId}</p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={runRepairQueue}
+            disabled={!repairQueue.length || runningAction === 'repair-queue'}
+            className="mt-3 rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {intl.formatMessage(messages.runQueue)}
+          </button>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">
@@ -1555,6 +1809,14 @@ const DashboardInsights: React.FC = () => {
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={runAllSourceTests}
+            disabled={runningAction === 'source-test-all'}
+            className="mt-3 rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {intl.formatMessage(messages.runAllSourceTests)}
+          </button>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">
@@ -1866,6 +2128,25 @@ const DashboardInsights: React.FC = () => {
               <p className="rounded bg-stone-900 px-3 py-2 text-sm text-green-300">
                 {intl.formatMessage(messages.moduleReady)}
               </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <SparklesIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.releaseChanges)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.releaseChanges?.highlights || []).map(
+              (highlight) => (
+                <p
+                  key={highlight}
+                  className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300"
+                >
+                  {highlight}
+                </p>
+              )
             )}
           </div>
         </section>

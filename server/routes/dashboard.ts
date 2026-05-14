@@ -16,6 +16,7 @@ import { isAuthenticated } from '@server/middleware/auth';
 import { appDataPath } from '@server/utils/appDataVolume';
 import { getAppVersion } from '@server/utils/appVersion';
 import axios from 'axios';
+import crypto from 'crypto';
 import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
@@ -230,6 +231,46 @@ const writeDailyHealthSnapshot = async (
   return [...snapshots, snapshot].slice(-90);
 };
 
+const getSettingsFingerprint = (settings: ReturnType<typeof getSettings>) =>
+  crypto
+    .createHash('sha256')
+    .update(JSON.stringify(sanitizeSettings(settings.getAll())))
+    .digest('hex')
+    .slice(0, 16);
+
+const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
+  const backupsPath = path.join(appDataPath(), 'backups');
+  let latestBackupAt: string | undefined;
+
+  try {
+    const files = await fs.readdir(backupsPath);
+    const backupStats = await Promise.all(
+      files
+        .filter((file) => file.endsWith('.json'))
+        .map(async (file) => {
+          const stat = await fs.stat(path.join(backupsPath, file));
+
+          return stat.mtime;
+        })
+    );
+    const latest = backupStats.sort((a, b) => b.getTime() - a.getTime())[0];
+    latestBackupAt = latest?.toISOString();
+  } catch (error) {
+    latestBackupAt = undefined;
+  }
+
+  const daysSinceBackup = latestBackupAt
+    ? Math.floor((Date.now() - new Date(latestBackupAt).getTime()) / 86400000)
+    : null;
+
+  return {
+    latestBackupAt,
+    daysSinceBackup,
+    recommended: daysSinceBackup === null || daysSinceBackup > 14,
+    settingsFingerprint: getSettingsFingerprint(settings),
+  };
+};
+
 const sanitizeSettings = (settings: unknown): unknown =>
   JSON.parse(
     JSON.stringify(settings, (key, value) => {
@@ -240,6 +281,122 @@ const sanitizeSettings = (settings: unknown): unknown =>
       return value;
     })
   );
+
+const ENGLISH_DASHBOARD_REPLACEMENTS: [RegExp, string][] = [
+  [/nicht konfiguriert/g, 'not configured'],
+  [/vollstaendig/g, 'fully'],
+  [
+    /Diese Quelle ist in den Settings nicht .* hinterlegt\./g,
+    'This source is not fully configured in settings.',
+  ],
+  [/Settings pruefen/g, 'Check settings'],
+  [/Collection pruefen/g, 'Check collection'],
+  [/Globaler Sync-Fehler/g, 'Global sync error'],
+  [/Plex Rating Key fehlt\./g, 'Plex rating key is missing.'],
+  [/koennen dadurch ungenau sein/g, 'may be inaccurate because of this'],
+  [/fuer Plex gedacht/g, 'designed for Plex'],
+  [/Root Folder fehlt/g, 'Root folder missing'],
+  [/Bibliothek fehlt/g, 'Library missing'],
+  [/Tautulli ist konfiguriert\./g, 'Tautulli is configured.'],
+  [/Live-Test fehlgeschlagen\./g, 'Live test failed.'],
+  [/Letzter Sync fehlgeschlagen/g, 'Last sync failed'],
+  [/Collection fehlt in Plex/g, 'Collection missing in Plex'],
+  [/oder ist nicht synchronisiert/g, 'or is not synchronized'],
+  [
+    /Keine Sichtbarkeit fuer Home\/Recommended aktiv/g,
+    'No Home/Recommended visibility enabled',
+  ],
+  [/Seit (\d+) Tagen nicht synchronisiert/g, 'Not synchronized for $1 days'],
+  [
+    /Kein aktiver Medienserver ist konfiguriert\./g,
+    'No active media server is configured.',
+  ],
+  [/beim letzten Sync fehlgeschlagen/g, 'failed during the last sync'],
+  [/Sammlungen verwenden den Namen/g, 'collections use the name'],
+  [/Letzter globaler Sync fehlgeschlagen/g, 'Last global sync failed'],
+  [/Kritische Collections zuerst pruefen/g, 'Check critical collections first'],
+  [
+    /haben Fehler, fehlende Bibliotheken oder fehlende Plex-Zuordnung/g,
+    'have errors, missing libraries, or missing Plex mapping',
+  ],
+  [
+    /seit ueber 30 Tagen nicht erfolgreich synchronisiert/g,
+    'not successfully synchronized for over 30 days',
+  ],
+  [/regelmaessig pruefen/g, 'check regularly'],
+  [
+    /Keine Collection verarbeitet fehlende Medien automatisch/g,
+    'No collection handles missing media automatically',
+  ],
+  [/Collections pruefen/g, 'Check collections'],
+  [/koennen fehlende Medien verarbeiten/g, 'can process missing media'],
+  [
+    /bekannte Sync-Fehler wuerden erneut versucht/g,
+    'known sync errors would be retried',
+  ],
+  [/offen, in Bearbeitung oder fehlgeschlagen/g, 'open, processing, or failed'],
+  [/Quellen oeffnen/g, 'Open sources'],
+  [/Unsichtbare Collections pruefen/g, 'Check hidden collections'],
+  [
+    /lange nicht erfolgreich synchronisiert/g,
+    'not successfully synchronized for a long time',
+  ],
+  [/Sync pruefen/g, 'Check sync'],
+  [
+    /Aus Home\/Recommended entfernen, bis der Fehler behoben ist/g,
+    'Remove from Home/Recommended until the issue is fixed',
+  ],
+  [/Collections nutzen diese Quelle/g, 'collections use this source'],
+  [/Quelle ist nicht konfiguriert/g, 'Source is not configured'],
+  [/bekanntem Plex Rating Key/g, 'known Plex rating key'],
+  [/Sync-Fehler/g, 'sync errors'],
+  [/ausstehenden Aenderungen/g, 'pending changes'],
+  [/ohne Daten zu veraendern/g, 'without changing data'],
+  [/Zuverlaessigkeit/g, 'reliability'],
+  [/Wartungsmodus/g, 'Maintenance mode'],
+  [/Wartungsarbeiten/g, 'maintenance work'],
+  [/Testlaeufe/g, 'test runs'],
+  [/Auto-Repair fuer Rating Keys/g, 'Auto-repair for rating keys'],
+  [/fehleranfaellige Quellen/g, 'error-prone sources'],
+  [/Berechtigungspruefung/g, 'permission check'],
+  [/fuer sichere Restore-Vorschauen/g, 'for safe restore previews'],
+  [/ausgefuehrt/g, 'run'],
+  [/Media Server fehlt/g, 'Media server missing'],
+  [/Collections geprueft/g, 'collections checked'],
+  [/fuer /g, 'for '],
+];
+
+const localizeDashboardPayload = <T>(
+  settings: ReturnType<typeof getSettings>,
+  payload: T
+): T => {
+  if (!settings.main.locale?.toLowerCase().startsWith('en')) {
+    return payload;
+  }
+
+  const translate = (value: unknown): unknown => {
+    if (typeof value === 'string') {
+      return ENGLISH_DASHBOARD_REPLACEMENTS.reduce(
+        (text, [pattern, replacement]) => text.replace(pattern, replacement),
+        value
+      );
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => translate(item));
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, translate(item)])
+      );
+    }
+
+    return value;
+  };
+
+  return translate(payload) as T;
+};
 
 const validateSettingsBackup = (
   backup: unknown
@@ -1372,7 +1529,8 @@ const getAdvancedIntelligence = async (
     title?: string;
     total_plays?: number;
   }[] = [],
-  healthSnapshots: HealthSnapshot[] = []
+  healthSnapshots: HealthSnapshot[] = [],
+  backupHealth?: Awaited<ReturnType<typeof getBackupHealth>>
 ) => {
   const allConfigs = getAllCollectionConfigs(settings);
   const placeholderRepository = getRepository(PlaceholderItem);
@@ -1578,6 +1736,13 @@ const getAdvancedIntelligence = async (
     settings,
     tautulliCollectionStats
   );
+  const mappedCollections = tautulliMappingDebugger.filter(
+    (item) => item.mapped
+  ).length;
+  const mappingScore =
+    tautulliMappingDebugger.length > 0
+      ? Math.round((mappedCollections / tautulliMappingDebugger.length) * 100)
+      : 0;
   const settingsConsistency = getSettingsConsistency(
     settings,
     collectionScores
@@ -2079,7 +2244,23 @@ const getAdvancedIntelligence = async (
         !!latestRelease && latestRelease.version !== getAppVersion(),
       publishedAt: latestRelease?.publishedAt,
     },
+    releaseChanges: {
+      version: getAppVersion(),
+      highlights: [
+        'Dashboard layout presets, reset, and ordering',
+        'Repair queue with batch execution controls',
+        'First Aid status, report, and safer restore flow',
+        'Tautulli mapping score and auto-fix',
+        'Backup health, settings fingerprint, and health trends',
+      ],
+    },
     auditLog: storedEvents.slice(0, 10),
+    mappingScore: {
+      mappedCollections,
+      totalCollections: tautulliMappingDebugger.length,
+      score: mappingScore,
+    },
+    backupHealth,
     placeholderLifecycle,
     explainers,
     availableActions: [
@@ -2113,7 +2294,9 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     const collectionRatingKeys = getCollectionRatingKeys(settings);
     const collectionMediaTypes = getCollectionMediaTypeByRatingKey(settings);
     const collectionHealthScores = getCollectionHealthScores(settings);
-    const cacheKey = `stats:${collectionRatingKeys.join(',')}`;
+    const cacheKey = `stats:${settings.main.locale}:${collectionRatingKeys.join(
+      ','
+    )}`;
     const cachedDashboardData = getCachedDashboardData(cacheKey);
 
     if (cachedDashboardData) {
@@ -2298,13 +2481,15 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     const healthSnapshots = await writeDailyHealthSnapshot(
       collectionHealthScores
     );
+    const backupHealth = await getBackupHealth(settings);
     const advancedIntelligence = await getAdvancedIntelligence(
       settings,
       collectionHealthScores,
       sourceStatus,
       trendStats,
       tautulliCollectionStats,
-      healthSnapshots
+      healthSnapshots,
+      backupHealth
     );
 
     const dashboardData = {
@@ -2350,8 +2535,13 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       timestamp: new Date().toISOString(),
     };
 
-    setCachedDashboardData(cacheKey, dashboardData);
-    res.status(200).json(dashboardData);
+    const localizedDashboardData = localizeDashboardPayload(
+      settings,
+      dashboardData
+    );
+
+    setCachedDashboardData(cacheKey, localizedDashboardData);
+    res.status(200).json(localizedDashboardData);
   } catch (error) {
     logger.error('Failed to get dashboard stats', {
       label: 'Dashboard API',
@@ -2805,6 +2995,10 @@ dashboardRoutes.get('/version-check', isAuthenticated(), async (_req, res) => {
   });
 });
 
+dashboardRoutes.get('/backup-health', isAuthenticated(), async (_req, res) => {
+  return res.status(200).json(await getBackupHealth(getSettings()));
+});
+
 dashboardRoutes.get(
   '/collections/:id/export',
   isAuthenticated(),
@@ -2978,6 +3172,36 @@ dashboardRoutes.post(
     dashboardCache.clear();
 
     return res.status(200).json(result);
+  }
+);
+
+dashboardRoutes.post(
+  '/source-test-all',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+    const sources = getSourceStatus(settings).sources.map(
+      (source) => source.id
+    );
+    const results = await Promise.all(
+      sources.map((sourceId) => runSourceTest(sourceId, settings))
+    );
+
+    await appendDashboardEvent({
+      type: 'source-test',
+      title: 'All source tests run',
+      message: `${results.filter((result) => result.ok).length}/${
+        results.length
+      } sources healthy.`,
+      metadata: {
+        ok: results.every((result) => result.ok),
+        total: results.length,
+        passed: results.filter((result) => result.ok).length,
+      },
+    });
+    dashboardCache.clear();
+
+    return res.status(200).json({ results });
   }
 );
 
