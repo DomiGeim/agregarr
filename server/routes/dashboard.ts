@@ -1,3 +1,5 @@
+import RadarrAPI from '@server/api/servarr/radarr';
+import SonarrAPI from '@server/api/servarr/sonarr';
 import TautulliAPI from '@server/api/tautulli';
 import { getRepository } from '@server/datasource';
 import { CollectionMetadata } from '@server/entity/CollectionMetadata';
@@ -11,8 +13,11 @@ import type {
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { appDataPath } from '@server/utils/appDataVolume';
 import { getAppVersion } from '@server/utils/appVersion';
 import { Router } from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 
 const dashboardRoutes = Router();
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
@@ -59,6 +64,25 @@ interface TrendStats {
   }[];
 }
 
+interface SourceTestResult {
+  id: string;
+  name: string;
+  configured: boolean;
+  ok: boolean;
+  latencyMs: number;
+  testedAt: string;
+  message: string;
+  error?: string;
+}
+
+interface DashboardEvent {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  at: string;
+}
+
 const getConfigType = (config: DashboardCollectionConfig): string =>
   'type' in config ? config.type : 'pre-existing';
 
@@ -95,6 +119,217 @@ const setCachedDashboardData = <T>(key: string, data: T): void => {
     expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS,
     data,
   });
+};
+
+const sourceTestResults = new Map<string, SourceTestResult>();
+
+const dashboardEventsPath = (): string =>
+  path.join(appDataPath(), 'dashboard-events.jsonl');
+
+const readDashboardEvents = async (limit = 50): Promise<DashboardEvent[]> => {
+  try {
+    const file = await fs.readFile(dashboardEventsPath(), 'utf-8');
+
+    return file
+      .split('\n')
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => JSON.parse(line) as DashboardEvent)
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  } catch (error) {
+    return [];
+  }
+};
+
+const appendDashboardEvent = async (
+  event: Omit<DashboardEvent, 'id' | 'at'>
+): Promise<void> => {
+  try {
+    const at = new Date().toISOString();
+    const fullEvent: DashboardEvent = {
+      id: `${event.type}-${Date.now()}`,
+      at,
+      ...event,
+    };
+
+    await fs.mkdir(appDataPath(), { recursive: true });
+    await fs.appendFile(
+      dashboardEventsPath(),
+      `${JSON.stringify(fullEvent)}\n`,
+      'utf-8'
+    );
+  } catch (error) {
+    logger.warn('Failed to write dashboard event', {
+      label: 'Dashboard API',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+const sanitizeSettings = (settings: unknown): unknown =>
+  JSON.parse(
+    JSON.stringify(settings, (key, value) => {
+      if (/apikey|apiKey|token|password|secret/i.test(key)) {
+        return value ? '[redacted]' : value;
+      }
+
+      return value;
+    })
+  );
+
+const validateSettingsBackup = (
+  backup: unknown
+): { valid: boolean; missingKeys: string[]; collectionCount: number } => {
+  const requiredKeys = ['main', 'plex', 'tautulli', 'radarr', 'sonarr'];
+
+  if (!backup || typeof backup !== 'object') {
+    return {
+      valid: false,
+      missingKeys: requiredKeys,
+      collectionCount: 0,
+    };
+  }
+
+  const data = backup as Record<string, unknown>;
+  const missingKeys = requiredKeys.filter((key) => !(key in data));
+  const plex = data.plex as
+    | {
+        collectionConfigs?: unknown[];
+        preExistingCollectionConfigs?: unknown[];
+      }
+    | undefined;
+
+  return {
+    valid: missingKeys.length === 0,
+    missingKeys,
+    collectionCount:
+      (plex?.collectionConfigs?.length || 0) +
+      (plex?.preExistingCollectionConfigs?.length || 0),
+  };
+};
+
+const runSourceTest = async (
+  sourceId: string,
+  settings: ReturnType<typeof getSettings>
+): Promise<SourceTestResult> => {
+  const startedAt = Date.now();
+  const finish = (
+    result: Omit<SourceTestResult, 'id' | 'latencyMs' | 'testedAt'>
+  ): SourceTestResult => {
+    const testResult = {
+      id: sourceId,
+      latencyMs: Date.now() - startedAt,
+      testedAt: new Date().toISOString(),
+      ...result,
+    };
+
+    sourceTestResults.set(sourceId, testResult);
+    return testResult;
+  };
+
+  try {
+    if (sourceId === 'tautulli') {
+      const configured =
+        !!settings.tautulli.hostname && !!settings.tautulli.apiKey;
+
+      if (!configured) {
+        return finish({
+          name: 'Tautulli',
+          configured,
+          ok: false,
+          message: 'Tautulli ist nicht vollstaendig konfiguriert.',
+        });
+      }
+
+      await new TautulliAPI(settings.tautulli).getInfo();
+
+      return finish({
+        name: 'Tautulli',
+        configured,
+        ok: true,
+        message: 'Tautulli antwortet.',
+      });
+    }
+
+    if (sourceId === 'radarr') {
+      const server = (settings.radarr || []).find(
+        (item) => item.hostname && item.apiKey
+      );
+
+      if (!server) {
+        return finish({
+          name: 'Radarr',
+          configured: false,
+          ok: false,
+          message: 'Kein Radarr-Server mit API-Key konfiguriert.',
+        });
+      }
+
+      const radarr = new RadarrAPI({
+        url: RadarrAPI.buildUrl(server, '/api/v3'),
+        apiKey: server.apiKey,
+      });
+      const status = await radarr.getSystemStatus();
+
+      return finish({
+        name: 'Radarr',
+        configured: true,
+        ok: true,
+        message: `Radarr ${status.version} antwortet.`,
+      });
+    }
+
+    if (sourceId === 'sonarr') {
+      const server = (settings.sonarr || []).find(
+        (item) => item.hostname && item.apiKey
+      );
+
+      if (!server) {
+        return finish({
+          name: 'Sonarr',
+          configured: false,
+          ok: false,
+          message: 'Kein Sonarr-Server mit API-Key konfiguriert.',
+        });
+      }
+
+      const sonarr = new SonarrAPI({
+        url: SonarrAPI.buildUrl(server, '/api/v3'),
+        apiKey: server.apiKey,
+      });
+      const status = await sonarr.getSystemStatus();
+
+      return finish({
+        name: 'Sonarr',
+        configured: true,
+        ok: true,
+        message: `Sonarr ${status.version} antwortet.`,
+      });
+    }
+
+    const sourceStatus = getSourceStatus(settings).sources.find(
+      (source) => source.id === sourceId
+    );
+
+    return finish({
+      name: sourceStatus?.name || sourceId,
+      configured: !!sourceStatus?.configured,
+      ok: !!sourceStatus?.configured,
+      message: sourceStatus?.configured
+        ? 'Konfiguration vorhanden. Kein Live-Test fuer diese Quelle verfuegbar.'
+        : 'Quelle ist nicht konfiguriert.',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return finish({
+      name: sourceId,
+      configured: true,
+      ok: false,
+      message: 'Live-Test fehlgeschlagen.',
+      error: message,
+    });
+  }
 };
 
 const getPlexImageProxyUrl = (imagePath?: string): string | undefined => {
@@ -669,7 +904,7 @@ const getAdvancedIntelligence = async (
   const metadataRepository = getRepository(CollectionMetadata);
   const now = Date.now();
 
-  const [recentPlaceholders, recentRequests, recentMetadata] =
+  const [recentPlaceholders, recentRequests, recentMetadata, storedEvents] =
     await Promise.all([
       placeholderRepository
         .find({ order: { updatedAt: 'DESC' }, take: 8 })
@@ -680,6 +915,7 @@ const getAdvancedIntelligence = async (
       metadataRepository
         .find({ order: { updatedAt: 'DESC' }, take: 8 })
         .catch(() => [] as CollectionMetadata[]),
+      readDashboardEvents(25),
     ]);
 
   const staleCollections = collectionScores.filter((score) =>
@@ -766,6 +1002,7 @@ const getAdvancedIntelligence = async (
       message: 'Poster/Wallpaper/Theme metadata aktualisiert',
       at: metadata.updatedAt.toISOString(),
     })),
+    ...storedEvents,
   ]
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     .slice(0, 10);
@@ -815,16 +1052,32 @@ const getAdvancedIntelligence = async (
     }));
 
   const sourceReliability = sourceStatus.sources.map((source) => {
+    const lastTest = sourceTestResults.get(source.id);
     const missingPenalty = source.configured ? 0 : 45;
     const unusedPenalty = source.usedByCollections === 0 ? 10 : 0;
-    const score = Math.max(0, 100 - missingPenalty - unusedPenalty);
+    const failedTestPenalty = lastTest && !lastTest.ok ? 35 : 0;
+    const latencyPenalty = lastTest?.latencyMs
+      ? Math.min(20, Math.floor(lastTest.latencyMs / 1000) * 5)
+      : 0;
+    const score = Math.max(
+      0,
+      100 - missingPenalty - unusedPenalty - failedTestPenalty - latencyPenalty
+    );
 
     return {
       id: source.id,
       name: source.name,
       score,
       status: score >= 90 ? 'ok' : score >= 60 ? 'watch' : 'attention',
-      message: source.configured
+      lastLatencyMs: lastTest?.latencyMs,
+      lastTestedAt: lastTest?.testedAt,
+      message: lastTest
+        ? lastTest.ok
+          ? `${source.usedByCollections || 0} Collections, letzter Test ${
+              lastTest.latencyMs
+            } ms`
+          : lastTest.error || lastTest.message
+        : source.configured
         ? `${source.usedByCollections || 0} Collections nutzen diese Quelle`
         : 'Quelle ist nicht konfiguriert',
     };
@@ -1006,10 +1259,14 @@ const getAdvancedIntelligence = async (
       id: 'maintenance-mode',
       title: 'Wartungsmodus',
       category: 'Safety',
-      status: 'watch',
-      metric: collectionsSync.running ? 'sync running' : 'idle',
+      status: settings.main.maintenanceMode ? 'attention' : 'watch',
+      metric: settings.main.maintenanceMode
+        ? 'enabled'
+        : collectionsSync.running
+        ? 'sync running'
+        : 'idle',
       summary:
-        'Dashboard erkennt aktive Syncs und kann als Grundlage fuer Maintenance-Hinweise dienen.',
+        'Blockiert neue Dashboard-Sync-Aktionen, solange Wartungsarbeiten laufen.',
       href: '/dashboard',
     },
     {
@@ -1239,8 +1496,28 @@ const getAdvancedIntelligence = async (
     heatScores: heatItems,
     autoSnoozeCandidates,
     sourceReliability,
+    sourceTests: Array.from(sourceTestResults.values()).sort(
+      (a, b) => new Date(b.testedAt).getTime() - new Date(a.testedAt).getTime()
+    ),
     placeholderLifecycle,
     explainers,
+    availableActions: [
+      {
+        id: 'sync-collections',
+        title: 'Collections synchronisieren',
+        danger: true,
+      },
+      {
+        id: 'test-tautulli',
+        title: 'Tautulli testen',
+        danger: false,
+      },
+      {
+        id: 'export-diagnostics',
+        title: 'Diagnosebericht herunterladen',
+        danger: false,
+      },
+    ],
     operationsSuite,
   };
 };
@@ -1474,6 +1751,10 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       trends: trendStats,
       sourceStatus,
       intelligence: advancedIntelligence,
+      maintenanceMode: {
+        enabled: !!settings.main.maintenanceMode,
+        syncRunning: collectionsSync.running,
+      },
       timestamp: new Date().toISOString(),
     };
 
@@ -1490,6 +1771,312 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
+});
+
+dashboardRoutes.get('/diagnostics', isAuthenticated(), async (_req, res) => {
+  const settings = getSettings();
+  const healthScores = getCollectionHealthScores(settings);
+  const sourceStatus = getSourceStatus(settings);
+  const report = {
+    generatedAt: new Date().toISOString(),
+    version: getAppVersion(),
+    health: getCollectionHealth(settings),
+    collectionHealthScores: healthScores,
+    sourceStatus,
+    previews: await getDashboardPreviews(settings),
+    sourceTestResults: Array.from(sourceTestResults.values()),
+    maintenanceMode: !!settings.main.maintenanceMode,
+    syncStatus: collectionsSync.status,
+    settings: sanitizeSettings(settings.getAll()),
+  };
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="agregarr-diagnostics-${timestamp}.json"`
+  );
+
+  return res.status(200).send(JSON.stringify(report, undefined, ' '));
+});
+
+dashboardRoutes.get(
+  '/collection-diff/:id',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const config = getAllCollectionConfigs(settings).find(
+      (item) => item.id === req.params.id
+    );
+
+    if (!config) {
+      return res.status(404).json({ message: 'Collection config not found' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const missingItemRepository = getRepository(MissingItemRequest);
+    const placeholderRepository = getRepository(PlaceholderItem);
+    const [pendingMissingItems, placeholders] = await Promise.all([
+      missingItemRepository
+        .createQueryBuilder('missing')
+        .where('missing.collectionName = :name', { name: config.name })
+        .orderBy('missing.updatedAt', 'DESC')
+        .limit(limit)
+        .getMany()
+        .catch(() => [] as MissingItemRequest[]),
+      placeholderRepository
+        .createQueryBuilder('placeholder')
+        .where('placeholder.configId = :configId', { configId: config.id })
+        .orderBy('placeholder.updatedAt', 'DESC')
+        .limit(limit)
+        .getMany()
+        .catch(() => [] as PlaceholderItem[]),
+    ]);
+    const configRecord = config as DashboardCollectionConfig & {
+      collectionRatingKey?: string;
+      collectionRatingKeys?: string[];
+    };
+    const currentPlexKeys = [
+      configRecord.collectionRatingKey,
+      ...(configRecord.collectionRatingKeys || []),
+    ].filter(Boolean);
+
+    return res.status(200).json({
+      collection: {
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        libraryName: config.libraryName,
+        needsSync: !!config.needsSync,
+        lastSyncError: getLastSyncError(config),
+      },
+      currentPlexKeys,
+      plannedAdds: pendingMissingItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        mediaType: item.mediaType,
+        tmdbId: item.tmdbId,
+        status: item.requestStatus,
+        updatedAt: item.updatedAt,
+      })),
+      placeholders: placeholders.map((item) => ({
+        id: item.id,
+        title: item.title,
+        mediaType: item.mediaType,
+        tmdbId: item.tmdbId,
+        source: item.source,
+        hasPlexRatingKey: !!item.plexRatingKey,
+        updatedAt: item.updatedAt,
+      })),
+      plannedRemovals: [],
+      summary: {
+        trackedAdds: pendingMissingItems.length,
+        trackedPlaceholders: placeholders.length,
+        knownPlexCollections: currentPlexKeys.length,
+      },
+    });
+  }
+);
+
+dashboardRoutes.get('/placeholders', isAuthenticated(), async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit as string) || 100, 250);
+  const status = req.query.status as string | undefined;
+  const placeholderRepository = getRepository(PlaceholderItem);
+  let query = placeholderRepository
+    .createQueryBuilder('placeholder')
+    .orderBy('placeholder.updatedAt', 'DESC')
+    .limit(limit);
+
+  if (status === 'linked') {
+    query = query.where('placeholder.plexRatingKey IS NOT NULL');
+  } else if (status === 'unlinked') {
+    query = query.where('placeholder.plexRatingKey IS NULL');
+  }
+
+  const items = await query.getMany().catch(() => [] as PlaceholderItem[]);
+  const now = Date.now();
+
+  return res.status(200).json({
+    total: items.length,
+    items: items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      mediaType: item.mediaType,
+      source: item.source,
+      configId: item.configId,
+      ageDays: Math.max(
+        0,
+        Math.floor((now - item.createdAt.getTime()) / 86400000)
+      ),
+      hasPlexRatingKey: !!item.plexRatingKey,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    })),
+  });
+});
+
+dashboardRoutes.post(
+  '/source-test/:sourceId',
+  isAuthenticated(),
+  async (req, res) => {
+    const result = await runSourceTest(req.params.sourceId, getSettings());
+
+    await appendDashboardEvent({
+      type: 'source-test',
+      title: `${result.name} getestet`,
+      message: result.ok ? result.message : result.error || result.message,
+    });
+    dashboardCache.clear();
+
+    return res.status(200).json(result);
+  }
+);
+
+dashboardRoutes.post(
+  '/actions/:actionId',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const actionId = req.params.actionId;
+
+    if (actionId === 'sync-collections') {
+      if (settings.main.maintenanceMode) {
+        return res.status(409).json({
+          success: false,
+          message: 'Maintenance mode is enabled. Collection sync is paused.',
+        });
+      }
+
+      if (!collectionsSync.running) {
+        collectionsSync.run().catch((error) => {
+          logger.error('Dashboard-triggered collection sync failed', {
+            label: 'Dashboard API',
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
+
+      await appendDashboardEvent({
+        type: 'action',
+        title: 'Collections Sync gestartet',
+        message: 'Dashboard Action Center hat einen Collection Sync gestartet.',
+      });
+      dashboardCache.clear();
+
+      return res.status(202).json({
+        success: true,
+        message: 'Collection sync started',
+        status: collectionsSync.status,
+      });
+    }
+
+    if (actionId === 'test-tautulli') {
+      const result = await runSourceTest('tautulli', settings);
+
+      await appendDashboardEvent({
+        type: 'source-test',
+        title: 'Tautulli getestet',
+        message: result.ok ? result.message : result.error || result.message,
+      });
+      dashboardCache.clear();
+
+      return res.status(200).json(result);
+    }
+
+    if (actionId === 'export-diagnostics') {
+      return res.status(200).json({
+        success: true,
+        url: '/api/v1/dashboard/diagnostics',
+      });
+    }
+
+    return res.status(404).json({ message: 'Unknown dashboard action' });
+  }
+);
+
+dashboardRoutes.get(
+  '/settings-backup',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settingsPath = path.join(appDataPath(), 'settings.json');
+    let backup = '';
+
+    try {
+      backup = await fs.readFile(settingsPath, 'utf-8');
+    } catch (error) {
+      backup = JSON.stringify(getSettings().getAll(), undefined, ' ');
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-settings-${timestamp}.json"`
+    );
+
+    return res.status(200).send(backup);
+  }
+);
+
+dashboardRoutes.post(
+  '/settings-restore-preview',
+  isAuthenticated(),
+  (req, res) => {
+    const backupStatus = validateSettingsBackup(req.body);
+    const currentSettings = getSettings().getAll();
+    const incoming = req.body as {
+      main?: unknown;
+      plex?: {
+        collectionConfigs?: unknown[];
+        preExistingCollectionConfigs?: unknown[];
+      };
+    };
+
+    return res.status(backupStatus.valid ? 200 : 400).json({
+      ...backupStatus,
+      current: {
+        locale: currentSettings.main.locale,
+        collectionCount:
+          (currentSettings.plex.collectionConfigs?.length || 0) +
+          (currentSettings.plex.preExistingCollectionConfigs?.length || 0),
+      },
+      incoming: {
+        locale: (incoming.main as { locale?: string } | undefined)?.locale,
+        collectionCount: backupStatus.collectionCount,
+      },
+    });
+  }
+);
+
+dashboardRoutes.get('/maintenance', isAuthenticated(), (_req, res) => {
+  const settings = getSettings();
+
+  return res.status(200).json({
+    enabled: !!settings.main.maintenanceMode,
+    syncRunning: collectionsSync.running,
+  });
+});
+
+dashboardRoutes.post('/maintenance', isAuthenticated(), async (req, res) => {
+  const settings = getSettings();
+  const enabled = !!req.body?.enabled;
+
+  settings.main.maintenanceMode = enabled;
+  settings.save();
+
+  await appendDashboardEvent({
+    type: 'maintenance',
+    title: enabled ? 'Wartungsmodus aktiviert' : 'Wartungsmodus deaktiviert',
+    message: enabled
+      ? 'Neue Dashboard-Sync-Aktionen werden pausiert.'
+      : 'Dashboard-Sync-Aktionen sind wieder erlaubt.',
+  });
+  dashboardCache.clear();
+
+  return res.status(200).json({
+    enabled,
+    syncRunning: collectionsSync.running,
+  });
 });
 
 dashboardRoutes.get(

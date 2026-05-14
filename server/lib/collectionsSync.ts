@@ -165,6 +165,14 @@ class CollectionsSync {
   }
 
   public async run(): Promise<void> {
+    const currentSettings = getSettings().load();
+
+    if (currentSettings.main.maintenanceMode) {
+      throw new Error(
+        'Maintenance mode is enabled. Collection sync is paused.'
+      );
+    }
+
     // Check if discovery is running to prevent race conditions
     const { discoveryService } = await import(
       '@server/lib/collections/services/DiscoveryService'
