@@ -11,7 +11,7 @@ on:
 jobs:
   test:
     name: Lint & Test Build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     container: node:20.19.5-alpine
     steps:
       - name: Checkout
@@ -44,7 +44,7 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-22.04
+            runner: ubuntu-latest
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -87,7 +87,7 @@ jobs:
 
   merge:
     name: Create multi-platform manifest
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: build_and_push
     permissions:
       packages: write
@@ -125,7 +125,7 @@ jobs:
     name: Send Discord Notification
     needs: merge
     if: always() && github.event_name != 'pull_request' && !contains(github.event.head_commit.message, '[skip ci]')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Get Build Job Status
         uses: technote-space/workflow-conclusion-action@v3
