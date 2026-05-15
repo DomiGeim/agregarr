@@ -131,6 +131,13 @@ const messages = defineMessages({
   runAllSourceTests: 'Test all sources',
   releaseChanges: 'Release Changes',
   backupRecommended: 'Backup recommended',
+  manageTiles: 'Manage tiles',
+  close: 'Close',
+  exportHealthCsv: 'Export CSV',
+  clearDashboardCache: 'Clear cache',
+  previewRepair: 'Preview',
+  repairPreview: 'Repair Preview',
+  sourceAutoTested: 'Source tests run automatically.',
 });
 
 interface DashboardInsightData {
@@ -472,6 +479,13 @@ const DashboardInsights: React.FC = () => {
   const [repairQueue, setRepairQueue] = useState<
     { actionId: string; configId: string; title: string }[]
   >([]);
+  const [layoutManagerOpen, setLayoutManagerOpen] = useState(false);
+  const [repairPreview, setRepairPreview] = useState<{
+    collection: { id: string; name: string; type: string };
+    actionId: string;
+    changes: string[];
+    currentHealth?: { score?: number; status?: string; reasons: string[] };
+  } | null>(null);
   const filteredOperations = useMemo(() => {
     const query = operationQuery.trim().toLowerCase();
 
@@ -646,17 +660,29 @@ const DashboardInsights: React.FC = () => {
     localStorage.removeItem('agregarr-dashboard-section-order');
     window.location.reload();
   };
+  const getHeadingSectionId = (heading: Element | null) => {
+    const textNode = Array.from(heading?.childNodes || []).find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
+    );
+
+    return (textNode?.textContent || heading?.textContent || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-');
+  };
   const applyLayoutPreset = (
     preset: 'minimal' | 'tautulli' | 'repair' | 'full'
   ) => {
     const sections = Array.from(
-      dashboardRootRef.current?.querySelectorAll('section h4') || []
-    ).map((heading) =>
-      heading.textContent
-        ?.trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-    );
+      dashboardRootRef.current?.querySelectorAll('section') || []
+    ).map((section) => {
+      const sectionElement = section as HTMLElement;
+
+      return (
+        sectionElement.dataset.dashboardSectionId ||
+        getHeadingSectionId(section.querySelector('h4'))
+      );
+    });
     const visibleByPreset: Record<typeof preset, string[]> = {
       minimal: [
         'first-aid-status',
@@ -688,6 +714,36 @@ const DashboardInsights: React.FC = () => {
       }
     });
     window.location.reload();
+  };
+  const clearDashboardCache = async () => {
+    setRunningAction('clear-cache');
+    setActionMessage(null);
+
+    try {
+      await axios.post('/api/v1/dashboard/cache/clear');
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+      window.location.reload();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const previewRepairAction = async (actionId: string, configId: string) => {
+    setRunningAction(`preview-${actionId}-${configId}`);
+    setActionMessage(null);
+
+    try {
+      const response = await axios.post(
+        `/api/v1/dashboard/repair-preview/${actionId}`,
+        { configId }
+      );
+      setRepairPreview(response.data);
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
   };
   const addRepairToQueue = (
     actionId: string,
@@ -735,6 +791,25 @@ const DashboardInsights: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    const autoTestKey = 'agregarr-dashboard-source-auto-test-at';
+    const lastRun = Number(localStorage.getItem(autoTestKey) || 0);
+    const twelveHours = 12 * 60 * 60 * 1000;
+
+    if (Date.now() - lastRun < twelveHours) {
+      return;
+    }
+
+    localStorage.setItem(autoTestKey, String(Date.now()));
+    axios
+      .post('/api/v1/dashboard/source-test-all')
+      .catch(() => localStorage.removeItem(autoTestKey));
+  }, [data]);
+
+  useEffect(() => {
     const root = dashboardRootRef.current;
 
     if (!root) {
@@ -750,15 +825,13 @@ const DashboardInsights: React.FC = () => {
         return;
       }
 
-      const key = `agregarr-dashboard-section-${heading.textContent
-        ?.trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')}`;
+      const sectionId = getHeadingSectionId(heading);
+      const key = `agregarr-dashboard-section-${sectionId}`;
       const button = document.createElement('button');
       const upButton = document.createElement('button');
       const downButton = document.createElement('button');
       const orderKey = 'agregarr-dashboard-section-order';
-      const sectionId = key.replace('agregarr-dashboard-section-', '');
+      (section as HTMLElement).dataset.dashboardSectionId = sectionId;
       const getOrder = (): string[] =>
         JSON.parse(localStorage.getItem(orderKey) || '[]') as string[];
       const saveOrder = (order: string[]) =>
@@ -773,10 +846,9 @@ const DashboardInsights: React.FC = () => {
 
         sections.forEach((item) => {
           const itemHeading = item.querySelector('h4');
-          const itemId = itemHeading?.textContent
-            ?.trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-');
+          const itemId =
+            (item as HTMLElement).dataset.dashboardSectionId ||
+            getHeadingSectionId(itemHeading);
 
           (item as HTMLElement).style.order = String(
             Math.max(0, order.indexOf(itemId || ''))
@@ -806,7 +878,6 @@ const DashboardInsights: React.FC = () => {
         applyState(nextCollapsed);
       });
       upButton.type = 'button';
-      upButton.textContent = '↑';
       upButton.className =
         'rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60';
       upButton.addEventListener('click', () => {
@@ -823,7 +894,6 @@ const DashboardInsights: React.FC = () => {
         }
       });
       downButton.type = 'button';
-      downButton.textContent = '↓';
       downButton.className =
         'rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60';
       downButton.addEventListener('click', () => {
@@ -839,6 +909,8 @@ const DashboardInsights: React.FC = () => {
           applyOrder();
         }
       });
+      upButton.textContent = 'Up';
+      downButton.textContent = 'Down';
       heading.classList.add('gap-2');
       heading.appendChild(upButton);
       heading.appendChild(downButton);
@@ -925,8 +997,59 @@ const DashboardInsights: React.FC = () => {
           >
             {intl.formatMessage(messages.resetLayout)}
           </button>
+          <button
+            type="button"
+            onClick={() => setLayoutManagerOpen(true)}
+            className="rounded border border-orange-500/50 px-2 py-1 text-xs font-semibold text-orange-100 transition-colors hover:bg-orange-500/10"
+          >
+            {intl.formatMessage(messages.manageTiles)}
+          </button>
         </div>
       </div>
+
+      {layoutManagerOpen && (
+        <div className="border-b border-gray-700 bg-stone-900 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold text-white">
+              {intl.formatMessage(messages.manageTiles)}
+            </h4>
+            <button
+              type="button"
+              onClick={() => setLayoutManagerOpen(false)}
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+            >
+              {intl.formatMessage(messages.close)}
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(['minimal', 'tautulli', 'repair', 'full'] as const).map(
+              (preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => applyLayoutPreset(preset)}
+                  className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                >
+                  {preset === 'minimal'
+                    ? intl.formatMessage(messages.layoutPresetMinimal)
+                    : preset === 'tautulli'
+                    ? intl.formatMessage(messages.layoutPresetTautulli)
+                    : preset === 'repair'
+                    ? intl.formatMessage(messages.layoutPresetRepair)
+                    : intl.formatMessage(messages.layoutPresetFull)}
+                </button>
+              )
+            )}
+            <button
+              type="button"
+              onClick={resetLayout}
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+            >
+              {intl.formatMessage(messages.resetLayout)}
+            </button>
+          </div>
+        </div>
+      )}
 
       {data.maintenanceMode?.enabled && (
         <div className="border-b border-orange-500/30 bg-orange-500/10 px-6 py-3">
@@ -1378,6 +1501,28 @@ const DashboardInsights: React.FC = () => {
                       <button
                         type="button"
                         onClick={() =>
+                          previewRepairAction(
+                            candidate.type === 'missing-rating-key'
+                              ? 'repair-rating-key'
+                              : 'retry-sync',
+                            candidate.configId
+                          )
+                        }
+                        className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+                        disabled={
+                          runningAction ===
+                          `preview-${
+                            candidate.type === 'missing-rating-key'
+                              ? 'repair-rating-key'
+                              : 'retry-sync'
+                          }-${candidate.configId}`
+                        }
+                      >
+                        {intl.formatMessage(messages.previewRepair)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
                           runRepairAction(
                             candidate.type === 'missing-rating-key'
                               ? 'repair-rating-key'
@@ -1425,6 +1570,28 @@ const DashboardInsights: React.FC = () => {
             )}
           </div>
         </section>
+
+        {repairPreview && (
+          <section className="rounded-md border border-gray-700 p-4">
+            <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+              <BoltIcon className="mr-2 h-4 w-4 text-orange-400" />
+              {intl.formatMessage(messages.repairPreview)}
+            </h4>
+            <p className="text-sm font-medium text-gray-200">
+              {repairPreview.collection.name}
+            </p>
+            <div className="mt-2 space-y-2">
+              {repairPreview.changes.map((change) => (
+                <p
+                  key={change}
+                  className="rounded bg-stone-900 px-3 py-2 text-xs text-gray-400"
+                >
+                  {change}
+                </p>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="rounded-md border border-gray-700 p-4">
           <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
@@ -2029,6 +2196,14 @@ const DashboardInsights: React.FC = () => {
               {intelligence?.dashboardPerformance?.strategy}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={clearDashboardCache}
+            disabled={runningAction === 'clear-cache'}
+            className="mt-3 rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {intl.formatMessage(messages.clearDashboardCache)}
+          </button>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">
@@ -2102,6 +2277,12 @@ const DashboardInsights: React.FC = () => {
               </p>
             )}
           </div>
+          <a
+            href="/api/v1/dashboard/health-snapshots/export?format=csv"
+            className="mt-3 inline-block rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.exportHealthCsv)}
+          </a>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">
