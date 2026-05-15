@@ -231,6 +231,30 @@ const writeDailyHealthSnapshot = async (
   return [...snapshots, snapshot].slice(-90);
 };
 
+const healthSnapshotsToCsv = (snapshots: HealthSnapshot[]): string => {
+  const header = [
+    'date',
+    'at',
+    'totalCollections',
+    'criticalCollections',
+    'warningCollections',
+    'averageScore',
+  ];
+  const escapeCsvValue = (value: unknown) =>
+    `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  return [
+    header.join(','),
+    ...snapshots.map((snapshot) =>
+      header
+        .map((key) =>
+          escapeCsvValue(snapshot[key as keyof HealthSnapshot] ?? '')
+        )
+        .join(',')
+    ),
+  ].join('\n');
+};
+
 const getSettingsFingerprint = (settings: ReturnType<typeof getSettings>) =>
   crypto
     .createHash('sha256')
@@ -1743,6 +1767,22 @@ const getAdvancedIntelligence = async (
     tautulliMappingDebugger.length > 0
       ? Math.round((mappedCollections / tautulliMappingDebugger.length) * 100)
       : 0;
+  const isGerman = settings.main.locale?.toLowerCase().startsWith('de');
+  const releaseHighlights = isGerman
+    ? [
+        'Dashboard-Kachelverwaltung mit Presets, Reset und Sortierung',
+        'Repair-Queue mit Vorschau und Batch-Ausfuehrung',
+        'First-Aid-Status, Report und sichere Restore-Vorschau',
+        'Tautulli Mapping Score, Detailansicht und Auto-Fix',
+        'Backup-Status, Settings Fingerprint, Health-Trends und Export',
+      ]
+    : [
+        'Dashboard tile management with presets, reset, and ordering',
+        'Repair queue with preview and batch execution controls',
+        'First Aid status, report, and safer restore preview',
+        'Tautulli mapping score, detail view, and auto-fix',
+        'Backup health, settings fingerprint, health trends, and export',
+      ];
   const settingsConsistency = getSettingsConsistency(
     settings,
     collectionScores
@@ -2216,8 +2256,9 @@ const getAdvancedIntelligence = async (
     dashboardPerformance: {
       cacheTtlMs: DASHBOARD_CACHE_TTL_MS,
       cacheEntries: dashboardCache.size,
-      strategy:
-        'Fast settings and database signals render first; Tautulli-heavy data is cached for short dashboard refreshes.',
+      strategy: isGerman
+        ? 'Settings- und Datenbank-Signale laden zuerst; Tautulli-lastige Daten werden fuer kurze Dashboard-Refreshes gecacht.'
+        : 'Fast settings and database signals render first; Tautulli-heavy data is cached for short dashboard refreshes.',
     },
     healthSnapshots,
     notifications: [
@@ -2246,13 +2287,7 @@ const getAdvancedIntelligence = async (
     },
     releaseChanges: {
       version: getAppVersion(),
-      highlights: [
-        'Dashboard layout presets, reset, and ordering',
-        'Repair queue with batch execution controls',
-        'First Aid status, report, and safer restore flow',
-        'Tautulli mapping score and auto-fix',
-        'Backup health, settings fingerprint, and health trends',
-      ],
+      highlights: releaseHighlights,
     },
     auditLog: storedEvents.slice(0, 10),
     mappingScore: {
@@ -2702,18 +2737,26 @@ dashboardRoutes.get('/problems', isAuthenticated(), (_req, res) => {
   const collectionHealthScores = getCollectionHealthScores(settings);
   const sourceStatus = getSourceStatus(settings);
 
-  return res.status(200).json({
-    problems: getProblemDetails(settings, collectionHealthScores, sourceStatus),
-  });
+  return res.status(200).json(
+    localizeDashboardPayload(settings, {
+      problems: getProblemDetails(
+        settings,
+        collectionHealthScores,
+        sourceStatus
+      ),
+    })
+  );
 });
 
 dashboardRoutes.get('/repair-candidates', isAuthenticated(), (_req, res) => {
   const settings = getSettings();
   const collectionHealthScores = getCollectionHealthScores(settings);
 
-  return res.status(200).json({
-    candidates: getRepairCandidates(settings, collectionHealthScores),
-  });
+  return res.status(200).json(
+    localizeDashboardPayload(settings, {
+      candidates: getRepairCandidates(settings, collectionHealthScores),
+    })
+  );
 });
 
 dashboardRoutes.get('/first-aid', isAuthenticated(), async (_req, res) => {
@@ -2784,23 +2827,25 @@ dashboardRoutes.get('/first-aid', isAuthenticated(), async (_req, res) => {
     },
   });
 
-  return res.status(200).json({
-    generatedAt: new Date().toISOString(),
-    status:
-      failedChecks.length === 0
-        ? 'healthy'
-        : failedChecks.length <= 2
-        ? 'watch'
-        : 'attention',
-    likelyCause:
-      failedChecks[0]?.message ||
-      consistency[0]?.message ||
-      problems[0]?.message ||
-      'Keine offensichtliche Ursache gefunden.',
-    checks,
-    consistency,
-    problems,
-  });
+  return res.status(200).json(
+    localizeDashboardPayload(settings, {
+      generatedAt: new Date().toISOString(),
+      status:
+        failedChecks.length === 0
+          ? 'healthy'
+          : failedChecks.length <= 2
+          ? 'watch'
+          : 'attention',
+      likelyCause:
+        failedChecks[0]?.message ||
+        consistency[0]?.message ||
+        problems[0]?.message ||
+        'Keine offensichtliche Ursache gefunden.',
+      checks,
+      consistency,
+      problems,
+    })
+  );
 });
 
 dashboardRoutes.get(
@@ -2841,12 +2886,26 @@ dashboardRoutes.get(
       `attachment; filename="agregarr-first-aid-${timestamp}.json"`
     );
 
-    return res.status(200).send(JSON.stringify(report, undefined, ' '));
+    return res
+      .status(200)
+      .send(
+        JSON.stringify(
+          localizeDashboardPayload(settings, report),
+          undefined,
+          ' '
+        )
+      );
   }
 );
 
 dashboardRoutes.get('/sync-dry-run', isAuthenticated(), async (_req, res) => {
-  return res.status(200).json(await getDetailedSyncDryRun(getSettings()));
+  const settings = getSettings();
+
+  return res
+    .status(200)
+    .json(
+      localizeDashboardPayload(settings, await getDetailedSyncDryRun(settings))
+    );
 });
 
 dashboardRoutes.get(
@@ -2856,6 +2915,36 @@ dashboardRoutes.get(
     return res.status(200).json({
       snapshots: await readHealthSnapshots(90),
     });
+  }
+);
+
+dashboardRoutes.get(
+  '/health-snapshots/export',
+  isAuthenticated(),
+  async (req, res) => {
+    const snapshots = await readHealthSnapshots(365);
+    const format = String(req.query.format || 'csv').toLowerCase();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="agregarr-health-snapshots-${timestamp}.json"`
+      );
+
+      return res
+        .status(200)
+        .send(JSON.stringify({ snapshots }, undefined, ' '));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-health-snapshots-${timestamp}.csv"`
+    );
+
+    return res.status(200).send(healthSnapshotsToCsv(snapshots));
   }
 );
 
@@ -2966,12 +3055,14 @@ dashboardRoutes.post(
 dashboardRoutes.get('/settings-consistency', isAuthenticated(), (_req, res) => {
   const settings = getSettings();
 
-  return res.status(200).json({
-    issues: getSettingsConsistency(
-      settings,
-      getCollectionHealthScores(settings)
-    ),
-  });
+  return res.status(200).json(
+    localizeDashboardPayload(settings, {
+      issues: getSettingsConsistency(
+        settings,
+        getCollectionHealthScores(settings)
+      ),
+    })
+  );
 });
 
 dashboardRoutes.get('/audit-log', isAuthenticated(), async (req, res) => {
@@ -2997,6 +3088,24 @@ dashboardRoutes.get('/version-check', isAuthenticated(), async (_req, res) => {
 
 dashboardRoutes.get('/backup-health', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(await getBackupHealth(getSettings()));
+});
+
+dashboardRoutes.post('/cache/clear', isAuthenticated(), async (_req, res) => {
+  const clearedEntries = dashboardCache.size;
+
+  dashboardCache.clear();
+
+  await appendDashboardEvent({
+    type: 'cache',
+    title: 'Dashboard cache cleared',
+    message: `${clearedEntries} cache entries were cleared manually.`,
+    metadata: { clearedEntries },
+  });
+
+  return res.status(200).json({
+    success: true,
+    clearedEntries,
+  });
 });
 
 dashboardRoutes.get(
@@ -3154,10 +3263,67 @@ dashboardRoutes.post(
 );
 
 dashboardRoutes.post(
+  '/repair-preview/:actionId',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const actionId = req.params.actionId;
+    const configId = String(req.body?.configId || '');
+    const config = getAllCollectionConfigs(settings).find(
+      (item) => item.id === configId
+    );
+    const scores = getCollectionHealthScores(settings);
+    const health = scores.find((score) => score.id === configId);
+
+    if (!config) {
+      return res.status(404).json({ message: 'Collection config not found' });
+    }
+
+    const actionDescriptions: Record<string, string[]> = {
+      'retry-sync': [
+        'Mark collection as needing sync',
+        'The next sync will retry this collection',
+      ],
+      'repair-rating-key': [
+        'Mark collection as needing sync',
+        'Agregarr will try to recover the Plex rating key',
+      ],
+      'make-visible': [
+        'Enable Home and Recommended visibility',
+        'Mark collection as needing sync',
+      ],
+    };
+
+    if (!actionDescriptions[actionId]) {
+      return res.status(404).json({ message: 'Unknown repair action' });
+    }
+
+    return res.status(200).json(
+      localizeDashboardPayload(settings, {
+        collection: {
+          id: config.id,
+          name: config.name,
+          type: getConfigType(config),
+        },
+        actionId,
+        changes: actionDescriptions[actionId],
+        currentHealth: {
+          score: health?.score,
+          status: health?.status,
+          reasons: health?.reasons || [],
+        },
+        safeToRun: true,
+      })
+    );
+  }
+);
+
+dashboardRoutes.post(
   '/source-test/:sourceId',
   isAuthenticated(),
   async (req, res) => {
-    const result = await runSourceTest(req.params.sourceId, getSettings());
+    const settings = getSettings();
+    const result = await runSourceTest(req.params.sourceId, settings);
 
     await appendDashboardEvent({
       type: 'source-test',
@@ -3171,7 +3337,7 @@ dashboardRoutes.post(
     });
     dashboardCache.clear();
 
-    return res.status(200).json(result);
+    return res.status(200).json(localizeDashboardPayload(settings, result));
   }
 );
 
@@ -3201,7 +3367,9 @@ dashboardRoutes.post(
     });
     dashboardCache.clear();
 
-    return res.status(200).json({ results });
+    return res
+      .status(200)
+      .json(localizeDashboardPayload(settings, { results }));
   }
 );
 
