@@ -295,6 +295,15 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
   };
 };
 
+const getNormalizedCollectionName = (name: string): string =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[\W_]+/g, ' ')
+    .replace(/\b(top)\s*(\d+)\b/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const sanitizeSettings = (settings: unknown): unknown =>
   JSON.parse(
     JSON.stringify(settings, (key, value) => {
@@ -387,6 +396,187 @@ const ENGLISH_DASHBOARD_REPLACEMENTS: [RegExp, string][] = [
   [/ausgefuehrt/g, 'run'],
   [/Media Server fehlt/g, 'Media server missing'],
   [/Collections geprueft/g, 'collections checked'],
+  [/Echte Collection Diff Preview/g, 'Real Collection Diff Preview'],
+  [/Diagnosebericht Download/g, 'Diagnostics Report Download'],
+  [/Ausfuehrbares Source Test Center/g, 'Runnable Source Test Center'],
+  [/Action Center mit echten Aktionen/g, 'Action Center with Real Actions'],
+  [/Problem Collections/g, 'Problem Collections'],
+  [/Persistente Collection Timeline/g, 'Persistent Collection Timeline'],
+  [/Source-Test Verlauf/g, 'Source Test History'],
+  [/Wartungsmodus Banner/g, 'Maintenance Mode Banner'],
+  [/Wartungsmodus/g, 'Maintenance Mode'],
+  [/Bulk-Aktionen/g, 'Bulk Actions'],
+  [/Job-Uebersicht/g, 'Job Overview'],
+  [/Sync-Kalender/g, 'Sync Calendar'],
+  [/Collection Dependency View/g, 'Collection Dependency View'],
+  [/Multi-Source Debugger/g, 'Multi-Source Debugger'],
+  [/Placeholder-Detailseite/g, 'Placeholder Detail Page'],
+  [/Auto-Repair fuer Rating Keys/g, 'Auto-repair for rating keys'],
+  [/Warum ist diese Collection leer\?/g, 'Why is this collection empty?'],
+  [/Doppelte Collections erkennen/g, 'Detect Duplicate Collections'],
+  [
+    /Watchlist fuer fehleranfaellige Quellen/g,
+    'Watchlist for Unreliable Sources',
+  ],
+  [/Tautulli Datenqualitaets-Check/g, 'Tautulli Data Quality Check'],
+  [/Radarr\/Sonarr Profil-Audit/g, 'Radarr/Sonarr Profile Audit'],
+  [
+    /Root-Folder und Speicherplatz-Warnungen/g,
+    'Root Folder and Storage Warnings',
+  ],
+  [/API-Key und Berechtigungspruefung/g, 'API Key and Permission Check'],
+  [/Restore-Dry-Run mit Diff/g, 'Restore Dry Run with Diff'],
+  [
+    /Import\/Export einzelner Collections/g,
+    'Import/Export Individual Collections',
+  ],
+  [/Collection-Vorlagenbibliothek/g, 'Collection Template Library'],
+  [/Experiment Mode/g, 'Experiment Mode'],
+  [/Sync-Kosten-Schaetzung/g, 'Sync Cost Estimate'],
+  [/Dashboard-Suche/g, 'Dashboard Search'],
+  [
+    /Tautulli Datenqualitaet pro Collection/g,
+    'Tautulli Data Quality per Collection',
+  ],
+  [/Release\/Update Hinweis/g, 'Release/Update Hint'],
+  [/Audit Log/g, 'Audit Log'],
+  [/Tautulli Artwork Cache/g, 'Tautulli Artwork Cache'],
+  [
+    /Zeigt Collections, bei denen ein naechster Sync wahrscheinlich Unterschiede erzeugt\./g,
+    'Shows collections where the next sync is likely to create differences.',
+  ],
+  [
+    /Fasst Version, Quellen, Health und letzte Fehler ohne Tokens zusammen\./g,
+    'Summarizes version, sources, health, and recent errors without tokens.',
+  ],
+  [
+    /Buendelt Quellenstatus, Konfiguration und Zuverlaessigkeit pro Provider\./g,
+    'Combines source status, configuration, and reliability per provider.',
+  ],
+  [
+    /Verlinkt direkt zu betroffenen Bereichen wie Collections oder Quellen\./g,
+    'Links directly to affected areas such as collections or sources.',
+  ],
+  [
+    /Warnungen bekommen Ursache, Bereich, Aktion und Ziel-Link\./g,
+    'Warnings include cause, area, action, and target link.',
+  ],
+  [
+    /Listet kritische Collections mit Sync-Fehlern, fehlenden Keys oder Bibliotheken\./g,
+    'Lists critical collections with sync errors, missing keys, or missing libraries.',
+  ],
+  [
+    /Nutzt Requests, Placeholder und Metadata-Updates als Timeline-Signal\./g,
+    'Uses requests, placeholders, and metadata updates as timeline signals.',
+  ],
+  [
+    /Speichert Tests mit Erfolgsquote, Fehlern und Latenzsignalen\./g,
+    'Stores tests with success rate, failures, and latency signals.',
+  ],
+  [
+    /Zeigt den aktiven Wartungsmodus sichtbar oben im Dashboard\./g,
+    'Shows active maintenance mode prominently at the top of the dashboard.',
+  ],
+  [
+    /Blockiert neue Dashboard-Sync-Aktionen, solange Wartungsarbeiten laufen\./g,
+    'Blocks new dashboard sync actions while maintenance work is active.',
+  ],
+  [
+    /Gruppiert Collections mit gleichem Handlungsbedarf fuer spaetere Sammelaktionen\./g,
+    'Groups collections with the same action need for later bulk actions.',
+  ],
+  [
+    /Zeigt, ob automatische Collection-Syncs grundsaetzlich aktiv sind\./g,
+    'Shows whether automatic collection syncs are generally active.',
+  ],
+  [
+    /Nutzt letzten globalen Sync als Basis fuer eine Kalenderansicht\./g,
+    'Uses the last global sync as the basis for a calendar view.',
+  ],
+  [
+    /Erkennt verlinkte und Multi-Source Collections als Abhaengigkeiten\./g,
+    'Detects linked and multi-source collections as dependencies.',
+  ],
+  [
+    /Hebt Multi-Source Collections fuer detaillierte Quellenanalyse hervor\./g,
+    'Highlights multi-source collections for detailed source analysis.',
+  ],
+  [
+    /Zeigt Alter, Quelle, Typ und Plex-Zuordnung der letzten Placeholder\./g,
+    'Shows age, source, type, and Plex mapping for recent placeholders.',
+  ],
+  [
+    /Findet Collections ohne Plex Rating Key als Reparaturkandidaten\./g,
+    'Finds collections without Plex rating keys as repair candidates.',
+  ],
+  [
+    /Health-Gruende liefern erste Hinweise auf leere oder wertlose Collections\./g,
+    'Health reasons provide first clues for empty or low-value collections.',
+  ],
+  [
+    /Erkennt doppelte Collection-Namen als Cleanup-Kandidaten\./g,
+    'Detects duplicate collection names as cleanup candidates.',
+  ],
+  [
+    /Quellen mit niedriger Reliability werden automatisch hervorgehoben\./g,
+    'Sources with low reliability are highlighted automatically.',
+  ],
+  [
+    /Prueft, ob Tautulli Trends und Plays fuer Dashboard-Signale liefert\./g,
+    'Checks whether Tautulli provides trends and plays for dashboard signals.',
+  ],
+  [
+    /Findet Collections, die Download- oder Placeholder-Automation nutzen\./g,
+    'Finds collections using download or placeholder automation.',
+  ],
+  [
+    /Prueft, ob mindestens ein Radarr\/Sonarr Root Folder in Settings gesetzt ist\./g,
+    'Checks whether at least one Radarr/Sonarr root folder is set in settings.',
+  ],
+  [
+    /Vergleicht konfigurierte Quellen mit Quellen, die Aufmerksamkeit brauchen\./g,
+    'Compares configured sources with sources that need attention.',
+  ],
+  [
+    /Settings-Umfang ist sichtbar und kann fuer sichere Restore-Vorschauen genutzt werden\./g,
+    'Settings scope is visible and can be used for safe restore previews.',
+  ],
+  [
+    /Alle Collections sind eindeutig identifizierbar und exportierbar\./g,
+    'All collections are uniquely identifiable and exportable.',
+  ],
+  [
+    /Vorhandene Collection-Typen bilden die Grundlage fuer wiederverwendbare Vorlagen\./g,
+    'Existing collection types are the basis for reusable templates.',
+  ],
+  [
+    /Dry-Run-Daten zeigen, welche Collections sich fuer Testlaeufe ohne Plex-Aenderung eignen\./g,
+    'Dry-run data shows which collections are suitable for tests without Plex changes.',
+  ],
+  [
+    /Schaetzt Aufwand aus Collection-Anzahl plus aktivem Missing-Media-Handling\./g,
+    'Estimates effort from collection count plus active missing-media handling.',
+  ],
+  [
+    /Collections, Placeholder und Requests werden als Suchbasis zusammengefuehrt\./g,
+    'Collections, placeholders, and requests are combined as a search base.',
+  ],
+  [
+    /Zeigt Collections ohne Rating Key oder ohne Treffer in Tautulli\./g,
+    'Shows collections without a rating key or without a Tautulli match.',
+  ],
+  [
+    /Vergleicht die installierte Version mit dem neuesten GitHub Release\./g,
+    'Compares the installed version with the latest GitHub release.',
+  ],
+  [
+    /Zeichnet Dashboard-Aktionen wie Tests, Wartung und Sync-Starts dauerhaft auf\./g,
+    'Persistently records dashboard actions such as tests, maintenance, and sync starts.',
+  ],
+  [
+    /Dashboard nutzt stabile Proxy-URLs, damit Poster wiederverwendbar geladen werden\./g,
+    'Dashboard uses stable proxy URLs so posters can be reused.',
+  ],
   [/fuer /g, 'for '],
 ];
 
@@ -1733,6 +1923,7 @@ const getAdvancedIntelligence = async (
       name: source.name,
       score,
       status: score >= 90 ? 'ok' : score >= 60 ? 'watch' : 'attention',
+      usedByCollections: source.usedByCollections || 0,
       lastLatencyMs: lastTest?.latencyMs,
       lastTestedAt: lastTest?.testedAt,
       message: lastTest
@@ -1869,7 +2060,324 @@ const getAdvancedIntelligence = async (
   const rootFolderConfigured =
     (settings.radarr || []).some((server) => server.activeDirectory) ||
     (settings.sonarr || []).some((server) => server.activeDirectory);
+  const sourcePriority = sourceReliability
+    .map((source) => ({
+      id: source.id,
+      name: source.name,
+      priority: Math.max(
+        1,
+        Math.min(
+          100,
+          (source.usedByCollections || 0) * 12 +
+            (source.status === 'attention'
+              ? 35
+              : source.status === 'watch'
+              ? 20
+              : 0) +
+            (source.lastLatencyMs
+              ? Math.min(20, Math.floor(source.lastLatencyMs / 1000) * 4)
+              : 0)
+        )
+      ),
+      usedByCollections: source.usedByCollections || 0,
+      status: source.status,
+      recommendation: isGerman
+        ? source.status === 'attention'
+          ? 'Zuerst pruefen'
+          : source.usedByCollections
+          ? 'Regelmaessig beobachten'
+          : 'Niedrige Prioritaet'
+        : source.status === 'attention'
+        ? 'Check first'
+        : source.usedByCollections
+        ? 'Monitor regularly'
+        : 'Low priority',
+    }))
+    .sort((a, b) => b.priority - a.priority);
+  const tautulliPlaysByTitle = new Map(
+    tautulliCollectionStats
+      .filter((item) => item.title)
+      .map((item) => [
+        item.title?.trim().toLowerCase() || '',
+        item.total_plays || 0,
+      ])
+  );
+  const collectionQualityScores = collectionScores
+    .map((score) => {
+      const plays =
+        tautulliPlaysByTitle.get(score.name.trim().toLowerCase()) || 0;
+      const qualityScore = Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            score.score * 0.72 +
+              Math.min(20, plays * 2) +
+              (score.needsSync ? -8 : 8)
+          )
+        )
+      );
+
+      return {
+        id: score.id,
+        name: score.name,
+        score: qualityScore,
+        healthScore: score.score,
+        plays,
+        status:
+          qualityScore >= 85
+            ? ('ready' as const)
+            : qualityScore >= 60
+            ? ('watch' as const)
+            : ('attention' as const),
+        reason:
+          score.reasons[0] ||
+          (isGerman
+            ? 'Keine offenen Health-Probleme'
+            : 'No open health issues'),
+      };
+    })
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 10);
+  const duplicateGroups = Array.from(
+    allConfigs.reduce((groups, config) => {
+      const key = getNormalizedCollectionName(config.name);
+      const group = groups.get(key) || [];
+
+      group.push({
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        libraryName: config.libraryName,
+        needsSync: !!config.needsSync,
+      });
+      groups.set(key, group);
+
+      return groups;
+    }, new Map<string, { id: string; name: string; type: string; libraryName?: string; needsSync: boolean }[]>())
+  )
+    .filter(([, group]) => group.length > 1)
+    .map(([normalizedName, items]) => ({
+      normalizedName,
+      count: items.length,
+      items,
+    }))
+    .slice(0, 8);
+  const dashboardWatchlist = collectionQualityScores
+    .filter((item) => item.status !== 'ready')
+    .slice(0, 8)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      score: item.score,
+      reason: item.reason,
+      href: `/api/v1/dashboard/collection-diff/${item.id}`,
+    }));
+  const syncWindow = {
+    recommendedWindow: settings.main.lastGlobalSyncAt
+      ? isGerman
+        ? 'Nach dem naechsten geplanten Sync'
+        : 'After the next scheduled sync'
+      : isGerman
+      ? 'Nachts oder ausserhalb der Hauptnutzung'
+      : 'Overnight or outside prime usage',
+    reason: isGerman
+      ? `${needsSync.length} Collections warten auf Sync, ${autoRequestCount} nutzen Missing-Media-Automation.`
+      : `${needsSync.length} collections are waiting for sync, ${autoRequestCount} use missing-media automation.`,
+    loadScore: Math.min(
+      100,
+      allConfigs.length + autoRequestCount * 2 + needsSync.length * 3
+    ),
+  };
+  const smartInsights = [
+    ...(tautulliDataQuality.noTautulliMatchCount
+      ? [
+          {
+            id: 'tautulli-mapping',
+            title: isGerman
+              ? 'Tautulli Mapping verbessern'
+              : 'Improve Tautulli mapping',
+            message: isGerman
+              ? `${tautulliDataQuality.noTautulliMatchCount} Collections haben keinen Tautulli-Treffer.`
+              : `${tautulliDataQuality.noTautulliMatchCount} collections have no Tautulli match.`,
+            severity: 'warning' as const,
+          },
+        ]
+      : []),
+    ...(collectionQualityScores[0]
+      ? [
+          {
+            id: 'lowest-quality',
+            title: isGerman
+              ? 'Schwaechste Collection zuerst'
+              : 'Weakest collection first',
+            message: `${collectionQualityScores[0].name}: ${collectionQualityScores[0].score}`,
+            severity:
+              collectionQualityScores[0].status === 'attention'
+                ? ('error' as const)
+                : ('warning' as const),
+          },
+        ]
+      : []),
+    {
+      id: 'sync-window',
+      title: isGerman ? 'Bestes Sync-Zeitfenster' : 'Best sync window',
+      message: syncWindow.recommendedWindow,
+      severity:
+        syncWindow.loadScore > 70 ? ('warning' as const) : ('info' as const),
+    },
+  ].slice(0, 6);
+  const whyCollections = allConfigs.slice(0, 12).map((config) => ({
+    id: config.id,
+    name: config.name,
+    type: getConfigType(config),
+    reason: isGerman
+      ? `${getConfigType(config)} aus den gespeicherten Agregarr-Settings.`
+      : `${getConfigType(config)} from stored Agregarr settings.`,
+    source: getConfigType(config),
+    href: `/api/v1/dashboard/collection-diff/${config.id}`,
+  }));
+  const rollbackCandidates = errorConfigs
+    .concat(needsSync.filter((config) => !errorConfigs.includes(config)))
+    .slice(0, 8)
+    .map((config) => ({
+      id: config.id,
+      name: config.name,
+      reason:
+        getLastSyncError(config) ||
+        (isGerman ? 'Ausstehende Sync-Aenderung' : 'Pending sync change'),
+      safeAction: isGerman
+        ? 'Lokalen Sync-Status zuruecksetzen'
+        : 'Reset local sync marker',
+    }));
+  const autoHeal = {
+    safeActions:
+      repairCandidates.length +
+      sourceAttentionCount +
+      (needsSync.length ? 1 : 0),
+    canRun:
+      repairCandidates.length > 0 ||
+      sourceAttentionCount > 0 ||
+      needsSync.length > 0,
+    message: isGerman
+      ? 'Fuehrt nur lokale, risikoarme Reparaturen aus: Source-Tests, Cache leeren und Sync markieren.'
+      : 'Runs only low-risk local repairs: source tests, cache clear, and sync marking.',
+  };
   const operationsSuite = [
+    {
+      id: 'auto-heal-mode',
+      title: isGerman ? 'Auto-Heal Modus' : 'Auto-Heal Mode',
+      category: 'Repair',
+      status: autoHeal.canRun ? 'ready' : 'watch',
+      metric: `${autoHeal.safeActions} safe actions`,
+      summary: autoHeal.message,
+      href: '/dashboard',
+    },
+    {
+      id: 'plex-diff-intelligence',
+      title: isGerman
+        ? 'Collection-Diff gegen Plex'
+        : 'Collection Diff Against Plex',
+      category: 'Sync',
+      status: needsSync.length ? 'ready' : 'watch',
+      metric: `${needsSync.length} diffs`,
+      summary: isGerman
+        ? 'Zeigt geplante Adds, Placeholder, bekannte Rating Keys und Sync-Status pro Collection.'
+        : 'Shows planned adds, placeholders, known rating keys, and sync state per collection.',
+      href: '/dashboard',
+    },
+    {
+      id: 'tautulli-smart-insights',
+      title: isGerman ? 'Tautulli Smart Insights' : 'Tautulli Smart Insights',
+      category: 'Tautulli',
+      status: smartInsights.length ? 'ready' : 'watch',
+      metric: `${smartInsights.length} insights`,
+      summary: isGerman
+        ? 'Kombiniert Plays, Mapping und Health zu konkreten Dashboard-Hinweisen.'
+        : 'Combines plays, mapping, and health into actionable dashboard insights.',
+      href: '/dashboard',
+    },
+    {
+      id: 'source-priority',
+      title: isGerman ? 'Quellen-Prioritaet' : 'Source Priority',
+      category: 'Sources',
+      status: sourcePriority.some((source) => source.status === 'attention')
+        ? 'attention'
+        : 'ready',
+      metric: `${sourcePriority[0]?.priority || 0} top score`,
+      summary: isGerman
+        ? 'Sortiert Quellen nach Nutzung, Fehlerstatus und Latenz.'
+        : 'Ranks sources by usage, failure state, and latency.',
+      href: '/dashboard',
+    },
+    {
+      id: 'sync-window-advisor',
+      title: isGerman ? 'Sync-Zeitfenster' : 'Sync Window Advisor',
+      category: 'Jobs',
+      status: syncWindow.loadScore > 70 ? 'watch' : 'ready',
+      metric: `${syncWindow.loadScore} load`,
+      summary: syncWindow.reason,
+      href: '/dashboard',
+    },
+    {
+      id: 'collection-quality-score',
+      title: isGerman ? 'Collection Quality Score' : 'Collection Quality Score',
+      category: 'Collections',
+      status: collectionQualityScores.some(
+        (item) => item.status === 'attention'
+      )
+        ? 'attention'
+        : 'ready',
+      metric: `${collectionQualityScores[0]?.score || 100} lowest`,
+      summary: isGerman
+        ? 'Mischt Health, Plays und Sync-Status zu einer priorisierten Qualitaetsliste.'
+        : 'Blends health, plays, and sync state into a prioritized quality list.',
+      href: '/dashboard',
+    },
+    {
+      id: 'collection-rollback',
+      title: isGerman ? 'Rollback pro Collection' : 'Per-Collection Rollback',
+      category: 'Safety',
+      status: rollbackCandidates.length ? 'ready' : 'watch',
+      metric: `${rollbackCandidates.length} candidates`,
+      summary: isGerman
+        ? 'Setzt lokale Sync-Fehler/Marker gezielt pro Collection zurueck.'
+        : 'Resets local sync errors/markers for one collection at a time.',
+      href: '/dashboard',
+    },
+    {
+      id: 'why-is-this-here',
+      title: isGerman ? 'Warum ist das hier?' : 'Why Is This Here?',
+      category: 'Explainability',
+      status: whyCollections.length ? 'ready' : 'watch',
+      metric: `${whyCollections.length} explained`,
+      summary: isGerman
+        ? 'Erklaert pro Collection, aus welchem gespeicherten Typ und Signal sie stammt.'
+        : 'Explains the stored type and signal behind each collection.',
+      href: '/dashboard',
+    },
+    {
+      id: 'duplicate-finder',
+      title: isGerman ? 'Duplikat-Finder' : 'Duplicate Finder',
+      category: 'Cleanup',
+      status: duplicateGroups.length ? 'attention' : 'ready',
+      metric: `${duplicateGroups.length} groups`,
+      summary: isGerman
+        ? 'Findet gleiche oder sehr aehnliche Collection-Namen wie Top10/Top 10.'
+        : 'Finds equal or very similar collection names such as Top10/Top 10.',
+      href: '/dashboard',
+    },
+    {
+      id: 'dashboard-watchlist',
+      title: isGerman ? 'Dashboard Watchlist' : 'Dashboard Watchlist',
+      category: 'Alerts',
+      status: dashboardWatchlist.length ? 'ready' : 'watch',
+      metric: `${dashboardWatchlist.length} watched`,
+      summary: isGerman
+        ? 'Markiert schwache Collections automatisch fuer Nachverfolgung.'
+        : 'Automatically marks weak collections for follow-up.',
+      href: '/dashboard',
+    },
     {
       id: 'collection-diff-preview',
       title: 'Echte Collection Diff Preview',
@@ -2295,6 +2803,15 @@ const getAdvancedIntelligence = async (
       totalCollections: tautulliMappingDebugger.length,
       score: mappingScore,
     },
+    autoHeal,
+    smartInsights,
+    sourcePriority,
+    syncWindow,
+    collectionQualityScores,
+    duplicateGroups,
+    dashboardWatchlist,
+    whyCollections,
+    rollbackCandidates,
     backupHealth,
     placeholderLifecycle,
     explainers,
@@ -3313,6 +3830,114 @@ dashboardRoutes.post(
           reasons: health?.reasons || [],
         },
         safeToRun: true,
+      })
+    );
+  }
+);
+
+dashboardRoutes.post('/auto-heal', isAuthenticated(), async (_req, res) => {
+  const settings = getSettings();
+  const collectionHealthScores = getCollectionHealthScores(settings);
+  const repairCandidates = getRepairCandidates(
+    settings,
+    collectionHealthScores
+  );
+  const allConfigs = getAllCollectionConfigs(
+    settings
+  ) as (DashboardCollectionConfig & {
+    needsSync?: boolean;
+    lastSyncError?: string;
+  })[];
+  let markedForSync = 0;
+
+  repairCandidates.forEach((candidate) => {
+    const config = allConfigs.find((item) => item.id === candidate.configId);
+
+    if (config && !config.needsSync) {
+      config.needsSync = true;
+      markedForSync += 1;
+    }
+  });
+
+  const sources = getSourceStatus(settings).sources.map((source) => source.id);
+  const sourceResults = await Promise.all(
+    sources.map((sourceId) => runSourceTest(sourceId, settings))
+  );
+
+  settings.save();
+  dashboardCache.clear();
+
+  await appendDashboardEvent({
+    type: 'repair',
+    title: 'Auto-Heal completed',
+    message: `${markedForSync} collections marked for sync and ${sourceResults.length} sources tested.`,
+    metadata: {
+      markedForSync,
+      sourceTests: sourceResults.length,
+    },
+  });
+
+  return res.status(200).json(
+    localizeDashboardPayload(settings, {
+      success: true,
+      markedForSync,
+      sourceTests: sourceResults,
+      cacheCleared: true,
+    })
+  );
+});
+
+dashboardRoutes.post(
+  '/collection-rollback/:id',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const config = getAllCollectionConfigs(settings).find(
+      (item) => item.id === req.params.id
+    ) as
+      | (DashboardCollectionConfig & {
+          needsSync?: boolean;
+          lastSyncError?: string;
+        })
+      | undefined;
+
+    if (!config) {
+      return res.status(404).json({ message: 'Collection config not found' });
+    }
+
+    const before = {
+      needsSync: !!config.needsSync,
+      lastSyncError: config.lastSyncError,
+    };
+
+    config.needsSync = false;
+    config.lastSyncError = undefined;
+    settings.save();
+    dashboardCache.clear();
+
+    await appendDashboardEvent({
+      type: 'repair',
+      title: 'Collection rollback marker reset',
+      message: `${config.name} local sync marker was reset.`,
+      metadata: {
+        configId: config.id,
+        before,
+      },
+    });
+
+    return res.status(200).json(
+      localizeDashboardPayload(settings, {
+        success: true,
+        collection: {
+          id: config.id,
+          name: config.name,
+          type: getConfigType(config),
+        },
+        before,
+        after: {
+          needsSync: !!config.needsSync,
+          lastSyncError: config.lastSyncError,
+        },
       })
     );
   }
