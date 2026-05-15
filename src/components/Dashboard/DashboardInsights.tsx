@@ -138,6 +138,17 @@ const messages = defineMessages({
   previewRepair: 'Preview',
   repairPreview: 'Repair Preview',
   sourceAutoTested: 'Source tests run automatically.',
+  autoHealMode: 'Auto-Heal Mode',
+  runAutoHeal: 'Run Auto-Heal',
+  smartInsights: 'Smart Insights',
+  sourcePriority: 'Source Priority',
+  syncWindowAdvisor: 'Sync Window Advisor',
+  collectionQualityScore: 'Collection Quality Score',
+  duplicateFinder: 'Duplicate Finder',
+  dashboardWatchlist: 'Dashboard Watchlist',
+  whyIsThisHere: 'Why Is This Here?',
+  rollbackCandidates: 'Rollback Candidates',
+  runRollback: 'Reset marker',
 });
 
 interface DashboardInsightData {
@@ -324,6 +335,71 @@ interface DashboardInsightData {
       totalCollections: number;
       score: number;
     };
+    autoHeal?: {
+      safeActions: number;
+      canRun: boolean;
+      message: string;
+    };
+    smartInsights?: {
+      id: string;
+      title: string;
+      message: string;
+      severity: 'error' | 'warning' | 'info';
+    }[];
+    sourcePriority?: {
+      id: string;
+      name: string;
+      priority: number;
+      usedByCollections: number;
+      status: 'ok' | 'watch' | 'attention';
+      recommendation: string;
+    }[];
+    syncWindow?: {
+      recommendedWindow: string;
+      reason: string;
+      loadScore: number;
+    };
+    collectionQualityScores?: {
+      id: string;
+      name: string;
+      score: number;
+      healthScore: number;
+      plays: number;
+      status: 'ready' | 'watch' | 'attention';
+      reason: string;
+    }[];
+    duplicateGroups?: {
+      normalizedName: string;
+      count: number;
+      items: {
+        id: string;
+        name: string;
+        type: string;
+        libraryName?: string;
+        needsSync: boolean;
+      }[];
+    }[];
+    dashboardWatchlist?: {
+      id: string;
+      name: string;
+      score: number;
+      reason: string;
+      href: string;
+    }[];
+    whyCollections?: {
+      id: string;
+      name: string;
+      type: string;
+      reason: string;
+      source: string;
+      href: string;
+    }[];
+    rollbackCandidates?: {
+      id: string;
+      name: string;
+      reason: string;
+      safeAction: string;
+    }[];
     backupHealth?: {
       latestBackupAt?: string;
       daysSinceBackup: number | null;
@@ -438,7 +514,7 @@ const DashboardInsights: React.FC = () => {
   const intl = useIntl();
   const dashboardRootRef = useRef<HTMLDivElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
-  const { data, error } = useSWR<DashboardInsightData>(
+  const { data, error, mutate } = useSWR<DashboardInsightData>(
     '/api/v1/dashboard/stats'
   );
   const [operationQuery, setOperationQuery] = useState('');
@@ -789,6 +865,34 @@ const DashboardInsights: React.FC = () => {
       setRunningAction(null);
     }
   };
+  const runAutoHeal = async () => {
+    setRunningAction('auto-heal');
+    setActionMessage(null);
+
+    try {
+      await axios.post('/api/v1/dashboard/auto-heal');
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+      await mutate();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const runCollectionRollback = async (collectionId: string) => {
+    setRunningAction(`rollback-${collectionId}`);
+    setActionMessage(null);
+
+    try {
+      await axios.post(`/api/v1/dashboard/collection-rollback/${collectionId}`);
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+      await mutate();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
 
   useEffect(() => {
     if (!data) {
@@ -1109,6 +1213,132 @@ const DashboardInsights: React.FC = () => {
               </p>
             </div>
           </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <BoltIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.autoHealMode)}
+          </h4>
+          <p className="text-sm text-gray-300">
+            {intelligence?.autoHeal?.message}
+          </p>
+          <p className="mt-2 rounded bg-stone-900 px-3 py-2 text-sm text-orange-300">
+            {intelligence?.autoHeal?.safeActions || 0} safe actions
+          </p>
+          <button
+            type="button"
+            onClick={runAutoHeal}
+            disabled={
+              runningAction === 'auto-heal' || !intelligence?.autoHeal?.canRun
+            }
+            className="mt-3 rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {intl.formatMessage(messages.runAutoHeal)}
+          </button>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <LightBulbIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.smartInsights)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.smartInsights || []).length ? (
+              (intelligence?.smartInsights || []).map((insight) => (
+                <div
+                  key={insight.id}
+                  className="rounded bg-stone-900 px-3 py-2"
+                >
+                  <p
+                    className={`text-sm font-medium ${
+                      insight.severity === 'error'
+                        ? 'text-red-300'
+                        : insight.severity === 'warning'
+                        ? 'text-orange-300'
+                        : 'text-gray-200'
+                    }`}
+                  >
+                    {insight.title}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {insight.message}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ArrowTrendingUpIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.collectionQualityScore)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.collectionQualityScores || [])
+              .slice(0, 6)
+              .map((item) => (
+                <a
+                  key={item.id}
+                  href={`/api/v1/dashboard/collection-diff/${item.id}`}
+                  className="block rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-900/70"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {item.name}
+                    </p>
+                    <span className="text-xs font-semibold text-orange-300">
+                      {item.score}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {item.reason} / {item.plays} plays
+                  </p>
+                </a>
+              ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ServerStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.sourcePriority)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.sourcePriority || []).slice(0, 6).map((source) => (
+              <div key={source.id} className="rounded bg-stone-900 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-gray-200">
+                    {source.name}
+                  </p>
+                  <span className="text-xs text-orange-300">
+                    {source.priority}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {source.recommendation}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ClockIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.syncWindowAdvisor)}
+          </h4>
+          <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+            {intelligence?.syncWindow?.recommendedWindow}
+          </p>
+          <p className="mt-2 text-xs text-gray-500">
+            {intelligence?.syncWindow?.reason}
+          </p>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">
@@ -1625,6 +1855,121 @@ const DashboardInsights: React.FC = () => {
           >
             {intl.formatMessage(messages.runQueue)}
           </button>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ExclamationTriangleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.rollbackCandidates)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.rollbackCandidates || []).length ? (
+              (intelligence?.rollbackCandidates || []).map((candidate) => (
+                <div
+                  key={candidate.id}
+                  className="rounded bg-stone-900 px-3 py-2"
+                >
+                  <p className="text-sm font-medium text-gray-200">
+                    {candidate.name}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {candidate.reason}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => runCollectionRollback(candidate.id)}
+                    disabled={runningAction === `rollback-${candidate.id}`}
+                    className="mt-2 rounded border border-gray-600 px-2 py-1 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {intl.formatMessage(messages.runRollback)}
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <RectangleStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.duplicateFinder)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.duplicateGroups || []).length ? (
+              (intelligence?.duplicateGroups || []).map((group) => (
+                <div
+                  key={group.normalizedName}
+                  className="rounded bg-stone-900 px-3 py-2"
+                >
+                  <p className="text-sm font-medium text-gray-200">
+                    {group.normalizedName}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {group.items.map((item) => item.name).join(', ')}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <QuestionMarkCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.whyIsThisHere)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.whyCollections || []).slice(0, 6).map((item) => (
+              <a
+                key={item.id}
+                href={item.href}
+                className="block rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-900/70"
+              >
+                <p className="text-sm font-medium text-gray-200">{item.name}</p>
+                <p className="mt-1 text-xs text-gray-500">{item.reason}</p>
+              </a>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <LightBulbIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.dashboardWatchlist)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.dashboardWatchlist || []).length ? (
+              (intelligence?.dashboardWatchlist || []).map((item) => (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  className="block rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-900/70"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {item.name}
+                    </p>
+                    <span className="text-xs text-orange-300">
+                      {item.score}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">{item.reason}</p>
+                </a>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">
