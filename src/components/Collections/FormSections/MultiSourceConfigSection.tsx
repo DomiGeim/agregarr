@@ -850,7 +850,7 @@ const MultiSourceConfigSection = ({
           {
             value: 'title_ids',
             label: 'IMDb Title IDs',
-            description: 'Erstellt eine Quelle aus direkten tt... IMDb IDs',
+            description: 'Create a source from direct tt... IMDb IDs',
           },
           {
             value: 'random',
