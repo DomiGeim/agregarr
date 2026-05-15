@@ -20,7 +20,7 @@ const messages = defineMessages({
   imdbUrlExamples:
     'Examples: List (https://www.imdb.com/list/ls123456789/) or Watchlist (https://www.imdb.com/user/ur12345678/watchlist)',
   imdbTitleIdsHelp:
-    'IMDb Title IDs wie tt0111161 eingeben. Trennung per Komma, Leerzeichen oder neuer Zeile.',
+    'Enter IMDb Title IDs such as tt0111161. Separate them with commas, spaces, or new lines.',
   letterboxdListUrlExample:
     'Example: https://letterboxd.com/username/list/listname/',
   letterboxdWatchlistUrl: 'Letterboxd Watchlist URL',

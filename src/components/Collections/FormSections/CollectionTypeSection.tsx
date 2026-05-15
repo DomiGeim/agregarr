@@ -358,7 +358,7 @@ const CollectionTypeSection = ({
           {
             value: 'title_ids',
             label: 'IMDb Title IDs',
-            description: 'Erstellt eine Sammlung aus direkten tt... IMDb IDs',
+            description: 'Create a collection from direct tt... IMDb IDs',
           },
           {
             value: 'random',
