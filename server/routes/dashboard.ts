@@ -15,6 +15,7 @@ import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import { appDataPath } from '@server/utils/appDataVolume';
 import { getAppVersion } from '@server/utils/appVersion';
+import archiver from 'archiver';
 import axios from 'axios';
 import crypto from 'crypto';
 import { Router } from 'express';
@@ -24,6 +25,8 @@ import path from 'path';
 const dashboardRoutes = Router();
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 const TAUTULLI_DASHBOARD_TIMEOUT_MS = 60000;
+const SETTINGS_BACKUP_RETENTION = 20;
+const SOURCE_AUTO_TEST_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 type HealthSeverity = 'error' | 'warning' | 'info';
 
@@ -149,6 +152,9 @@ const sourceTestResults = new Map<string, SourceTestResult>();
 
 const dashboardEventsPath = (): string =>
   path.join(appDataPath(), 'dashboard-events.jsonl');
+
+const dashboardLayoutPath = (): string =>
+  path.join(appDataPath(), 'dashboard-layouts.json');
 
 const healthSnapshotsPath = (): string =>
   path.join(appDataPath(), 'dashboard-health-snapshots.jsonl');
@@ -355,6 +361,7 @@ const getSettingsFingerprint = (settings: ReturnType<typeof getSettings>) =>
 const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
   const backupsPath = path.join(appDataPath(), 'backups');
   let latestBackupAt: string | undefined;
+  let backupCount = 0;
 
   try {
     const files = await fs.readdir(backupsPath);
@@ -367,6 +374,7 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
           return stat.mtime;
         })
     );
+    backupCount = backupStats.length;
     const latest = backupStats.sort((a, b) => b.getTime() - a.getTime())[0];
     latestBackupAt = latest?.toISOString();
   } catch (error) {
@@ -382,7 +390,43 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
     daysSinceBackup,
     recommended: daysSinceBackup === null || daysSinceBackup > 14,
     settingsFingerprint: getSettingsFingerprint(settings),
+    backupCount,
+    retention: SETTINGS_BACKUP_RETENTION,
   };
+};
+
+const rotateSettingsBackups = async (
+  maxBackups = SETTINGS_BACKUP_RETENTION
+) => {
+  const backupsPath = path.join(appDataPath(), 'backups');
+
+  try {
+    const files = await fs.readdir(backupsPath);
+    const backupFiles = await Promise.all(
+      files
+        .filter((file) => file.endsWith('.json'))
+        .map(async (file) => ({
+          file,
+          path: path.join(backupsPath, file),
+          modifiedAt: (await fs.stat(path.join(backupsPath, file))).mtime,
+        }))
+    );
+    const removable = backupFiles
+      .sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())
+      .slice(maxBackups);
+
+    await Promise.all(removable.map((file) => fs.unlink(file.path)));
+
+    return {
+      kept: Math.min(backupFiles.length, maxBackups),
+      removed: removable.length,
+    };
+  } catch (error) {
+    return {
+      kept: 0,
+      removed: 0,
+    };
+  }
 };
 
 const writeAutomaticSettingsBackup = async (
@@ -401,6 +445,7 @@ const writeAutomaticSettingsBackup = async (
     JSON.stringify(settings.getAll(), undefined, ' '),
     'utf-8'
   );
+  const rotation = await rotateSettingsBackups();
 
   await appendDashboardEvent({
     type: 'backup',
@@ -409,6 +454,7 @@ const writeAutomaticSettingsBackup = async (
     metadata: {
       reason,
       filename,
+      rotation,
     },
   });
 
@@ -1352,12 +1398,286 @@ const getTautulliDiagnostics = (
       )
     ),
     checks,
+    endpoints: [
+      {
+        id: 'info',
+        label: 'get_info',
+        status: tautulliSource?.status || 'watch',
+      },
+      {
+        id: 'recently-added',
+        label: 'get_recently_added',
+        status: trends ? 'ok' : 'watch',
+      },
+      {
+        id: 'collection-views',
+        label: 'get_item_watch_time_stats',
+        status:
+          tautulliDataQuality.tautulliMatchedCollections > 0 ? 'ok' : 'watch',
+      },
+    ],
     recommendation:
       mappingScore < 80
         ? 'Run mapping auto-fix, then test Tautulli again.'
         : configured
         ? 'Tautulli looks ready for dashboard metrics.'
         : 'Configure Tautulli in Settings > Sources.',
+  };
+};
+
+const getJellyfinHealth = (settings: ReturnType<typeof getSettings>) => {
+  const configured =
+    !!settings.jellyfin.ip && !!settings.jellyfin.jellyfinApiKey;
+  const active = settings.plex.mediaServerType === 'jellyfin';
+  const libraryCount = settings.jellyfin.libraries?.length || 0;
+  const score = !active
+    ? 100
+    : configured && libraryCount
+    ? 100
+    : configured
+    ? 70
+    : 30;
+
+  return {
+    active,
+    configured,
+    libraryCount,
+    score,
+    status:
+      score >= 90
+        ? ('ready' as const)
+        : score >= 60
+        ? ('watch' as const)
+        : ('attention' as const),
+    message: active
+      ? configured
+        ? `${libraryCount} Jellyfin libraries synced.`
+        : 'Jellyfin is active but not fully configured.'
+      : 'Jellyfin is configured as an optional profile.',
+  };
+};
+
+const getPreSyncValidation = async (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[],
+  sourceStatus: ReturnType<typeof getSourceStatus>
+) => {
+  const backupHealth = await getBackupHealth(settings);
+  const checks = [
+    {
+      id: 'maintenance',
+      ok: !settings.main.maintenanceMode,
+      severity: settings.main.maintenanceMode
+        ? ('error' as const)
+        : ('info' as const),
+      title: 'Maintenance mode',
+      message: settings.main.maintenanceMode
+        ? 'Sync is paused while maintenance mode is active.'
+        : 'Maintenance mode is off.',
+    },
+    {
+      id: 'media-server',
+      ok: !!settings.plex.ip || !!settings.jellyfin.ip,
+      severity:
+        !settings.plex.ip && !settings.jellyfin.ip
+          ? ('error' as const)
+          : ('info' as const),
+      title: 'Media server',
+      message:
+        settings.plex.ip || settings.jellyfin.ip
+          ? 'Media server connection is configured.'
+          : 'No media server connection is configured.',
+    },
+    {
+      id: 'critical-collections',
+      ok: !collectionScores.some((score) => score.status === 'critical'),
+      severity: collectionScores.some((score) => score.status === 'critical')
+        ? ('warning' as const)
+        : ('info' as const),
+      title: 'Critical collections',
+      message: `${
+        collectionScores.filter((score) => score.status === 'critical').length
+      } critical collections found.`,
+    },
+    {
+      id: 'sources',
+      ok: sourceStatus.configured > 0,
+      severity:
+        sourceStatus.configured > 0 ? ('info' as const) : ('warning' as const),
+      title: 'Sources',
+      message: `${sourceStatus.configured}/${sourceStatus.total} sources configured.`,
+    },
+    {
+      id: 'backup',
+      ok: !backupHealth.recommended,
+      severity: backupHealth.recommended
+        ? ('warning' as const)
+        : ('info' as const),
+      title: 'Recent backup',
+      message: backupHealth.latestBackupAt
+        ? `Latest backup: ${backupHealth.latestBackupAt}`
+        : 'No settings backup found yet.',
+    },
+  ];
+
+  return {
+    canSync: !checks.some((check) => check.severity === 'error' && !check.ok),
+    warnings: checks.filter((check) => !check.ok).length,
+    checks,
+  };
+};
+
+const getEmptyCollectionInsights = (
+  collectionScores: CollectionHealthScore[],
+  tautulliMappingDebugger: ReturnType<typeof getTautulliMappingDebugger>
+) => {
+  const mappingById = new Map(
+    tautulliMappingDebugger.map((item) => [item.id, item] as const)
+  );
+
+  return collectionScores
+    .filter(
+      (score) =>
+        score.score < 85 ||
+        (mappingById.get(score.id)?.plays || 0) === 0 ||
+        !mappingById.get(score.id)?.mapped
+    )
+    .slice(0, 10)
+    .map((score) => {
+      const mapping = mappingById.get(score.id);
+      const reasons = [
+        ...score.reasons,
+        !mapping?.mapped ? 'No Tautulli mapping' : '',
+        mapping?.mapped && !mapping.plays
+          ? 'No Tautulli plays in current window'
+          : '',
+      ].filter(Boolean);
+
+      return {
+        id: score.id,
+        name: score.name,
+        healthScore: score.score,
+        plays: mapping?.plays || 0,
+        reasons,
+        recommendation: reasons.some((reason) => reason.includes('Rating Key'))
+          ? 'Repair the rating key or run mapping auto-fix.'
+          : reasons.some((reason) => reason.includes('Tautulli'))
+          ? 'Check Tautulli mapping and Recently Added diagnostics.'
+          : 'Open the collection diff and review source output.',
+        href: `/api/v1/dashboard/collection-diff/${score.id}`,
+      };
+    });
+};
+
+const getGhcrImageStatus = async (version: string) => {
+  const tags = [`v${version}`, 'latest'];
+  const results = await Promise.all(
+    tags.map(async (tag) => {
+      try {
+        const response = await axios.get(
+          `https://ghcr.io/v2/domigeim/agregarr/manifests/${tag}`,
+          {
+            timeout: 5000,
+            headers: {
+              Accept: 'application/vnd.oci.image.index.v1+json',
+            },
+            validateStatus: () => true,
+          }
+        );
+
+        return {
+          tag,
+          available: response.status >= 200 && response.status < 400,
+          statusCode: response.status,
+        };
+      } catch (error) {
+        return {
+          tag,
+          available: false,
+          statusCode: 0,
+        };
+      }
+    })
+  );
+
+  return {
+    image: 'ghcr.io/domigeim/agregarr',
+    tags: results,
+    ready: results.every((result) => result.available),
+    checkedAt: new Date().toISOString(),
+  };
+};
+
+const readDashboardLayout = async () => {
+  try {
+    return JSON.parse(
+      await fs.readFile(dashboardLayoutPath(), 'utf-8')
+    ) as Record<string, unknown>;
+  } catch (error) {
+    return {};
+  }
+};
+
+const writeDashboardLayout = async (layout: unknown) => {
+  await fs.mkdir(appDataPath(), { recursive: true });
+  await fs.writeFile(
+    dashboardLayoutPath(),
+    JSON.stringify(
+      {
+        updatedAt: new Date().toISOString(),
+        layout,
+      },
+      undefined,
+      ' '
+    ),
+    'utf-8'
+  );
+};
+
+const runScheduledSourceTests = async (
+  settings: ReturnType<typeof getSettings>,
+  events: DashboardEvent[]
+) => {
+  const latestAutoTest = events.find(
+    (event) =>
+      event.type === 'source-test' && event.metadata?.automatic === true
+  );
+  const latestAt = latestAutoTest ? new Date(latestAutoTest.at).getTime() : 0;
+
+  if (Date.now() - latestAt < SOURCE_AUTO_TEST_INTERVAL_MS) {
+    return {
+      ran: false,
+      nextRunAt: new Date(
+        latestAt + SOURCE_AUTO_TEST_INTERVAL_MS
+      ).toISOString(),
+    };
+  }
+
+  const sources = getSourceStatus(settings).sources.map((source) => source.id);
+  const results = await Promise.all(
+    sources.map((sourceId) => runSourceTest(sourceId, settings))
+  );
+
+  await appendDashboardEvent({
+    type: 'source-test',
+    title: 'Automatic source tests run',
+    message: `${results.filter((result) => result.ok).length}/${
+      results.length
+    } sources healthy.`,
+    metadata: {
+      automatic: true,
+      ok: results.every((result) => result.ok),
+      total: results.length,
+      passed: results.filter((result) => result.ok).length,
+    },
+  });
+
+  return {
+    ran: true,
+    results,
+    nextRunAt: new Date(
+      Date.now() + SOURCE_AUTO_TEST_INTERVAL_MS
+    ).toISOString(),
   };
 };
 
@@ -2617,6 +2937,17 @@ const getAdvancedIntelligence = async (
     trends,
     sourceReliability
   );
+  const jellyfinHealth = getJellyfinHealth(settings);
+  const preSyncValidation = await getPreSyncValidation(
+    settings,
+    collectionScores,
+    sourceStatus
+  );
+  const ghcrStatus = await getGhcrImageStatus(getAppVersion());
+  const emptyCollectionInsights = getEmptyCollectionInsights(
+    collectionScores,
+    tautulliMappingDebugger
+  );
   const operationsSuite = [
     {
       id: 'auto-heal-mode',
@@ -2713,6 +3044,52 @@ const getAdvancedIntelligence = async (
       summary: isGerman
         ? 'Erstellt vor riskanten Dashboard-Aktionen automatisch Settings-Backups.'
         : 'Creates automatic settings backups before risky dashboard actions.',
+      href: '/dashboard',
+    },
+    {
+      id: 'pre-sync-validator',
+      title: isGerman ? 'Pre-Sync Validator' : 'Pre-Sync Validator',
+      category: 'Safety',
+      status: preSyncValidation.canSync
+        ? preSyncValidation.warnings
+          ? 'watch'
+          : 'ready'
+        : 'attention',
+      metric: `${preSyncValidation.warnings} warnings`,
+      summary: isGerman
+        ? 'Prueft Medienserver, Quellen, kritische Collections und Backup-Status vor einem Sync.'
+        : 'Checks media server, sources, critical collections, and backup status before sync.',
+      href: '/dashboard',
+    },
+    {
+      id: 'ghcr-release-status',
+      title: isGerman ? 'GHCR Image Status' : 'GHCR Image Status',
+      category: 'Release',
+      status: ghcrStatus.ready ? 'ready' : 'watch',
+      metric: ghcrStatus.ready ? 'online' : 'pending',
+      summary: isGerman
+        ? 'Prueft, ob latest und die Versions-Tags im Container Registry erreichbar sind.'
+        : 'Checks whether latest and version tags are reachable in the container registry.',
+      href: '/dashboard',
+    },
+    {
+      id: 'jellyfin-health',
+      title: isGerman ? 'Jellyfin Health' : 'Jellyfin Health',
+      category: 'Media Server',
+      status: jellyfinHealth.status,
+      metric: `${jellyfinHealth.score}%`,
+      summary: jellyfinHealth.message,
+      href: '/settings/main',
+    },
+    {
+      id: 'empty-collection-why',
+      title: isGerman ? 'Warum ist diese Collection leer?' : 'Why Empty?',
+      category: 'Explainability',
+      status: emptyCollectionInsights.length ? 'ready' : 'watch',
+      metric: `${emptyCollectionInsights.length} insights`,
+      summary: isGerman
+        ? 'Erklaert leere oder schwache Collections anhand von Health, Mapping und Tautulli-Plays.'
+        : 'Explains empty or weak collections using health, mapping, and Tautulli plays.',
       href: '/dashboard',
     },
     {
@@ -3224,6 +3601,10 @@ const getAdvancedIntelligence = async (
       score: mappingScore,
     },
     tautulliDiagnostics,
+    jellyfinHealth,
+    preSyncValidation,
+    ghcrStatus,
+    emptyCollectionInsights,
     collectionConfigExplanations,
     autoHeal,
     smartInsights,
@@ -3452,6 +3833,10 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       settings.plex.preExistingCollectionConfigs?.length || 0;
 
     const sourceStatus = getSourceStatus(settings);
+    const scheduledSourceTests = await runScheduledSourceTests(
+      settings,
+      await readDashboardEvents(100)
+    );
     const healthSnapshots = await writeDailyHealthSnapshot(
       collectionHealthScores
     );
@@ -3510,6 +3895,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         enabled: !!settings.main.maintenanceMode,
         syncRunning: collectionsSync.running,
       },
+      scheduledSourceTests,
       timestamp: new Date().toISOString(),
     };
 
@@ -4224,6 +4610,111 @@ dashboardRoutes.get('/backup-health', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(await getBackupHealth(getSettings()));
 });
 
+dashboardRoutes.post(
+  '/backups/rotate',
+  isAuthenticated(),
+  async (_req, res) => {
+    const rotation = await rotateSettingsBackups();
+
+    await appendDashboardEvent({
+      type: 'backup',
+      title: 'Settings backup rotation run',
+      message: `${rotation.removed} old backups removed.`,
+      metadata: rotation,
+    });
+
+    return res.status(200).json({
+      success: true,
+      ...rotation,
+    });
+  }
+);
+
+dashboardRoutes.get('/layout', isAuthenticated(), async (_req, res) => {
+  return res.status(200).json(await readDashboardLayout());
+});
+
+dashboardRoutes.post('/layout', isAuthenticated(), async (req, res) => {
+  await writeDashboardLayout(req.body);
+
+  await appendDashboardEvent({
+    type: 'layout',
+    title: 'Dashboard layout saved',
+    message: 'Server-side dashboard layout was updated.',
+  });
+
+  return res.status(200).json({
+    success: true,
+  });
+});
+
+dashboardRoutes.get(
+  '/pre-sync-validation',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+
+    return res
+      .status(200)
+      .json(
+        localizeDashboardPayload(
+          settings,
+          await getPreSyncValidation(
+            settings,
+            getCollectionHealthScores(settings),
+            getSourceStatus(settings)
+          )
+        )
+      );
+  }
+);
+
+dashboardRoutes.get('/ghcr-status', isAuthenticated(), async (_req, res) => {
+  return res.status(200).json(await getGhcrImageStatus(getAppVersion()));
+});
+
+dashboardRoutes.get(
+  '/support-package',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    const healthScores = getCollectionHealthScores(settings);
+    const sourceStatus = getSourceStatus(settings);
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-support-${timestamp}.zip"`
+    );
+
+    archive.pipe(res);
+    archive.append(
+      JSON.stringify(sanitizeSettings(settings.getAll()), undefined, ' '),
+      { name: 'settings-redacted.json' }
+    );
+    archive.append(JSON.stringify(healthScores, undefined, ' '), {
+      name: 'collection-health.json',
+    });
+    archive.append(JSON.stringify(sourceStatus, undefined, ' '), {
+      name: 'source-status.json',
+    });
+    archive.append(
+      JSON.stringify(await readDashboardEvents(250), undefined, ' '),
+      { name: 'audit-log.json' }
+    );
+    archive.append(healthSnapshotsToCsv(await readHealthSnapshots(365)), {
+      name: 'health-snapshots.csv',
+    });
+    archive.append(
+      collectionHealthSnapshotsToCsv(await readCollectionHealthSnapshots(365)),
+      { name: 'collection-health-snapshots.csv' }
+    );
+    await archive.finalize();
+  }
+);
+
 dashboardRoutes.post('/cache/clear', isAuthenticated(), async (_req, res) => {
   const clearedEntries = dashboardCache.size;
 
@@ -4331,6 +4822,44 @@ dashboardRoutes.get(
       exportUrl: `/api/v1/dashboard/collections/${config.id}/export`,
       diffUrl: `/api/v1/dashboard/collection-diff/${config.id}`,
     });
+  }
+);
+
+dashboardRoutes.get(
+  '/collections/:id/why-empty',
+  isAuthenticated(),
+  async (req, res) => {
+    const settings = getSettings();
+    const collectionRatingKeys = getCollectionRatingKeys(settings);
+    let collectionStats: {
+      rating_key?: string;
+      title?: string;
+      total_plays?: number;
+    }[] = [];
+
+    if (settings.tautulli.hostname && settings.tautulli.apiKey) {
+      collectionStats = await new TautulliAPI(settings.tautulli)
+        .getTopCollections(100, 'plays', 30, collectionRatingKeys, {
+          includeMetadata: false,
+          includeUserStats: false,
+          concurrency: 4,
+        })
+        .catch(() => []);
+    }
+
+    const insights = getEmptyCollectionInsights(
+      getCollectionHealthScores(settings),
+      getTautulliMappingDebugger(settings, collectionStats)
+    );
+    const insight = insights.find((item) => item.id === req.params.id);
+
+    if (!insight) {
+      return res.status(404).json({ message: 'Collection insight not found' });
+    }
+
+    return res
+      .status(200)
+      .json(localizeDashboardPayload(settings, { insight }));
   }
 );
 

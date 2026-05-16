@@ -141,6 +141,15 @@ const messages = defineMessages({
   sourceHealthTimeline: 'Source Health Timeline',
   tautulliDiagnostics: 'Tautulli Diagnostics',
   collectionConfigExplain: 'Collection Config Explain',
+  preSyncValidator: 'Pre-Sync Validator',
+  ghcrImageStatus: 'GHCR Image Status',
+  jellyfinHealth: 'Jellyfin Health',
+  whyEmpty: 'Why Empty?',
+  supportPackage: 'Support Package',
+  downloadSupportPackage: 'Download support package',
+  rotateBackups: 'Rotate backups',
+  saveLayoutServer: 'Save layout',
+  loadLayoutServer: 'Load layout',
   clearDashboardCache: 'Clear cache',
   previewRepair: 'Preview',
   repairPreview: 'Repair Preview',
@@ -374,7 +383,50 @@ interface DashboardInsightData {
         title: string;
         message: string;
       }[];
+      endpoints?: {
+        id: string;
+        label: string;
+        status: 'ok' | 'watch' | 'attention';
+      }[];
     };
+    jellyfinHealth?: {
+      active: boolean;
+      configured: boolean;
+      libraryCount: number;
+      score: number;
+      status: 'ready' | 'watch' | 'attention';
+      message: string;
+    };
+    preSyncValidation?: {
+      canSync: boolean;
+      warnings: number;
+      checks: {
+        id: string;
+        ok: boolean;
+        severity: 'error' | 'warning' | 'info';
+        title: string;
+        message: string;
+      }[];
+    };
+    ghcrStatus?: {
+      image: string;
+      ready: boolean;
+      checkedAt: string;
+      tags: {
+        tag: string;
+        available: boolean;
+        statusCode: number;
+      }[];
+    };
+    emptyCollectionInsights?: {
+      id: string;
+      name: string;
+      healthScore: number;
+      plays: number;
+      reasons: string[];
+      recommendation: string;
+      href: string;
+    }[];
     autoHeal?: {
       safeActions: number;
       canRun: boolean;
@@ -846,6 +898,75 @@ const DashboardInsights: React.FC = () => {
       event.target.value = '';
     }
   };
+  const saveDashboardLayoutToServer = async () => {
+    setRunningAction('save-layout-server');
+    setActionMessage(null);
+
+    try {
+      await axios.post('/api/v1/dashboard/layout', {
+        sections: Object.fromEntries(
+          Object.keys(localStorage)
+            .filter((key) => key.startsWith('agregarr-dashboard-section'))
+            .map((key) => [key, localStorage.getItem(key)])
+        ),
+        quietMode:
+          localStorage.getItem('agregarr-dashboard-quiet-mode') === 'on',
+      });
+      setActionMessage(intl.formatMessage(messages.actionSucceeded));
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const loadDashboardLayoutFromServer = async () => {
+    setRunningAction('load-layout-server');
+    setActionMessage(null);
+
+    try {
+      const response = await axios.get('/api/v1/dashboard/layout');
+      const layout = response.data?.layout || {};
+
+      Object.entries(layout.sections || {}).forEach(([key, value]) => {
+        if (
+          key.startsWith('agregarr-dashboard-section') &&
+          typeof value === 'string'
+        ) {
+          localStorage.setItem(key, value);
+        }
+      });
+
+      if (layout.quietMode) {
+        localStorage.setItem('agregarr-dashboard-quiet-mode', 'on');
+      } else {
+        localStorage.removeItem('agregarr-dashboard-quiet-mode');
+      }
+
+      window.location.reload();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const rotateBackups = async () => {
+    setRunningAction('rotate-backups');
+    setActionMessage(null);
+
+    try {
+      const response = await axios.post('/api/v1/dashboard/backups/rotate');
+      setActionMessage(
+        `${intl.formatMessage(messages.actionSucceeded)} ${
+          response.data.removed || 0
+        }`
+      );
+      await mutate();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
   const applyQuietMode = () => {
     const keepOpen = new Set([
       'first-aid-status',
@@ -1294,6 +1415,22 @@ const DashboardInsights: React.FC = () => {
             className="hidden"
             onChange={importDashboardLayout}
           />
+          <button
+            type="button"
+            onClick={saveDashboardLayoutToServer}
+            disabled={runningAction === 'save-layout-server'}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {intl.formatMessage(messages.saveLayoutServer)}
+          </button>
+          <button
+            type="button"
+            onClick={loadDashboardLayoutFromServer}
+            disabled={runningAction === 'load-layout-server'}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {intl.formatMessage(messages.loadLayoutServer)}
+          </button>
         </div>
       </div>
 
@@ -1357,6 +1494,22 @@ const DashboardInsights: React.FC = () => {
               className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
             >
               {intl.formatMessage(messages.importLayout)}
+            </button>
+            <button
+              type="button"
+              onClick={saveDashboardLayoutToServer}
+              disabled={runningAction === 'save-layout-server'}
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {intl.formatMessage(messages.saveLayoutServer)}
+            </button>
+            <button
+              type="button"
+              onClick={loadDashboardLayoutFromServer}
+              disabled={runningAction === 'load-layout-server'}
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {intl.formatMessage(messages.loadLayoutServer)}
             </button>
           </div>
         </div>
@@ -1776,6 +1929,20 @@ const DashboardInsights: React.FC = () => {
               >
                 {intl.formatMessage(messages.downloadBackup)}
               </a>
+              <a
+                href="/api/v1/dashboard/support-package"
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+              >
+                {intl.formatMessage(messages.downloadSupportPackage)}
+              </a>
+              <button
+                type="button"
+                onClick={rotateBackups}
+                disabled={runningAction === 'rotate-backups'}
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {intl.formatMessage(messages.rotateBackups)}
+              </button>
               <button
                 type="button"
                 onClick={runFirstAid}
@@ -2705,6 +2872,146 @@ const DashboardInsights: React.FC = () => {
                 <p className="mt-1 text-xs text-gray-500">{check.message}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {(intelligence?.tautulliDiagnostics?.endpoints || []).map(
+              (endpoint) => (
+                <p
+                  key={endpoint.id}
+                  className={`rounded bg-stone-900 px-3 py-2 text-xs font-semibold ${
+                    endpoint.status === 'ok'
+                      ? 'text-green-300'
+                      : endpoint.status === 'attention'
+                      ? 'text-red-300'
+                      : 'text-orange-300'
+                  }`}
+                >
+                  {endpoint.label}
+                </p>
+              )
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <CheckCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.preSyncValidator)}
+          </h4>
+          <p
+            className={`rounded bg-stone-900 px-3 py-2 text-sm font-semibold ${
+              intelligence?.preSyncValidation?.canSync
+                ? 'text-green-300'
+                : 'text-red-300'
+            }`}
+          >
+            {intelligence?.preSyncValidation?.canSync
+              ? intl.formatMessage(messages.moduleReady)
+              : intl.formatMessage(messages.moduleAttention)}
+            {' / '}
+            {intelligence?.preSyncValidation?.warnings || 0}
+          </p>
+          <div className="mt-2 space-y-2">
+            {(intelligence?.preSyncValidation?.checks || []).map((check) => (
+              <div key={check.id} className="rounded bg-stone-900 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-gray-200">
+                    {check.title}
+                  </p>
+                  <span
+                    className={`text-xs font-semibold ${
+                      check.ok
+                        ? 'text-green-300'
+                        : check.severity === 'error'
+                        ? 'text-red-300'
+                        : 'text-orange-300'
+                    }`}
+                  >
+                    {check.ok ? 'ok' : check.severity}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{check.message}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ServerStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.ghcrImageStatus)}
+          </h4>
+          <p className="rounded bg-stone-900 px-3 py-2 text-sm font-semibold text-gray-200">
+            {intelligence?.ghcrStatus?.image || 'ghcr.io/domigeim/agregarr'}
+          </p>
+          <div className="mt-2 space-y-2">
+            {(intelligence?.ghcrStatus?.tags || []).map((tag) => (
+              <div
+                key={tag.tag}
+                className="flex items-center justify-between rounded bg-stone-900 px-3 py-2"
+              >
+                <span className="text-sm text-gray-200">{tag.tag}</span>
+                <span
+                  className={`text-xs font-semibold ${
+                    tag.available ? 'text-green-300' : 'text-orange-300'
+                  }`}
+                >
+                  {tag.available ? 'online' : tag.statusCode || 'pending'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ServerStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.jellyfinHealth)}
+          </h4>
+          <p
+            className={`rounded bg-stone-900 px-3 py-2 text-sm font-semibold ${
+              intelligence?.jellyfinHealth?.status === 'attention'
+                ? 'text-red-300'
+                : intelligence?.jellyfinHealth?.status === 'watch'
+                ? 'text-orange-300'
+                : 'text-green-300'
+            }`}
+          >
+            {intelligence?.jellyfinHealth?.score || 0}% /{' '}
+            {intelligence?.jellyfinHealth?.libraryCount || 0} libraries
+          </p>
+          <p className="mt-2 text-xs text-gray-500">
+            {intelligence?.jellyfinHealth?.message}
+          </p>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <QuestionMarkCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.whyEmpty)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.emptyCollectionInsights || [])
+              .slice(0, 6)
+              .map((item) => (
+                <a
+                  key={item.id}
+                  href={`/api/v1/dashboard/collections/${item.id}/why-empty`}
+                  className="block rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-900/70"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {item.name}
+                    </p>
+                    <span className="text-xs font-semibold text-orange-300">
+                      {item.healthScore} / {item.plays}
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 mt-1 text-xs text-gray-500">
+                    {item.recommendation}
+                  </p>
+                </a>
+              ))}
           </div>
         </section>
 
