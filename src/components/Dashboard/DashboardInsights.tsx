@@ -134,6 +134,13 @@ const messages = defineMessages({
   manageTiles: 'Manage tiles',
   close: 'Close',
   exportHealthCsv: 'Export CSV',
+  exportLayout: 'Export layout',
+  importLayout: 'Import layout',
+  quietMode: 'Quiet Mode',
+  collectionHealthTimeline: 'Collection Health Timeline',
+  sourceHealthTimeline: 'Source Health Timeline',
+  tautulliDiagnostics: 'Tautulli Diagnostics',
+  collectionConfigExplain: 'Collection Config Explain',
   clearDashboardCache: 'Clear cache',
   previewRepair: 'Preview',
   repairPreview: 'Repair Preview',
@@ -262,6 +269,17 @@ interface DashboardInsightData {
       successRate: number;
       averageLatencyMs: number;
     };
+    sourceHealthTimeline?: {
+      sourceId: string;
+      name: string;
+      successRate: number;
+      averageLatencyMs: number;
+      history: {
+        date: string;
+        ok: boolean;
+        latencyMs: number;
+      }[];
+    }[];
     problemDetails?: {
       id: string;
       area: string;
@@ -330,10 +348,32 @@ interface DashboardInsightData {
       warningCollections: number;
       averageScore: number;
     }[];
+    collectionHealthTimeline?: {
+      id: string;
+      name: string;
+      latestScore: number;
+      delta: number;
+      history: {
+        date: string;
+        score: number;
+        status: 'healthy' | 'warning' | 'critical';
+      }[];
+    }[];
     mappingScore?: {
       mappedCollections: number;
       totalCollections: number;
       score: number;
+    };
+    tautulliDiagnostics?: {
+      configured: boolean;
+      score: number;
+      recommendation: string;
+      checks: {
+        id: string;
+        status: 'ok' | 'watch' | 'attention';
+        title: string;
+        message: string;
+      }[];
     };
     autoHeal?: {
       safeActions: number;
@@ -455,6 +495,18 @@ interface DashboardInsightData {
       source: string;
       updatedAt: string;
     }[];
+    collectionConfigExplanations?: {
+      id: string;
+      name: string;
+      type: string;
+      libraryName?: string;
+      healthScore: number;
+      source: string;
+      visibility: string;
+      autoRequest: boolean;
+      syncPlan: string;
+      filters: string[];
+    }[];
     operationsSuite: {
       id: string;
       number: number;
@@ -514,6 +566,7 @@ const DashboardInsights: React.FC = () => {
   const intl = useIntl();
   const dashboardRootRef = useRef<HTMLDivElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const layoutInputRef = useRef<HTMLInputElement>(null);
   const { data, error, mutate } = useSWR<DashboardInsightData>(
     '/api/v1/dashboard/stats'
   );
@@ -734,6 +787,111 @@ const DashboardInsights: React.FC = () => {
       .filter((key) => key.startsWith('agregarr-dashboard-section'))
       .forEach((key) => localStorage.removeItem(key));
     localStorage.removeItem('agregarr-dashboard-section-order');
+    localStorage.removeItem('agregarr-dashboard-quiet-mode');
+    window.location.reload();
+  };
+  const exportDashboardLayout = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      sections: Object.fromEntries(
+        Object.keys(localStorage)
+          .filter((key) => key.startsWith('agregarr-dashboard-section'))
+          .map((key) => [key, localStorage.getItem(key)])
+      ),
+      quietMode: localStorage.getItem('agregarr-dashboard-quiet-mode') === 'on',
+    };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(payload, undefined, 2)], {
+        type: 'application/json',
+      })
+    );
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `agregarr-dashboard-layout-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const importDashboardLayout = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await file.text()) as {
+        sections?: Record<string, string | null>;
+        quietMode?: boolean;
+      };
+
+      Object.entries(payload.sections || {}).forEach(([key, value]) => {
+        if (key.startsWith('agregarr-dashboard-section') && value) {
+          localStorage.setItem(key, value);
+        }
+      });
+
+      if (payload.quietMode) {
+        localStorage.setItem('agregarr-dashboard-quiet-mode', 'on');
+      } else {
+        localStorage.removeItem('agregarr-dashboard-quiet-mode');
+      }
+
+      window.location.reload();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      event.target.value = '';
+    }
+  };
+  const applyQuietMode = () => {
+    const keepOpen = new Set([
+      'first-aid-status',
+      'notifications',
+      'smart-insights',
+      'collection-health-scores',
+      'collection-health-timeline',
+      'source-health-timeline',
+      'tautulli-diagnostics',
+      'action-center',
+      'problem-details',
+      'collection-repair-center',
+      'rollback-candidates',
+    ]);
+    const sections = Array.from(
+      dashboardRootRef.current?.querySelectorAll('section') || []
+    ).map((section) => {
+      const sectionElement = section as HTMLElement;
+
+      return (
+        sectionElement.dataset.dashboardSectionId ||
+        getHeadingSectionId(section.querySelector('h4'))
+      );
+    });
+    const quietModeActive =
+      localStorage.getItem('agregarr-dashboard-quiet-mode') === 'on';
+
+    sections.forEach((sectionId) => {
+      if (sectionId) {
+        localStorage.setItem(
+          `agregarr-dashboard-section-${sectionId}`,
+          !quietModeActive && keepOpen.has(sectionId)
+            ? 'expanded'
+            : !quietModeActive
+            ? 'collapsed'
+            : 'expanded'
+        );
+      }
+    });
+
+    if (quietModeActive) {
+      localStorage.removeItem('agregarr-dashboard-quiet-mode');
+    } else {
+      localStorage.setItem('agregarr-dashboard-quiet-mode', 'on');
+    }
+
     window.location.reload();
   };
   const getHeadingSectionId = (heading: Element | null) => {
@@ -1108,6 +1266,34 @@ const DashboardInsights: React.FC = () => {
           >
             {intl.formatMessage(messages.manageTiles)}
           </button>
+          <button
+            type="button"
+            onClick={applyQuietMode}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.quietMode)}
+          </button>
+          <button
+            type="button"
+            onClick={exportDashboardLayout}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.exportLayout)}
+          </button>
+          <button
+            type="button"
+            onClick={() => layoutInputRef.current?.click()}
+            className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.importLayout)}
+          </button>
+          <input
+            ref={layoutInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={importDashboardLayout}
+          />
         </div>
       </div>
 
@@ -1150,6 +1336,27 @@ const DashboardInsights: React.FC = () => {
               className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
             >
               {intl.formatMessage(messages.resetLayout)}
+            </button>
+            <button
+              type="button"
+              onClick={applyQuietMode}
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+            >
+              {intl.formatMessage(messages.quietMode)}
+            </button>
+            <button
+              type="button"
+              onClick={exportDashboardLayout}
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+            >
+              {intl.formatMessage(messages.exportLayout)}
+            </button>
+            <button
+              type="button"
+              onClick={() => layoutInputRef.current?.click()}
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+            >
+              {intl.formatMessage(messages.importLayout)}
             </button>
           </div>
         </div>
@@ -2386,6 +2593,124 @@ const DashboardInsights: React.FC = () => {
         <section className="rounded-md border border-gray-700 p-4">
           <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
             <ArrowTrendingUpIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.collectionHealthTimeline)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.collectionHealthTimeline || [])
+              .slice(0, 6)
+              .map((collection) => (
+                <div
+                  key={collection.id}
+                  className="rounded bg-stone-900 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {collection.name}
+                    </p>
+                    <span
+                      className={`text-xs font-semibold ${
+                        collection.delta < 0
+                          ? 'text-red-300'
+                          : collection.delta > 0
+                          ? 'text-green-300'
+                          : 'text-gray-400'
+                      }`}
+                    >
+                      {collection.latestScore} (
+                      {collection.delta >= 0 ? '+' : ''}
+                      {collection.delta})
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-gray-500">
+                    {collection.history
+                      .slice(-5)
+                      .map((item) => `${item.date}: ${item.score}`)
+                      .join(' / ') || intl.formatMessage(messages.noItems)}
+                  </p>
+                </div>
+              ))}
+          </div>
+          <a
+            href="/api/v1/dashboard/collection-health-snapshots/export?format=csv"
+            className="mt-3 inline-block rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.exportHealthCsv)}
+          </a>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ServerStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.sourceHealthTimeline)}
+          </h4>
+          <div className="space-y-2">
+            {(intelligence?.sourceHealthTimeline || [])
+              .slice(0, 6)
+              .map((source) => (
+                <div
+                  key={source.sourceId}
+                  className="rounded bg-stone-900 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-medium text-gray-200">
+                      {source.name}
+                    </p>
+                    <span className="text-xs font-semibold text-orange-300">
+                      {source.successRate}%
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {source.averageLatencyMs} ms avg / {source.history.length}{' '}
+                    checks
+                  </p>
+                </div>
+              ))}
+          </div>
+          <a
+            href="/api/v1/dashboard/source-health/export?format=csv"
+            className="mt-3 inline-block rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+          >
+            {intl.formatMessage(messages.exportHealthCsv)}
+          </a>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <BeakerIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.tautulliDiagnostics)}
+          </h4>
+          <p className="rounded bg-stone-900 px-3 py-2 text-sm font-semibold text-orange-300">
+            {intelligence?.tautulliDiagnostics?.score || 0}% /{' '}
+            {intelligence?.tautulliDiagnostics?.recommendation}
+          </p>
+          <div className="mt-2 space-y-2">
+            {(intelligence?.tautulliDiagnostics?.checks || []).map((check) => (
+              <div key={check.id} className="rounded bg-stone-900 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-gray-200">
+                    {check.title}
+                  </p>
+                  <span
+                    className={`text-xs font-semibold ${
+                      check.status === 'attention'
+                        ? 'text-red-300'
+                        : check.status === 'watch'
+                        ? 'text-orange-300'
+                        : 'text-green-300'
+                    }`}
+                  >
+                    {check.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{check.message}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ArrowTrendingUpIcon className="mr-2 h-4 w-4 text-orange-400" />
             {intl.formatMessage(messages.tautulliDataQuality)}
           </h4>
           <div className="space-y-2">
@@ -2704,6 +3029,54 @@ const DashboardInsights: React.FC = () => {
                 {intl.formatMessage(messages.noItems)}
               </p>
             )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <QuestionMarkCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.collectionConfigExplain)}
+          </h4>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {(intelligence?.collectionConfigExplanations || [])
+              .slice(0, 8)
+              .map((config) => (
+                <div
+                  key={config.id}
+                  className="rounded border border-gray-700 px-3 py-2"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-white">
+                        {config.name}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {config.type} / {config.libraryName || 'library'}
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold text-orange-300">
+                      {config.healthScore}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <p className="rounded bg-stone-900 px-2 py-1 text-xs text-gray-300">
+                      {config.visibility}
+                    </p>
+                    <p className="rounded bg-stone-900 px-2 py-1 text-xs text-gray-300">
+                      {config.autoRequest
+                        ? intl.formatMessage(messages.moduleReady)
+                        : intl.formatMessage(messages.moduleWatch)}
+                    </p>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">
+                    {config.syncPlan}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {config.filters.join(' / ') ||
+                      intl.formatMessage(messages.noItems)}
+                  </p>
+                </div>
+              ))}
           </div>
         </section>
 

@@ -29,6 +29,8 @@ jobs:
         run: yarn lint
       - name: Type Check
         run: yarn typecheck
+      - name: English locale audit
+        run: yarn i18n:check-language-leaks
       - name: Formatting
         run: npx prettier --check .
       - name: Build
