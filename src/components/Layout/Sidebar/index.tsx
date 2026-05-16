@@ -113,10 +113,17 @@ const Sidebar = ({
   const intl = useIntl();
   useUser(); // hasPermission removed - not used in simplified sidebar
   const { data: mainSettings } = useSWR<MainSettings>('/api/v1/settings/main');
+  const { data: dashboardHealth } = useSWR<{
+    collectionHealthScores?: { status: 'healthy' | 'warning' | 'critical' }[];
+  }>(mainSettings?.hideDashboard ? null : '/api/v1/dashboard/stats');
   useClickOutside(navRef, () => setClosed());
   const visibleSidebarLinks = mainSettings?.hideDashboard
     ? SidebarLinks.filter((link) => link.messagesKey !== 'dashboard')
     : SidebarLinks;
+  const dashboardIssueCount =
+    dashboardHealth?.collectionHealthScores?.filter(
+      (score) => score.status !== 'healthy'
+    ).length || 0;
 
   return (
     <>
@@ -219,6 +226,12 @@ const Sidebar = ({
                               {intl.formatMessage(
                                 menuMessages[sidebarLink.messagesKey]
                               )}
+                              {sidebarLink.messagesKey === 'dashboard' &&
+                                dashboardIssueCount > 0 && (
+                                  <span className="ml-auto rounded-full bg-orange-500 px-2 py-0.5 text-xs font-semibold text-white">
+                                    {dashboardIssueCount}
+                                  </span>
+                                )}
                             </a>
                           </Link>
                         );
@@ -284,6 +297,12 @@ const Sidebar = ({
                         {intl.formatMessage(
                           menuMessages[sidebarLink.messagesKey]
                         )}
+                        {sidebarLink.messagesKey === 'dashboard' &&
+                          dashboardIssueCount > 0 && (
+                            <span className="ml-auto rounded-full bg-orange-500 px-2 py-0.5 text-xs font-semibold text-white">
+                              {dashboardIssueCount}
+                            </span>
+                          )}
                       </a>
                     </Link>
                   );
