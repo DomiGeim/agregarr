@@ -95,6 +95,18 @@ interface HealthSnapshot {
   averageScore: number;
 }
 
+interface CollectionHealthSnapshot {
+  date: string;
+  at: string;
+  collections: {
+    id: string;
+    name: string;
+    score: number;
+    status: CollectionHealthScore['status'];
+    reasons: string[];
+  }[];
+}
+
 const getConfigType = (config: DashboardCollectionConfig): string =>
   'type' in config ? config.type : 'pre-existing';
 
@@ -140,6 +152,9 @@ const dashboardEventsPath = (): string =>
 
 const healthSnapshotsPath = (): string =>
   path.join(appDataPath(), 'dashboard-health-snapshots.jsonl');
+
+const collectionHealthSnapshotsPath = (): string =>
+  path.join(appDataPath(), 'dashboard-collection-health-snapshots.jsonl');
 
 const readDashboardEvents = async (limit = 50): Promise<DashboardEvent[]> => {
   try {
@@ -255,6 +270,81 @@ const healthSnapshotsToCsv = (snapshots: HealthSnapshot[]): string => {
   ].join('\n');
 };
 
+const readCollectionHealthSnapshots = async (
+  limit = 60
+): Promise<CollectionHealthSnapshot[]> => {
+  try {
+    const file = await fs.readFile(collectionHealthSnapshotsPath(), 'utf-8');
+
+    return file
+      .split('\n')
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => JSON.parse(line) as CollectionHealthSnapshot);
+  } catch (error) {
+    return [];
+  }
+};
+
+const writeDailyCollectionHealthSnapshot = async (
+  scores: CollectionHealthScore[]
+): Promise<CollectionHealthSnapshot[]> => {
+  const snapshots = await readCollectionHealthSnapshots(90);
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (snapshots.some((snapshot) => snapshot.date === today)) {
+    return snapshots;
+  }
+
+  const snapshot: CollectionHealthSnapshot = {
+    date: today,
+    at: new Date().toISOString(),
+    collections: scores.map((score) => ({
+      id: score.id,
+      name: score.name,
+      score: score.score,
+      status: score.status,
+      reasons: score.reasons.slice(0, 3),
+    })),
+  };
+
+  await fs.mkdir(appDataPath(), { recursive: true });
+  await fs.appendFile(
+    collectionHealthSnapshotsPath(),
+    `${JSON.stringify(snapshot)}\n`,
+    'utf-8'
+  );
+
+  return [...snapshots, snapshot].slice(-90);
+};
+
+const collectionHealthSnapshotsToCsv = (
+  snapshots: CollectionHealthSnapshot[]
+): string => {
+  const header = ['date', 'at', 'id', 'name', 'score', 'status', 'reasons'];
+  const escapeCsvValue = (value: unknown) =>
+    `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  return [
+    header.join(','),
+    ...snapshots.flatMap((snapshot) =>
+      snapshot.collections.map((collection) =>
+        [
+          snapshot.date,
+          snapshot.at,
+          collection.id,
+          collection.name,
+          collection.score,
+          collection.status,
+          collection.reasons.join(' | '),
+        ]
+          .map(escapeCsvValue)
+          .join(',')
+      )
+    ),
+  ].join('\n');
+};
+
 const getSettingsFingerprint = (settings: ReturnType<typeof getSettings>) =>
   crypto
     .createHash('sha256')
@@ -292,6 +382,39 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
     daysSinceBackup,
     recommended: daysSinceBackup === null || daysSinceBackup > 14,
     settingsFingerprint: getSettingsFingerprint(settings),
+  };
+};
+
+const writeAutomaticSettingsBackup = async (
+  settings: ReturnType<typeof getSettings>,
+  reason: string
+): Promise<{ path: string; createdAt: string }> => {
+  const backupsPath = path.join(appDataPath(), 'backups');
+  const createdAt = new Date().toISOString();
+  const safeReason = reason.replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+  const filename = `auto-${safeReason}-${createdAt.replace(/[:.]/g, '-')}.json`;
+  const backupPath = path.join(backupsPath, filename);
+
+  await fs.mkdir(backupsPath, { recursive: true });
+  await fs.writeFile(
+    backupPath,
+    JSON.stringify(settings.getAll(), undefined, ' '),
+    'utf-8'
+  );
+
+  await appendDashboardEvent({
+    type: 'backup',
+    title: 'Automatic settings backup created',
+    message: `Backup created before ${reason}.`,
+    metadata: {
+      reason,
+      filename,
+    },
+  });
+
+  return {
+    path: backupPath,
+    createdAt,
   };
 };
 
@@ -1029,6 +1152,215 @@ const getSourceTestHistory = (events: DashboardEvent[]) => {
   };
 };
 
+const getSourceHealthTimeline = (events: DashboardEvent[]) => {
+  const tests = events
+    .filter((event) => event.type === 'source-test')
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  const bySource = tests.reduce((groups, event) => {
+    const sourceId = String(event.metadata?.sourceId || 'all-sources');
+    const group = groups.get(sourceId) || [];
+
+    group.push(event);
+    groups.set(sourceId, group);
+
+    return groups;
+  }, new Map<string, DashboardEvent[]>());
+
+  return Array.from(bySource.entries()).map(([sourceId, sourceEvents]) => {
+    const failures = sourceEvents.filter(
+      (event) => event.metadata?.ok === false
+    ).length;
+    const latencies = sourceEvents
+      .map((event) => Number(event.metadata?.latencyMs || 0))
+      .filter((latency) => latency > 0);
+
+    return {
+      sourceId,
+      name: sourceEvents[sourceEvents.length - 1]?.title || sourceId,
+      successRate:
+        sourceEvents.length > 0
+          ? Math.round(
+              ((sourceEvents.length - failures) / sourceEvents.length) * 100
+            )
+          : 0,
+      averageLatencyMs:
+        latencies.length > 0
+          ? Math.round(
+              latencies.reduce((sum, latency) => sum + latency, 0) /
+                latencies.length
+            )
+          : 0,
+      history: sourceEvents.slice(-14).map((event) => ({
+        date: event.at.slice(0, 10),
+        ok: event.metadata?.ok !== false,
+        latencyMs: Number(event.metadata?.latencyMs || 0),
+      })),
+    };
+  });
+};
+
+const getCollectionHealthTimeline = (
+  collectionScores: CollectionHealthScore[],
+  snapshots: CollectionHealthSnapshot[]
+) => {
+  const focusCollections = collectionScores
+    .slice()
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 8);
+
+  return focusCollections.map((collection) => {
+    const history = snapshots
+      .map((snapshot) => {
+        const entry = snapshot.collections.find(
+          (item) => item.id === collection.id
+        );
+
+        return entry
+          ? {
+              date: snapshot.date,
+              score: entry.score,
+              status: entry.status,
+            }
+          : null;
+      })
+      .filter(Boolean) as {
+      date: string;
+      score: number;
+      status: CollectionHealthScore['status'];
+    }[];
+    const firstScore = history[0]?.score ?? collection.score;
+    const latestScore = history[history.length - 1]?.score ?? collection.score;
+
+    return {
+      id: collection.id,
+      name: collection.name,
+      latestScore,
+      delta: latestScore - firstScore,
+      history,
+    };
+  });
+};
+
+const getCollectionConfigExplanations = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[]
+) => {
+  const scoresById = new Map(
+    collectionScores.map((score) => [score.id, score] as const)
+  );
+
+  return getAllCollectionConfigs(settings)
+    .slice(0, 12)
+    .map((config) => {
+      const score = scoresById.get(config.id);
+      const visibility = [
+        config.visibilityConfig?.usersHome ? 'Users Home' : '',
+        config.visibilityConfig?.serverOwnerHome ? 'Owner Home' : '',
+        config.visibilityConfig?.libraryRecommended ? 'Recommended' : '',
+      ].filter(Boolean);
+
+      return {
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        libraryName: config.libraryName,
+        healthScore: score?.score ?? 0,
+        source: getConfigType(config),
+        visibility: visibility.length ? visibility.join(', ') : 'Hidden',
+        autoRequest: hasAutoHandling(config),
+        syncPlan: config.needsSync
+          ? 'Marked for next sync'
+          : getLastSyncError(config)
+          ? 'Needs retry after last sync error'
+          : 'No pending sync marker',
+        filters: [
+          hasCollectionRatingKey(config) ? 'Plex rating key mapped' : '',
+          config.missing ? 'Missing in Plex' : '',
+          config.libraryName ? `Library: ${config.libraryName}` : '',
+        ].filter(Boolean),
+      };
+    });
+};
+
+const getTautulliDiagnostics = (
+  settings: ReturnType<typeof getSettings>,
+  mappingScore: number,
+  tautulliDataQuality: ReturnType<typeof getTautulliDataQuality>,
+  trends: TrendStats | null,
+  sourceReliability: {
+    id: string;
+    name: string;
+    score: number;
+    status: 'ok' | 'watch' | 'attention';
+    usedByCollections: number;
+    lastLatencyMs?: number;
+    lastTestedAt?: string;
+    message: string;
+  }[]
+) => {
+  const tautulliSource = sourceReliability.find(
+    (source) => source.id === 'tautulli'
+  );
+  const configured = !!settings.tautulli.hostname && !!settings.tautulli.apiKey;
+  const checks = [
+    {
+      id: 'credentials',
+      status: configured ? ('ok' as const) : ('attention' as const),
+      title: 'Credentials',
+      message: configured
+        ? 'Tautulli host and API key are configured.'
+        : 'Tautulli host or API key is missing.',
+    },
+    {
+      id: 'live-test',
+      status:
+        tautulliSource?.status === 'attention'
+          ? ('attention' as const)
+          : ('ok' as const),
+      title: 'Live test',
+      message: tautulliSource?.message || 'No live Tautulli test has run yet.',
+    },
+    {
+      id: 'mapping',
+      status:
+        mappingScore >= 80
+          ? ('ok' as const)
+          : mappingScore >= 50
+          ? ('watch' as const)
+          : ('attention' as const),
+      title: 'Collection mapping',
+      message: `${mappingScore}% mapped, ${tautulliDataQuality.noTautulliMatchCount} without Tautulli match.`,
+    },
+    {
+      id: 'activity',
+      status: trends ? ('ok' as const) : ('watch' as const),
+      title: 'Recently played data',
+      message: trends
+        ? `${trends.currentWeekPlays} plays in the current window.`
+        : 'No Tautulli trend data was returned for the dashboard window.',
+    },
+  ];
+
+  return {
+    configured,
+    score: Math.round(
+      checks.reduce(
+        (sum, check) =>
+          sum +
+          (check.status === 'ok' ? 25 : check.status === 'watch' ? 12 : 0),
+        0
+      )
+    ),
+    checks,
+    recommendation:
+      mappingScore < 80
+        ? 'Run mapping auto-fix, then test Tautulli again.'
+        : configured
+        ? 'Tautulli looks ready for dashboard metrics.'
+        : 'Configure Tautulli in Settings > Sources.',
+  };
+};
+
 const getLatestReleaseInfo = async () => {
   try {
     const response = await axios.get(
@@ -1744,6 +2076,7 @@ const getAdvancedIntelligence = async (
     total_plays?: number;
   }[] = [],
   healthSnapshots: HealthSnapshot[] = [],
+  collectionHealthSnapshots: CollectionHealthSnapshot[] = [],
   backupHealth?: Awaited<ReturnType<typeof getBackupHealth>>
 ) => {
   const allConfigs = getAllCollectionConfigs(settings);
@@ -1922,7 +2255,12 @@ const getAdvancedIntelligence = async (
       id: source.id,
       name: source.name,
       score,
-      status: score >= 90 ? 'ok' : score >= 60 ? 'watch' : 'attention',
+      status:
+        score >= 90
+          ? ('ok' as const)
+          : score >= 60
+          ? ('watch' as const)
+          : ('attention' as const),
       usedByCollections: source.usedByCollections || 0,
       lastLatencyMs: lastTest?.latencyMs,
       lastTestedAt: lastTest?.testedAt,
@@ -1979,6 +2317,11 @@ const getAdvancedIntelligence = async (
     collectionScores
   );
   const sourceTestHistory = getSourceTestHistory(storedEvents);
+  const sourceHealthTimeline = getSourceHealthTimeline(storedEvents);
+  const collectionHealthTimeline = getCollectionHealthTimeline(
+    collectionScores,
+    collectionHealthSnapshots
+  );
   const detailedSyncDryRun = await getDetailedSyncDryRun(settings);
 
   const placeholderLifecycle = {
@@ -2263,6 +2606,17 @@ const getAdvancedIntelligence = async (
       ? 'Fuehrt nur lokale, risikoarme Reparaturen aus: Source-Tests, Cache leeren und Sync markieren.'
       : 'Runs only low-risk local repairs: source tests, cache clear, and sync marking.',
   };
+  const collectionConfigExplanations = getCollectionConfigExplanations(
+    settings,
+    collectionScores
+  );
+  const tautulliDiagnostics = getTautulliDiagnostics(
+    settings,
+    mappingScore,
+    tautulliDataQuality,
+    trends,
+    sourceReliability
+  );
   const operationsSuite = [
     {
       id: 'auto-heal-mode',
@@ -2295,6 +2649,70 @@ const getAdvancedIntelligence = async (
       summary: isGerman
         ? 'Kombiniert Plays, Mapping und Health zu konkreten Dashboard-Hinweisen.'
         : 'Combines plays, mapping, and health into actionable dashboard insights.',
+      href: '/dashboard',
+    },
+    {
+      id: 'tautulli-diagnostics',
+      title: isGerman ? 'Tautulli Diagnose-Assistent' : 'Tautulli Diagnostics',
+      category: 'Tautulli',
+      status:
+        tautulliDiagnostics.score >= 75
+          ? 'ready'
+          : tautulliDiagnostics.score >= 50
+          ? 'watch'
+          : 'attention',
+      metric: `${tautulliDiagnostics.score}% ready`,
+      summary: tautulliDiagnostics.recommendation,
+      href: '/dashboard',
+    },
+    {
+      id: 'collection-health-timeline',
+      title: isGerman
+        ? 'Health Score Verlauf pro Collection'
+        : 'Collection Health Timeline',
+      category: 'Collections',
+      status: collectionHealthTimeline.length ? 'ready' : 'watch',
+      metric: `${collectionHealthTimeline.length} tracked`,
+      summary: isGerman
+        ? 'Speichert taegliche Health-Scores pro Collection fuer Verlauf und Export.'
+        : 'Stores daily health scores per collection for timeline and export.',
+      href: '/dashboard',
+    },
+    {
+      id: 'source-health-timeline',
+      title: isGerman ? 'Source Health Timeline' : 'Source Health Timeline',
+      category: 'Sources',
+      status: sourceHealthTimeline.length ? 'ready' : 'watch',
+      metric: `${sourceHealthTimeline.length} sources`,
+      summary: isGerman
+        ? 'Zeigt Erfolgsquote und Latenz aus gespeicherten Source-Tests.'
+        : 'Shows success rate and latency from stored source tests.',
+      href: '/dashboard',
+    },
+    {
+      id: 'collection-config-explain',
+      title: isGerman
+        ? 'Explain Config je Collection'
+        : 'Explain Config per Collection',
+      category: 'Explainability',
+      status: collectionConfigExplanations.length ? 'ready' : 'watch',
+      metric: `${collectionConfigExplanations.length} configs`,
+      summary: isGerman
+        ? 'Erklaert Quelle, Sichtbarkeit, Sync-Plan und Automation je Collection.'
+        : 'Explains source, visibility, sync plan, and automation per collection.',
+      href: '/dashboard',
+    },
+    {
+      id: 'automatic-safety-backups',
+      title: isGerman
+        ? 'Automatische Safety-Backups'
+        : 'Automatic Safety Backups',
+      category: 'Backup',
+      status: backupHealth?.latestBackupAt ? 'ready' : 'watch',
+      metric: backupHealth?.latestBackupAt ? 'active' : 'no backup yet',
+      summary: isGerman
+        ? 'Erstellt vor riskanten Dashboard-Aktionen automatisch Settings-Backups.'
+        : 'Creates automatic settings backups before risky dashboard actions.',
       href: '/dashboard',
     },
     {
@@ -2755,6 +3173,8 @@ const getAdvancedIntelligence = async (
       (a, b) => new Date(b.testedAt).getTime() - new Date(a.testedAt).getTime()
     ),
     sourceTestHistory,
+    sourceHealthTimeline,
+    collectionHealthTimeline,
     problemDetails,
     repairCandidates,
     tautulliDataQuality,
@@ -2803,6 +3223,8 @@ const getAdvancedIntelligence = async (
       totalCollections: tautulliMappingDebugger.length,
       score: mappingScore,
     },
+    tautulliDiagnostics,
+    collectionConfigExplanations,
     autoHeal,
     smartInsights,
     sourcePriority,
@@ -3033,6 +3455,9 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     const healthSnapshots = await writeDailyHealthSnapshot(
       collectionHealthScores
     );
+    const collectionHealthSnapshots = await writeDailyCollectionHealthSnapshot(
+      collectionHealthScores
+    );
     const backupHealth = await getBackupHealth(settings);
     const advancedIntelligence = await getAdvancedIntelligence(
       settings,
@@ -3041,6 +3466,7 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       trendStats,
       tautulliCollectionStats,
       healthSnapshots,
+      collectionHealthSnapshots,
       backupHealth
     );
 
@@ -3466,6 +3892,195 @@ dashboardRoutes.get(
 );
 
 dashboardRoutes.get(
+  '/collection-health-snapshots/export',
+  isAuthenticated(),
+  async (req, res) => {
+    const snapshots = await readCollectionHealthSnapshots(365);
+    const format = String(req.query.format || 'csv').toLowerCase();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="agregarr-collection-health-${timestamp}.json"`
+      );
+
+      return res
+        .status(200)
+        .send(JSON.stringify({ snapshots }, undefined, ' '));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-collection-health-${timestamp}.csv"`
+    );
+
+    return res.status(200).send(collectionHealthSnapshotsToCsv(snapshots));
+  }
+);
+
+dashboardRoutes.get(
+  '/source-health/export',
+  isAuthenticated(),
+  async (req, res) => {
+    const events = await readDashboardEvents(500);
+    const timeline = getSourceHealthTimeline(events);
+    const format = String(req.query.format || 'csv').toLowerCase();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="agregarr-source-health-${timestamp}.json"`
+      );
+
+      return res.status(200).send(JSON.stringify({ timeline }, undefined, ' '));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-source-health-${timestamp}.csv"`
+    );
+
+    return res
+      .status(200)
+      .send(
+        [
+          'sourceId,name,successRate,averageLatencyMs,date,ok,latencyMs',
+          ...timeline.flatMap((source) =>
+            source.history.map((item) =>
+              [
+                source.sourceId,
+                source.name,
+                source.successRate,
+                source.averageLatencyMs,
+                item.date,
+                item.ok,
+                item.latencyMs,
+              ]
+                .map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`)
+                .join(',')
+            )
+          ),
+        ].join('\n')
+      );
+  }
+);
+
+dashboardRoutes.get(
+  '/tautulli-diagnostics',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+    const collectionRatingKeys = getCollectionRatingKeys(settings);
+    let collectionStats: {
+      rating_key?: string;
+      title?: string;
+      total_plays?: number;
+    }[] = [];
+    let trends: TrendStats | null = null;
+
+    if (settings.tautulli.hostname && settings.tautulli.apiKey) {
+      try {
+        const tautulli = new TautulliAPI(settings.tautulli);
+        const [collections, movies, shows] = await withTimeout(
+          Promise.all([
+            tautulli.getTopCollections(100, 'plays', 30, collectionRatingKeys, {
+              includeMetadata: false,
+              includeUserStats: false,
+              concurrency: 4,
+            }),
+            tautulli.getHomeStats(7, 'plays', 'top_movies', 5),
+            tautulli.getHomeStats(7, 'plays', 'top_tv', 5),
+          ]),
+          TAUTULLI_DASHBOARD_TIMEOUT_MS,
+          'Tautulli diagnostics request timed out'
+        );
+        const getPlayCount = (item: {
+          total_plays?: number;
+          play_count?: number;
+          plays?: number;
+        }) => Number(item.total_plays ?? item.play_count ?? item.plays ?? 0);
+
+        collectionStats = collections;
+        trends = {
+          currentWeekPlays:
+            movies.reduce((sum, item) => sum + getPlayCount(item), 0) +
+            shows.reduce((sum, item) => sum + getPlayCount(item), 0),
+          previousWeekPlays: 0,
+          delta: 0,
+          deltaPercent: 0,
+          topMovies: movies.map((item) => ({
+            title: item.title,
+            ratingKey: item.rating_key,
+            plays: getPlayCount(item),
+            mediaType: item.media_type,
+          })),
+          topTv: shows.map((item) => ({
+            title: item.grandparent_title || item.title,
+            ratingKey: item.grandparent_rating_key || item.rating_key,
+            plays: getPlayCount(item),
+            mediaType: item.media_type,
+          })),
+        };
+      } catch (error) {
+        logger.warn('Failed to build Tautulli diagnostics', {
+          label: 'Dashboard API',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const sourceStatus = getSourceStatus(settings);
+    const sourceReliability = sourceStatus.sources.map((source) => {
+      const lastTest = sourceTestResults.get(source.id);
+
+      return {
+        id: source.id,
+        name: source.name,
+        score: lastTest?.ok ? 100 : source.configured ? 60 : 0,
+        status: lastTest?.ok
+          ? ('ok' as const)
+          : source.configured
+          ? ('watch' as const)
+          : ('attention' as const),
+        usedByCollections: source.usedByCollections || 0,
+        lastLatencyMs: lastTest?.latencyMs,
+        lastTestedAt: lastTest?.testedAt,
+        message: lastTest?.error || lastTest?.message || source.status,
+      };
+    });
+    const dataQuality = getTautulliDataQuality(settings, collectionStats);
+    const mappedCollections = getTautulliMappingDebugger(
+      settings,
+      collectionStats
+    ).filter((item) => item.mapped).length;
+    const mappingTotal = Math.max(
+      1,
+      getTautulliMappingDebugger(settings, collectionStats).length
+    );
+
+    return res.status(200).json(
+      localizeDashboardPayload(settings, {
+        diagnostics: getTautulliDiagnostics(
+          settings,
+          Math.round((mappedCollections / mappingTotal) * 100),
+          dataQuality,
+          trends,
+          sourceReliability
+        ),
+        dataQuality,
+        trends,
+      })
+    );
+  }
+);
+
+dashboardRoutes.get(
   '/tautulli-mapping',
   isAuthenticated(),
   async (_req, res) => {
@@ -3521,6 +4136,8 @@ dashboardRoutes.post(
         message: 'Tautulli is not configured.',
       });
     }
+
+    await writeAutomaticSettingsBackup(settings, 'tautulli-mapping-autofix');
 
     const collectionStats = await new TautulliAPI(settings.tautulli)
       .getTopCollections(200, 'plays', 365, collectionRatingKeys, {
@@ -3737,8 +4354,10 @@ dashboardRoutes.post(
     }
 
     if (actionId === 'retry-sync' || actionId === 'repair-rating-key') {
+      await writeAutomaticSettingsBackup(settings, `repair-${actionId}`);
       config.needsSync = true;
     } else if (actionId === 'make-visible') {
+      await writeAutomaticSettingsBackup(settings, 'repair-make-visible');
       config.visibilityConfig = {
         ...(config.visibilityConfig || {}),
         serverOwnerHome: true,
@@ -3850,6 +4469,8 @@ dashboardRoutes.post('/auto-heal', isAuthenticated(), async (_req, res) => {
   })[];
   let markedForSync = 0;
 
+  await writeAutomaticSettingsBackup(settings, 'auto-heal');
+
   repairCandidates.forEach((candidate) => {
     const config = allConfigs.find((item) => item.id === candidate.configId);
 
@@ -3909,6 +4530,8 @@ dashboardRoutes.post(
       needsSync: !!config.needsSync,
       lastSyncError: config.lastSyncError,
     };
+
+    await writeAutomaticSettingsBackup(settings, 'collection-rollback');
 
     config.needsSync = false;
     config.lastSyncError = undefined;
@@ -4012,6 +4635,8 @@ dashboardRoutes.post(
           message: 'Maintenance mode is enabled. Collection sync is paused.',
         });
       }
+
+      await writeAutomaticSettingsBackup(settings, 'sync-collections');
 
       if (!collectionsSync.running) {
         collectionsSync.run().catch((error) => {
