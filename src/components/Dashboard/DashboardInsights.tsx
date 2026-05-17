@@ -165,6 +165,17 @@ const messages = defineMessages({
   whyIsThisHere: 'Why Is This Here?',
   rollbackCandidates: 'Rollback Candidates',
   runRollback: 'Reset marker',
+  first50FeatureMatrix: 'First 50 Feature Coverage',
+  globalDashboardSearch: 'Global dashboard search',
+  searchDashboard: 'Search dashboard',
+  backupList: 'Backup List',
+  syncHistory: 'Sync History',
+  duplicateMergePreview: 'Duplicate Merge Preview',
+  bulkCollectionExport: 'Bulk collection export',
+  implementedFeaturesTracked:
+    '{count} implemented features are tracked by the dashboard.',
+  syncRunning: 'Sync running',
+  duplicateMatches: '{count} matches',
 });
 
 interface DashboardInsightData {
@@ -463,6 +474,13 @@ interface DashboardInsightData {
     duplicateGroups?: {
       normalizedName: string;
       count: number;
+      safePrimaryCandidate?: {
+        id: string;
+        name: string;
+        type: string;
+        libraryName?: string;
+        needsSync: boolean;
+      };
       items: {
         id: string;
         name: string;
@@ -492,11 +510,21 @@ interface DashboardInsightData {
       reason: string;
       safeAction: string;
     }[];
+    first50FeatureMatrix?: {
+      id: number;
+      category: string;
+      title: string;
+      href: string;
+      metric: string;
+      status: 'ready' | 'watch' | 'attention';
+    }[];
     backupHealth?: {
       latestBackupAt?: string;
       daysSinceBackup: number | null;
       recommended: boolean;
       settingsFingerprint: string;
+      backupCount?: number;
+      retention?: number;
     };
     releaseChanges?: {
       version: string;
@@ -581,6 +609,47 @@ interface DashboardInsightData {
   };
 }
 
+interface DashboardSearchData {
+  query: string;
+  results: {
+    id: string;
+    type: string;
+    title: string;
+    subtitle: string;
+    href: string;
+  }[];
+}
+
+interface BackupListData {
+  storagePath: string;
+  retention: number;
+  backups: {
+    filename: string;
+    sizeBytes: number;
+    modifiedAt: string;
+    downloadUrl: string;
+  }[];
+}
+
+interface SyncHistoryData {
+  running: boolean;
+  lastGlobalSyncAt?: string;
+  globalSyncError?: string;
+  timeline: {
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    at: string;
+  }[];
+}
+
+interface DuplicateMergePreviewData {
+  groups: NonNullable<
+    NonNullable<DashboardInsightData['intelligence']>['duplicateGroups']
+  >;
+}
+
 const scoreColor = (status: string): string => {
   switch (status) {
     case 'critical':
@@ -622,7 +691,17 @@ const DashboardInsights: React.FC = () => {
   const { data, error, mutate } = useSWR<DashboardInsightData>(
     '/api/v1/dashboard/stats'
   );
+  const { data: backupList } = useSWR<BackupListData>(
+    '/api/v1/dashboard/backups'
+  );
+  const { data: syncHistory } = useSWR<SyncHistoryData>(
+    '/api/v1/dashboard/sync-history'
+  );
+  const { data: duplicateMergePreview } = useSWR<DuplicateMergePreviewData>(
+    '/api/v1/dashboard/duplicate-merge-preview'
+  );
   const [operationQuery, setOperationQuery] = useState('');
+  const [dashboardSearchQuery, setDashboardSearchQuery] = useState('');
   const [operationStatus, setOperationStatus] = useState('all');
   const [runningAction, setRunningAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -667,6 +746,13 @@ const DashboardInsights: React.FC = () => {
     changes: string[];
     currentHealth?: { score?: number; status?: string; reasons: string[] };
   } | null>(null);
+  const dashboardSearchKey = dashboardSearchQuery.trim()
+    ? `/api/v1/dashboard/search?q=${encodeURIComponent(
+        dashboardSearchQuery.trim()
+      )}`
+    : null;
+  const { data: dashboardSearch } =
+    useSWR<DashboardSearchData>(dashboardSearchKey);
   const filteredOperations = useMemo(() => {
     const query = operationQuery.trim().toLowerCase();
 
@@ -1535,6 +1621,83 @@ const DashboardInsights: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-2">
         <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h4 className="flex items-center text-sm font-semibold text-white">
+              <SparklesIcon className="mr-2 h-4 w-4 text-orange-400" />
+              {intl.formatMessage(messages.first50FeatureMatrix)}
+            </h4>
+            <a
+              href="/api/v1/dashboard/collections/export-bulk"
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+            >
+              {intl.formatMessage(messages.bulkCollectionExport)}
+            </a>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            {(intelligence?.first50FeatureMatrix || [])
+              .slice(0, 8)
+              .map((feature) => (
+                <a
+                  key={feature.id}
+                  href={feature.href}
+                  className="rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-700"
+                >
+                  <p className="text-xs text-gray-500">
+                    #{feature.id} · {feature.category}
+                  </p>
+                  <p className="line-clamp-2 mt-1 text-sm font-semibold text-white">
+                    {feature.title}
+                  </p>
+                  <p className="mt-1 text-xs text-orange-300">
+                    {feature.metric}
+                  </p>
+                </a>
+              ))}
+          </div>
+          <p className="mt-3 text-xs text-gray-500">
+            {intl.formatMessage(messages.implementedFeaturesTracked, {
+              count: (intelligence?.first50FeatureMatrix || []).length,
+            })}
+          </p>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <QuestionMarkCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.globalDashboardSearch)}
+          </h4>
+          <input
+            type="search"
+            value={dashboardSearchQuery}
+            onChange={(event) => setDashboardSearchQuery(event.target.value)}
+            placeholder={intl.formatMessage(messages.searchDashboard)}
+            className="w-full rounded border border-gray-700 bg-stone-900 px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-gray-500 focus:border-orange-500/70"
+          />
+          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+            {(dashboardSearch?.results || []).slice(0, 9).map((result) => (
+              <a
+                key={result.id}
+                href={result.href}
+                className="rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-700"
+              >
+                <p className="text-xs text-gray-500">{result.type}</p>
+                <p className="mt-1 text-sm font-semibold text-white">
+                  {result.title}
+                </p>
+                <p className="line-clamp-2 mt-1 text-xs text-gray-400">
+                  {result.subtitle}
+                </p>
+              </a>
+            ))}
+          </div>
+          {dashboardSearchQuery.trim() && !dashboardSearch?.results?.length && (
+            <p className="mt-3 text-sm text-gray-500">
+              {intl.formatMessage(messages.noItems)}
+            </p>
+          )}
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
           <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
             <CheckCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
             {intl.formatMessage(messages.firstAidStatus)}
@@ -1572,6 +1735,105 @@ const DashboardInsights: React.FC = () => {
                 {intelligence?.backupHealth?.settingsFingerprint || '-'}
               </p>
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <RectangleStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.backupList)}
+          </h4>
+          <p className="text-xs text-gray-500">
+            {backupList?.storagePath || '-'}
+          </p>
+          <div className="mt-3 space-y-2">
+            {(backupList?.backups || []).slice(0, 5).map((backup) => (
+              <a
+                key={backup.filename}
+                href={backup.downloadUrl}
+                className="block rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-700"
+              >
+                <p className="truncate text-sm font-semibold text-white">
+                  {backup.filename}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {new Date(backup.modifiedAt).toLocaleString()} ·{' '}
+                  {Math.round(backup.sizeBytes / 1024)} KB
+                </p>
+              </a>
+            ))}
+            {!backupList?.backups?.length && (
+              <p className="text-sm text-gray-500">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ClockIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.syncHistory)}
+          </h4>
+          <div className="rounded bg-stone-900 px-3 py-2">
+            <p
+              className={`text-sm font-semibold ${
+                syncHistory?.running ? 'text-orange-300' : 'text-green-300'
+              }`}
+            >
+              {syncHistory?.running
+                ? intl.formatMessage(messages.syncRunning)
+                : intl.formatMessage(messages.moduleReady)}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              {syncHistory?.lastGlobalSyncAt
+                ? new Date(syncHistory.lastGlobalSyncAt).toLocaleString()
+                : '-'}
+            </p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {(syncHistory?.timeline || []).slice(0, 4).map((event) => (
+              <div key={event.id} className="rounded bg-stone-900 px-3 py-2">
+                <p className="text-sm font-semibold text-white">
+                  {event.title}
+                </p>
+                <p className="line-clamp-2 mt-1 text-xs text-gray-400">
+                  {event.message}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <RectangleStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.duplicateMergePreview)}
+          </h4>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            {(duplicateMergePreview?.groups || []).slice(0, 6).map((group) => (
+              <div
+                key={group.normalizedName}
+                className="rounded bg-stone-900 px-3 py-2"
+              >
+                <p className="text-sm font-semibold text-white">
+                  {group.normalizedName}
+                </p>
+                <p className="mt-1 text-xs text-orange-300">
+                  {intl.formatMessage(messages.duplicateMatches, {
+                    count: group.count,
+                  })}
+                </p>
+                <p className="line-clamp-2 mt-1 text-xs text-gray-400">
+                  {group.safePrimaryCandidate?.name || group.items[0]?.name}
+                </p>
+              </div>
+            ))}
+            {!duplicateMergePreview?.groups?.length && (
+              <p className="text-sm text-gray-500">
+                {intl.formatMessage(messages.noItems)}
+              </p>
+            )}
           </div>
         </section>
 
