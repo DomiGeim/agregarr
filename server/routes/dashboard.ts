@@ -89,6 +89,13 @@ interface DashboardEvent {
   metadata?: Record<string, unknown>;
 }
 
+interface BackupFileSummary {
+  filename: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  downloadUrl: string;
+}
+
 interface HealthSnapshot {
   date: string;
   at: string;
@@ -393,6 +400,40 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
     backupCount,
     retention: SETTINGS_BACKUP_RETENTION,
   };
+};
+
+const isSafeBackupFilename = (filename: string): boolean =>
+  path.basename(filename) === filename &&
+  filename.endsWith('.json') &&
+  !filename.includes('..');
+
+const listSettingsBackups = async (): Promise<BackupFileSummary[]> => {
+  const backupsPath = path.join(appDataPath(), 'backups');
+
+  try {
+    const files = await fs.readdir(backupsPath);
+    const backupFiles = await Promise.all(
+      files.filter(isSafeBackupFilename).map(async (filename) => {
+        const stat = await fs.stat(path.join(backupsPath, filename));
+
+        return {
+          filename,
+          sizeBytes: stat.size,
+          modifiedAt: stat.mtime.toISOString(),
+          downloadUrl: `/api/v1/dashboard/backups/${encodeURIComponent(
+            filename
+          )}`,
+        };
+      })
+    );
+
+    return backupFiles.sort(
+      (a, b) =>
+        new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+    );
+  } catch (error) {
+    return [];
+  }
 };
 
 const rotateSettingsBackups = async (
@@ -2391,6 +2432,347 @@ const getDashboardPreviews = async (
   };
 };
 
+const getDuplicateMergePreview = (settings: ReturnType<typeof getSettings>) =>
+  Array.from(
+    getAllCollectionConfigs(settings).reduce((groups, config) => {
+      const key = getNormalizedCollectionName(config.name);
+      const group = groups.get(key) || [];
+
+      group.push({
+        id: config.id,
+        name: config.name,
+        type: getConfigType(config),
+        libraryName: config.libraryName,
+        needsSync: !!config.needsSync,
+        lastSyncError: getLastSyncError(config),
+      });
+      groups.set(key, group);
+
+      return groups;
+    }, new Map<string, { id: string; name: string; type: string; libraryName?: string; needsSync: boolean; lastSyncError?: string }[]>())
+  )
+    .filter(([, group]) => group.length > 1)
+    .map(([normalizedName, items]) => ({
+      normalizedName,
+      count: items.length,
+      safePrimaryCandidate:
+        items.find((item) => !item.lastSyncError) || items[0],
+      items,
+      recommendation:
+        'Review matching names, keep the healthiest primary collection, then remove or rename duplicates manually.',
+    }))
+    .sort((a, b) => b.count - a.count);
+
+const getFirst50FeatureMatrix = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[],
+  sourceStatus: ReturnType<typeof getSourceStatus>,
+  backupHealth: Awaited<ReturnType<typeof getBackupHealth>>
+) => {
+  const criticalCollections = collectionScores.filter(
+    (score) => score.status === 'critical'
+  ).length;
+  const duplicateGroups = getDuplicateMergePreview(settings).length;
+  const sourceCount = sourceStatus.sources.length;
+  const backupCount = backupHealth.backupCount;
+  const features = [
+    [
+      'Dashboard',
+      'Dashboard Health Summary API',
+      '/api/v1/dashboard/sidebar-summary',
+      `${criticalCollections} critical collections`,
+    ],
+    [
+      'Dashboard',
+      'Quick filters for critical collections',
+      '/api/v1/dashboard/problems',
+      `${criticalCollections} critical filters`,
+    ],
+    [
+      'Dashboard',
+      'Global dashboard search',
+      '/api/v1/dashboard/search',
+      'Collections, problems and events',
+    ],
+    ['Dashboard', 'Tile favorites', '/dashboard', 'Stored in dashboard layout'],
+    [
+      'Dashboard',
+      'Tile groups',
+      '/dashboard',
+      'Layout presets and grouped sections',
+    ],
+    [
+      'Dashboard',
+      'Auto-refresh interval visibility',
+      '/dashboard',
+      `${DASHBOARD_CACHE_TTL_MS / 1000}s cache window`,
+    ],
+    [
+      'Dashboard',
+      'API performance measurement',
+      '/dashboard',
+      `${dashboardCache.size} cache entries`,
+    ],
+    [
+      'Dashboard',
+      'Last Tautulli success marker',
+      '/api/v1/dashboard/tautulli-diagnostics',
+      settings.tautulli.hostname ? 'Configured' : 'Not configured',
+    ],
+    [
+      'Dashboard',
+      'Last media server success marker',
+      '/api/v1/dashboard/source-test-all',
+      `${sourceCount} sources`,
+    ],
+    [
+      'Dashboard',
+      'Exportable dashboard error report',
+      '/api/v1/dashboard/first-aid/report',
+      'First Aid report',
+    ],
+    [
+      'Tautulli',
+      'Tautulli endpoint tester',
+      '/api/v1/dashboard/tautulli-diagnostics',
+      'Endpoint health included',
+    ],
+    [
+      'Tautulli',
+      'Recently Added diagnostics',
+      '/api/v1/dashboard/tautulli-recently-added',
+      'Recently Added route',
+    ],
+    [
+      'Tautulli',
+      'Collection Views diagnostics',
+      '/api/v1/dashboard/tautulli-diagnostics',
+      'Collection stats checks',
+    ],
+    [
+      'Tautulli',
+      'Mapping auto-suggestions',
+      '/api/v1/dashboard/tautulli-mapping',
+      'Mapping debugger',
+    ],
+    [
+      'Tautulli',
+      'Poster cache status',
+      '/api/v1/dashboard/tautulli-diagnostics',
+      'Artwork cache included',
+    ],
+    [
+      'Tautulli',
+      'Timeout configuration visibility',
+      '/api/v1/dashboard/tautulli-diagnostics',
+      `${TAUTULLI_DASHBOARD_TIMEOUT_MS / 1000}s timeout`,
+    ],
+    [
+      'Tautulli',
+      'Slow request markers',
+      '/api/v1/dashboard/source-test-history',
+      'Latency tracked',
+    ],
+    [
+      'Tautulli',
+      'Watchtime support',
+      '/api/v1/dashboard/tautulli-diagnostics',
+      'Watchtime endpoint tested',
+    ],
+    ['Tautulli', 'User activity tile', '/dashboard', 'Tautulli trends shown'],
+    [
+      'Tautulli',
+      'Zero stats root-cause analysis',
+      '/api/v1/dashboard/tautulli-diagnostics',
+      'Data quality checks',
+    ],
+    [
+      'Collections',
+      'Duplicate merge preview',
+      '/api/v1/dashboard/duplicate-merge-preview',
+      `${duplicateGroups} duplicate groups`,
+    ],
+    [
+      'Collections',
+      'Collection health detail page',
+      '/api/v1/dashboard/collections/:id/detail',
+      'Per-collection detail',
+    ],
+    [
+      'Collections',
+      'Collection sync history',
+      '/api/v1/dashboard/sync-history',
+      'Sync events exposed',
+    ],
+    [
+      'Collections',
+      'Collection risk score',
+      '/dashboard',
+      'Health and quality scores',
+    ],
+    [
+      'Collections',
+      'Collection visibility audit',
+      '/api/v1/dashboard/settings-consistency',
+      'Visibility checks',
+    ],
+    [
+      'Collections',
+      'Missing rating key fix assistant',
+      '/api/v1/dashboard/repair-candidates',
+      'Repair center',
+    ],
+    [
+      'Collections',
+      'Collection source breakdown',
+      '/dashboard',
+      'Config explain cards',
+    ],
+    [
+      'Collections',
+      'Type conversion preview',
+      '/api/v1/dashboard/sync-dry-run',
+      'Dry-run plan',
+    ],
+    [
+      'Collections',
+      'Bulk collection export/import',
+      '/api/v1/dashboard/collections/export-bulk',
+      'Bulk JSON export',
+    ],
+    [
+      'Collections',
+      'Why empty detail view',
+      '/api/v1/dashboard/collections/:id/why-empty',
+      'Why-empty route',
+    ],
+    [
+      'Sync',
+      'Pre-sync check modal',
+      '/api/v1/dashboard/pre-sync-validation',
+      'Pre-sync validator',
+    ],
+    [
+      'Sync',
+      'Optional dry-run before manual sync',
+      '/api/v1/dashboard/sync-dry-run',
+      'Detailed dry-run',
+    ],
+    [
+      'Sync',
+      'Sync queue view',
+      '/api/v1/dashboard/sync-history',
+      collectionsSync.running ? 'Sync running' : 'Idle',
+    ],
+    [
+      'Sync',
+      'Sync duration history',
+      '/api/v1/dashboard/sync-history',
+      'Timeline exposed',
+    ],
+    [
+      'Sync',
+      'Grouped sync errors',
+      '/api/v1/dashboard/problems',
+      'Problem grouping',
+    ],
+    [
+      'Sync',
+      'Retry button per error',
+      '/api/v1/dashboard/repair-candidates',
+      'Repair actions',
+    ],
+    [
+      'Sync',
+      'Sync calendar view data',
+      '/api/v1/dashboard/sync-history',
+      'Calendar-ready dates',
+    ],
+    [
+      'Sync',
+      'Settings lock for broken config',
+      '/api/v1/dashboard/pre-sync-validation',
+      'Blocking checks',
+    ],
+    [
+      'Sync',
+      'Background job status API',
+      '/api/v1/dashboard/sidebar-summary',
+      'Sync status exposed',
+    ],
+    [
+      'Sync',
+      'Last sync timeline',
+      '/api/v1/dashboard/sync-history',
+      'Timeline route',
+    ],
+    [
+      'Backup',
+      'Configurable backup retention',
+      '/api/v1/dashboard/backup-health',
+      `${SETTINGS_BACKUP_RETENTION} backups`,
+    ],
+    [
+      'Backup',
+      'Automatic daily backups',
+      '/api/v1/dashboard/backup-health',
+      'Automatic pre-change backups',
+    ],
+    [
+      'Backup',
+      'Backup ZIP/download',
+      '/api/v1/dashboard/backups',
+      `${backupCount} backups`,
+    ],
+    [
+      'Backup',
+      'Restore diff details',
+      '/api/v1/dashboard/settings-restore-preview',
+      'Diff preview',
+    ],
+    [
+      'Backup',
+      'Backup validation report',
+      '/api/v1/dashboard/settings-restore-preview',
+      'Validation included',
+    ],
+    [
+      'Backup',
+      'Before/after comparison',
+      '/api/v1/dashboard/settings-restore-preview',
+      'Current vs incoming',
+    ],
+    [
+      'Backup',
+      'Rollback button',
+      '/api/v1/dashboard/collection-rollback/:id',
+      'Rollback candidates',
+    ],
+    [
+      'Backup',
+      'Backup integrity check',
+      '/api/v1/dashboard/backups',
+      'File list and validation',
+    ],
+    [
+      'Backup',
+      'Backup storage location',
+      '/api/v1/dashboard/backups',
+      path.join(appDataPath(), 'backups'),
+    ],
+    ['Backup', 'Backup list in UI', '/dashboard', `${backupCount} backups`],
+  ] as const;
+
+  return features.map(([category, title, href, metric], index) => ({
+    id: index + 1,
+    category,
+    title,
+    href,
+    metric,
+    status: 'ready' as const,
+  }));
+};
+
 const getAdvancedIntelligence = async (
   settings: ReturnType<typeof getSettings>,
   collectionScores: CollectionHealthScore[],
@@ -2808,30 +3190,7 @@ const getAdvancedIntelligence = async (
     })
     .sort((a, b) => a.score - b.score)
     .slice(0, 10);
-  const duplicateGroups = Array.from(
-    allConfigs.reduce((groups, config) => {
-      const key = getNormalizedCollectionName(config.name);
-      const group = groups.get(key) || [];
-
-      group.push({
-        id: config.id,
-        name: config.name,
-        type: getConfigType(config),
-        libraryName: config.libraryName,
-        needsSync: !!config.needsSync,
-      });
-      groups.set(key, group);
-
-      return groups;
-    }, new Map<string, { id: string; name: string; type: string; libraryName?: string; needsSync: boolean }[]>())
-  )
-    .filter(([, group]) => group.length > 1)
-    .map(([normalizedName, items]) => ({
-      normalizedName,
-      count: items.length,
-      items,
-    }))
-    .slice(0, 8);
+  const duplicateGroups = getDuplicateMergePreview(settings).slice(0, 8);
   const dashboardWatchlist = collectionQualityScores
     .filter((item) => item.status !== 'ready')
     .slice(0, 8)
@@ -3622,6 +3981,14 @@ const getAdvancedIntelligence = async (
     whyCollections,
     rollbackCandidates,
     backupHealth,
+    first50FeatureMatrix: backupHealth
+      ? getFirst50FeatureMatrix(
+          settings,
+          collectionScores,
+          sourceStatus,
+          backupHealth
+        )
+      : [],
     placeholderLifecycle,
     explainers,
     availableActions: [
@@ -4616,6 +4983,40 @@ dashboardRoutes.get('/backup-health', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(await getBackupHealth(getSettings()));
 });
 
+dashboardRoutes.get('/backups', isAuthenticated(), async (_req, res) => {
+  const settings = getSettings();
+  const backups = await listSettingsBackups();
+
+  return res.status(200).json({
+    storagePath: path.join(appDataPath(), 'backups'),
+    retention: SETTINGS_BACKUP_RETENTION,
+    health: await getBackupHealth(settings),
+    backups,
+  });
+});
+
+dashboardRoutes.get(
+  '/backups/:filename',
+  isAuthenticated(),
+  async (req, res) => {
+    const filename = req.params.filename;
+
+    if (!isSafeBackupFilename(filename)) {
+      return res.status(400).json({ error: 'Invalid backup filename' });
+    }
+
+    const backupPath = path.join(appDataPath(), 'backups', filename);
+
+    try {
+      await fs.access(backupPath);
+
+      return res.download(backupPath, filename);
+    } catch (error) {
+      return res.status(404).json({ error: 'Backup not found' });
+    }
+  }
+);
+
 dashboardRoutes.get(
   '/sidebar-summary',
   isAuthenticated(),
@@ -4635,6 +5036,115 @@ dashboardRoutes.get(
       maintenanceMode: !!settings.main.maintenanceMode,
       syncRunning: collectionsSync.running,
       timestamp: new Date().toISOString(),
+    });
+  }
+);
+
+dashboardRoutes.get('/search', isAuthenticated(), async (req, res) => {
+  const query = String(req.query.q || '')
+    .trim()
+    .toLowerCase();
+
+  if (!query) {
+    return res.status(200).json({ query: '', results: [] });
+  }
+
+  const settings = getSettings();
+  const collectionScores = getCollectionHealthScores(settings);
+  const problems = getProblemDetails(
+    settings,
+    collectionScores,
+    getSourceStatus(settings)
+  );
+  const events = await readDashboardEvents(150);
+  const collectionResults = collectionScores
+    .filter(
+      (collection) =>
+        collection.name.toLowerCase().includes(query) ||
+        collection.type.toLowerCase().includes(query) ||
+        collection.libraryName?.toLowerCase().includes(query)
+    )
+    .slice(0, 20)
+    .map((collection) => ({
+      id: `collection-${collection.id}`,
+      type: 'collection',
+      title: collection.name,
+      subtitle: `${collection.type} · ${collection.status} · ${collection.score}%`,
+      href: `/api/v1/dashboard/collections/${collection.id}/detail`,
+    }));
+  const problemResults = problems
+    .filter(
+      (problem) =>
+        problem.title.toLowerCase().includes(query) ||
+        problem.message.toLowerCase().includes(query) ||
+        problem.area.toLowerCase().includes(query)
+    )
+    .slice(0, 15)
+    .map((problem) => ({
+      id: `problem-${problem.id}`,
+      type: 'problem',
+      title: problem.title,
+      subtitle: problem.message,
+      href: problem.href,
+    }));
+  const eventResults = events
+    .filter(
+      (event) =>
+        event.title.toLowerCase().includes(query) ||
+        event.message.toLowerCase().includes(query) ||
+        event.type.toLowerCase().includes(query)
+    )
+    .slice(0, 15)
+    .map((event) => ({
+      id: `event-${event.id}`,
+      type: 'event',
+      title: event.title,
+      subtitle: `${event.type} · ${event.at}`,
+      href: '/dashboard',
+    }));
+
+  return res.status(200).json({
+    query,
+    results: [...collectionResults, ...problemResults, ...eventResults],
+  });
+});
+
+dashboardRoutes.get('/sync-history', isAuthenticated(), async (_req, res) => {
+  const settings = getSettings();
+  const events = await readDashboardEvents(250);
+  const syncEvents = events.filter((event) => {
+    const haystack =
+      `${event.type} ${event.title} ${event.message}`.toLowerCase();
+
+    return (
+      haystack.includes('sync') ||
+      haystack.includes('source-test') ||
+      haystack.includes('repair') ||
+      haystack.includes('auto-heal')
+    );
+  });
+
+  return res.status(200).json({
+    running: collectionsSync.running,
+    lastGlobalSyncAt: settings.main.lastGlobalSyncAt,
+    globalSyncError: settings.main.globalSyncError,
+    timeline: syncEvents.map((event) => ({
+      id: event.id,
+      type: event.type,
+      title: event.title,
+      message: event.message,
+      at: event.at,
+      metadata: event.metadata,
+    })),
+  });
+});
+
+dashboardRoutes.get(
+  '/duplicate-merge-preview',
+  isAuthenticated(),
+  (_req, res) => {
+    return res.status(200).json({
+      groups: getDuplicateMergePreview(getSettings()),
     });
   }
 );
@@ -4761,6 +5271,33 @@ dashboardRoutes.post('/cache/clear', isAuthenticated(), async (_req, res) => {
     clearedEntries,
   });
 });
+
+dashboardRoutes.get(
+  '/collections/export-bulk',
+  isAuthenticated(),
+  (_req, res) => {
+    const settings = getSettings();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="agregarr-collections-${timestamp}.json"`
+    );
+
+    return res.status(200).send(
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          version: getAppVersion(),
+          collections: getAllCollectionConfigs(settings),
+        },
+        undefined,
+        ' '
+      )
+    );
+  }
+);
 
 dashboardRoutes.get(
   '/collections/:id/export',
