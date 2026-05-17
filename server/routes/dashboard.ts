@@ -1647,6 +1647,7 @@ const runScheduledSourceTests = async (
   if (Date.now() - latestAt < SOURCE_AUTO_TEST_INTERVAL_MS) {
     return {
       ran: false,
+      queued: false,
       nextRunAt: new Date(
         latestAt + SOURCE_AUTO_TEST_INTERVAL_MS
       ).toISOString(),
@@ -1654,27 +1655,32 @@ const runScheduledSourceTests = async (
   }
 
   const sources = getSourceStatus(settings).sources.map((source) => source.id);
-  const results = await Promise.all(
-    sources.map((sourceId) => runSourceTest(sourceId, settings))
-  );
-
-  await appendDashboardEvent({
-    type: 'source-test',
-    title: 'Automatic source tests run',
-    message: `${results.filter((result) => result.ok).length}/${
-      results.length
-    } sources healthy.`,
-    metadata: {
-      automatic: true,
-      ok: results.every((result) => result.ok),
-      total: results.length,
-      passed: results.filter((result) => result.ok).length,
-    },
-  });
+  Promise.all(sources.map((sourceId) => runSourceTest(sourceId, settings)))
+    .then((results) =>
+      appendDashboardEvent({
+        type: 'source-test',
+        title: 'Automatic source tests run',
+        message: `${results.filter((result) => result.ok).length}/${
+          results.length
+        } sources healthy.`,
+        metadata: {
+          automatic: true,
+          ok: results.every((result) => result.ok),
+          total: results.length,
+          passed: results.filter((result) => result.ok).length,
+        },
+      })
+    )
+    .catch((error) => {
+      logger.warn('Automatic dashboard source tests failed', {
+        label: 'Dashboard API',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
 
   return {
     ran: true,
-    results,
+    queued: true,
     nextRunAt: new Date(
       Date.now() + SOURCE_AUTO_TEST_INTERVAL_MS
     ).toISOString(),
@@ -4609,6 +4615,29 @@ dashboardRoutes.get('/version-check', isAuthenticated(), async (_req, res) => {
 dashboardRoutes.get('/backup-health', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(await getBackupHealth(getSettings()));
 });
+
+dashboardRoutes.get(
+  '/sidebar-summary',
+  isAuthenticated(),
+  async (_req, res) => {
+    const settings = getSettings();
+    const collectionHealthScores = getCollectionHealthScores(settings);
+    const issueCount = collectionHealthScores.filter(
+      (score) => score.status !== 'healthy'
+    ).length;
+    const criticalCount = collectionHealthScores.filter(
+      (score) => score.status === 'critical'
+    ).length;
+
+    return res.status(200).json({
+      issueCount,
+      criticalCount,
+      maintenanceMode: !!settings.main.maintenanceMode,
+      syncRunning: collectionsSync.running,
+      timestamp: new Date().toISOString(),
+    });
+  }
+);
 
 dashboardRoutes.post(
   '/backups/rotate',

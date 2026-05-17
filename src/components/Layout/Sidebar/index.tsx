@@ -113,17 +113,15 @@ const Sidebar = ({
   const intl = useIntl();
   useUser(); // hasPermission removed - not used in simplified sidebar
   const { data: mainSettings } = useSWR<MainSettings>('/api/v1/settings/main');
-  const { data: dashboardHealth } = useSWR<{
-    collectionHealthScores?: { status: 'healthy' | 'warning' | 'critical' }[];
-  }>(mainSettings?.hideDashboard ? null : '/api/v1/dashboard/stats');
+  const { data: dashboardSummary } = useSWR<{
+    issueCount: number;
+    criticalCount: number;
+  }>(mainSettings?.hideDashboard ? null : '/api/v1/dashboard/sidebar-summary');
   useClickOutside(navRef, () => setClosed());
   const visibleSidebarLinks = mainSettings?.hideDashboard
     ? SidebarLinks.filter((link) => link.messagesKey !== 'dashboard')
     : SidebarLinks;
-  const dashboardIssueCount =
-    dashboardHealth?.collectionHealthScores?.filter(
-      (score) => score.status !== 'healthy'
-    ).length || 0;
+  const dashboardIssueCount = dashboardSummary?.issueCount || 0;
 
   return (
     <>
