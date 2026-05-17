@@ -96,6 +96,27 @@ interface BackupFileSummary {
   downloadUrl: string;
 }
 
+interface DashboardFeatureMatrixItem {
+  id: number;
+  category: string;
+  title: string;
+  href: string;
+  metric: string;
+  status: 'ready' | 'watch' | 'attention';
+  summary?: string;
+}
+
+interface DashboardOperationItem {
+  id: string;
+  number: number;
+  title: string;
+  category: string;
+  status: 'ready' | 'watch' | 'attention';
+  metric: string;
+  summary: string;
+  href: string;
+}
+
 interface HealthSnapshot {
   date: string;
   at: string;
@@ -2595,7 +2616,7 @@ const getFirst50FeatureMatrix = (
     [
       'Collections',
       'Collection health detail page',
-      '/api/v1/dashboard/collections/:id/detail',
+      '/dashboard',
       'Per-collection detail',
     ],
     [
@@ -2640,12 +2661,7 @@ const getFirst50FeatureMatrix = (
       '/api/v1/dashboard/collections/export-bulk',
       'Bulk JSON export',
     ],
-    [
-      'Collections',
-      'Why empty detail view',
-      '/api/v1/dashboard/collections/:id/why-empty',
-      'Why-empty route',
-    ],
+    ['Collections', 'Why empty detail view', '/dashboard', 'Why-empty route'],
     [
       'Sync',
       'Pre-sync check modal',
@@ -2742,12 +2758,7 @@ const getFirst50FeatureMatrix = (
       '/api/v1/dashboard/settings-restore-preview',
       'Current vs incoming',
     ],
-    [
-      'Backup',
-      'Rollback button',
-      '/api/v1/dashboard/collection-rollback/:id',
-      'Rollback candidates',
-    ],
+    ['Backup', 'Rollback button', '/dashboard', 'Rollback candidates'],
     [
       'Backup',
       'Backup integrity check',
@@ -2771,6 +2782,178 @@ const getFirst50FeatureMatrix = (
     metric,
     status: 'ready' as const,
   }));
+};
+
+const getSecond50FeatureMatrix = (
+  operationsSuite: DashboardOperationItem[]
+): DashboardFeatureMatrixItem[] =>
+  operationsSuite.slice(0, 50).map((operation, index) => ({
+    id: index + 51,
+    category: operation.category,
+    title: operation.title,
+    href: operation.href,
+    metric: operation.metric,
+    status: operation.status,
+    summary: operation.summary,
+  }));
+
+const getCollectionDependencies = (
+  settings: ReturnType<typeof getSettings>
+) => {
+  const configs = getAllCollectionConfigs(settings);
+  const dependencyConfigs = configs.map((config) => {
+    const advancedConfig = config as DashboardCollectionConfig & {
+      isLinked?: boolean;
+      isUnlinked?: boolean;
+      linkId?: number;
+      isMultiSource?: boolean;
+      sources?: readonly { type?: string; name?: string }[];
+    };
+
+    return {
+      id: config.id,
+      name: config.name,
+      type: getConfigType(config),
+      libraryName: config.libraryName,
+      isLinked: !!advancedConfig.isLinked && !advancedConfig.isUnlinked,
+      linkId: advancedConfig.linkId,
+      isMultiSource:
+        !!advancedConfig.isMultiSource ||
+        getConfigType(config) === 'multi-source' ||
+        (advancedConfig.sources?.length || 0) > 1,
+      sources: (advancedConfig.sources || []).map((source) => ({
+        type: source.type || 'unknown',
+        name: source.name || source.type || 'unknown',
+      })),
+    };
+  });
+  const linkedGroups = Array.from(
+    dependencyConfigs
+      .filter((config) => config.isLinked && config.linkId !== undefined)
+      .reduce((groups, config) => {
+        const key = String(config.linkId);
+        const group = groups.get(key) || [];
+
+        group.push(config);
+        groups.set(key, group);
+
+        return groups;
+      }, new Map<string, typeof dependencyConfigs>())
+  ).map(([linkId, items]) => ({
+    linkId,
+    count: items.length,
+    items,
+  }));
+
+  return {
+    linkedGroups,
+    multiSourceCollections: dependencyConfigs.filter(
+      (config) => config.isMultiSource
+    ),
+    totalDependencies:
+      linkedGroups.reduce((sum, group) => sum + group.count, 0) +
+      dependencyConfigs.filter((config) => config.isMultiSource).length,
+  };
+};
+
+const getCollectionTemplateLibrary = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[]
+) => {
+  const healthById = new Map(
+    collectionScores.map((score) => [score.id, score])
+  );
+
+  return Array.from(
+    getAllCollectionConfigs(settings).reduce((groups, config) => {
+      const type = getConfigType(config);
+      const group = groups.get(type) || {
+        type,
+        count: 0,
+        healthy: 0,
+        examples: [] as { id: string; name: string; score?: number }[],
+      };
+      const score = healthById.get(config.id);
+
+      group.count += 1;
+      group.healthy += score?.status === 'healthy' ? 1 : 0;
+      if (group.examples.length < 3) {
+        group.examples.push({
+          id: config.id,
+          name: config.name,
+          score: score?.score,
+        });
+      }
+      groups.set(type, group);
+
+      return groups;
+    }, new Map<string, { type: string; count: number; healthy: number; examples: { id: string; name: string; score?: number }[] }>())
+  )
+    .map(([, group]) => ({
+      ...group,
+      readiness: group.count
+        ? Math.round((group.healthy / group.count) * 100)
+        : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+};
+
+const getExperimentCandidates = (collectionScores: CollectionHealthScore[]) =>
+  collectionScores
+    .filter((score) => score.status !== 'critical')
+    .sort((a, b) => Math.abs(75 - a.score) - Math.abs(75 - b.score))
+    .slice(0, 12)
+    .map((score) => ({
+      id: score.id,
+      name: score.name,
+      type: score.type,
+      libraryName: score.libraryName,
+      score: score.score,
+      reason:
+        score.reasons[0] ||
+        'Stable enough for dry-run experiments without immediate repair work.',
+      href: `/api/v1/dashboard/collection-diff/${score.id}`,
+    }));
+
+const getSyncCostEstimate = (
+  settings: ReturnType<typeof getSettings>,
+  collectionScores: CollectionHealthScore[]
+) => {
+  const configs = getAllCollectionConfigs(settings);
+  const autoRequestCount = configs.filter(hasAutoHandling).length;
+  const needsSyncCount = configs.filter((config) => config.needsSync).length;
+  const warningCount = collectionScores.filter(
+    (score) => score.status === 'warning'
+  ).length;
+  const criticalCount = collectionScores.filter(
+    (score) => score.status === 'critical'
+  ).length;
+  const estimatedUnits =
+    configs.length +
+    autoRequestCount * 3 +
+    needsSyncCount * 2 +
+    criticalCount * 4;
+
+  return {
+    totalCollections: configs.length,
+    autoRequestCount,
+    needsSyncCount,
+    warningCount,
+    criticalCount,
+    estimatedUnits,
+    risk:
+      criticalCount > 0 || estimatedUnits > 250
+        ? ('attention' as const)
+        : warningCount > 0 || estimatedUnits > 120
+        ? ('watch' as const)
+        : ('ready' as const),
+    recommendation:
+      criticalCount > 0
+        ? 'Fix critical collections before a full sync.'
+        : estimatedUnits > 120
+        ? 'Use a dry-run first and run sync outside busy hours.'
+        : 'Safe for a normal manual sync.',
+  };
 };
 
 const getAdvancedIntelligence = async (
@@ -3891,10 +4074,94 @@ const getAdvancedIntelligence = async (
         'Dashboard nutzt stabile Proxy-URLs, damit Poster wiederverwendbar geladen werden.',
       href: '/dashboard',
     },
-  ].map((item, index) => ({
-    ...item,
-    number: index + 1,
-  }));
+  ].map(
+    (item, index): DashboardOperationItem => ({
+      ...item,
+      status:
+        item.status === 'attention'
+          ? 'attention'
+          : item.status === 'watch'
+          ? 'watch'
+          : 'ready',
+      number: index + 1,
+    })
+  );
+  const collectionDependencies = getCollectionDependencies(settings);
+  const templateLibrary = getCollectionTemplateLibrary(
+    settings,
+    collectionScores
+  );
+  const experimentCandidates = getExperimentCandidates(collectionScores);
+  const syncCostEstimate = getSyncCostEstimate(settings, collectionScores);
+  const sourceAudit = sourceStatus.sources.map((source) => {
+    const reliability = sourceReliability.find((item) => item.id === source.id);
+
+    return {
+      ...source,
+      reliabilityScore: reliability?.score ?? (source.configured ? 70 : 0),
+      reliabilityStatus:
+        reliability?.status ?? (source.configured ? 'watch' : 'attention'),
+      message:
+        reliability?.message ||
+        (source.configured
+          ? 'Source is configured but has no recent test result.'
+          : 'Source is not configured.'),
+      lastLatencyMs: reliability?.lastLatencyMs,
+      lastTestedAt: reliability?.lastTestedAt,
+    };
+  });
+  const adminQualityGates = [
+    {
+      id: 'pre-sync',
+      title: isGerman ? 'Pre-Sync bereit' : 'Pre-sync ready',
+      ok: preSyncValidation.canSync,
+      severity: preSyncValidation.canSync ? 'info' : 'error',
+      message: preSyncValidation.canSync
+        ? isGerman
+          ? 'Pre-Sync-Checks blockieren keinen Lauf.'
+          : 'Pre-sync checks do not block a run.'
+        : isGerman
+        ? 'Mindestens ein Pre-Sync-Check blockiert einen Lauf.'
+        : 'At least one pre-sync check blocks a run.',
+      href: '/api/v1/dashboard/pre-sync-validation',
+    },
+    {
+      id: 'backup',
+      title: isGerman ? 'Backup vorhanden' : 'Backup available',
+      ok: !!backupHealth?.latestBackupAt,
+      severity: backupHealth?.latestBackupAt ? 'info' : 'warning',
+      message: backupHealth?.latestBackupAt
+        ? `${backupHealth.backupCount} backups available.`
+        : 'No settings backup has been created yet.',
+      href: '/api/v1/dashboard/backups',
+    },
+    {
+      id: 'sources',
+      title: isGerman ? 'Quellen pruefbar' : 'Sources testable',
+      ok: sourceStatus.configured > 0,
+      severity: sourceStatus.configured > 0 ? 'info' : 'warning',
+      message: `${sourceStatus.configured}/${sourceStatus.total} sources configured.`,
+      href: '/api/v1/dashboard/source-test-all',
+    },
+    {
+      id: 'release',
+      title: isGerman ? 'Container-Status' : 'Container status',
+      ok: ghcrStatus.ready,
+      severity: ghcrStatus.ready ? 'info' : 'warning',
+      message: ghcrStatus.ready
+        ? 'GHCR latest and version tags are reachable.'
+        : 'GHCR tags are still pending or not reachable.',
+      href: '/api/v1/dashboard/ghcr-status',
+    },
+    {
+      id: 'sync-cost',
+      title: isGerman ? 'Sync-Aufwand' : 'Sync cost',
+      ok: syncCostEstimate.risk !== 'attention',
+      severity: syncCostEstimate.risk === 'attention' ? 'warning' : 'info',
+      message: `${syncCostEstimate.estimatedUnits} estimated sync units.`,
+      href: '/api/v1/dashboard/admin-quality',
+    },
+  ];
 
   return {
     actionCenter,
@@ -3989,6 +4256,13 @@ const getAdvancedIntelligence = async (
           backupHealth
         )
       : [],
+    second50FeatureMatrix: getSecond50FeatureMatrix(operationsSuite),
+    adminQualityGates,
+    sourceAudit,
+    collectionDependencies,
+    templateLibrary,
+    experimentCandidates,
+    syncCostEstimate,
     placeholderLifecycle,
     explainers,
     availableActions: [
@@ -5148,6 +5422,79 @@ dashboardRoutes.get(
     });
   }
 );
+
+dashboardRoutes.get('/admin-quality', isAuthenticated(), async (_req, res) => {
+  const settings = getSettings();
+  const collectionScores = getCollectionHealthScores(settings);
+  const sourceStatus = getSourceStatus(settings);
+  const backupHealth = await getBackupHealth(settings);
+  const preSyncValidation = await getPreSyncValidation(
+    settings,
+    collectionScores,
+    sourceStatus
+  );
+  const ghcrStatus = await getGhcrImageStatus(getAppVersion());
+  const syncCostEstimate = getSyncCostEstimate(settings, collectionScores);
+  const gates = [
+    {
+      id: 'pre-sync',
+      title: 'Pre-sync ready',
+      ok: preSyncValidation.canSync,
+      severity: preSyncValidation.canSync ? 'info' : 'error',
+      message: preSyncValidation.canSync
+        ? 'Pre-sync checks do not block a run.'
+        : 'At least one pre-sync check blocks a run.',
+      href: '/api/v1/dashboard/pre-sync-validation',
+    },
+    {
+      id: 'backup',
+      title: 'Backup available',
+      ok: !!backupHealth.latestBackupAt,
+      severity: backupHealth.latestBackupAt ? 'info' : 'warning',
+      message: backupHealth.latestBackupAt
+        ? `${backupHealth.backupCount} backups available.`
+        : 'No settings backup has been created yet.',
+      href: '/api/v1/dashboard/backups',
+    },
+    {
+      id: 'sources',
+      title: 'Sources testable',
+      ok: sourceStatus.configured > 0,
+      severity: sourceStatus.configured > 0 ? 'info' : 'warning',
+      message: `${sourceStatus.configured}/${sourceStatus.total} sources configured.`,
+      href: '/api/v1/dashboard/source-test-all',
+    },
+    {
+      id: 'release',
+      title: 'Container status',
+      ok: ghcrStatus.ready,
+      severity: ghcrStatus.ready ? 'info' : 'warning',
+      message: ghcrStatus.ready
+        ? 'GHCR latest and version tags are reachable.'
+        : 'GHCR tags are still pending or not reachable.',
+      href: '/api/v1/dashboard/ghcr-status',
+    },
+    {
+      id: 'sync-cost',
+      title: 'Sync cost',
+      ok: syncCostEstimate.risk !== 'attention',
+      severity: syncCostEstimate.risk === 'attention' ? 'warning' : 'info',
+      message: `${syncCostEstimate.estimatedUnits} estimated sync units.`,
+      href: '/api/v1/dashboard/admin-quality',
+    },
+  ];
+
+  return res.status(200).json(
+    localizeDashboardPayload(settings, {
+      gates,
+      sourceAudit: sourceStatus.sources,
+      collectionDependencies: getCollectionDependencies(settings),
+      templateLibrary: getCollectionTemplateLibrary(settings, collectionScores),
+      experimentCandidates: getExperimentCandidates(collectionScores),
+      syncCostEstimate,
+    })
+  );
+});
 
 dashboardRoutes.post(
   '/backups/rotate',

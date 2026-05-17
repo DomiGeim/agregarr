@@ -166,12 +166,18 @@ const messages = defineMessages({
   rollbackCandidates: 'Rollback Candidates',
   runRollback: 'Reset marker',
   first50FeatureMatrix: 'First 50 Feature Coverage',
+  second50FeatureMatrix: 'Second 50 Feature Coverage',
   globalDashboardSearch: 'Global dashboard search',
   searchDashboard: 'Search dashboard',
   backupList: 'Backup List',
   syncHistory: 'Sync History',
   duplicateMergePreview: 'Duplicate Merge Preview',
   bulkCollectionExport: 'Bulk collection export',
+  adminQualityGates: 'Admin Quality Gates',
+  sourceAudit: 'Source Audit',
+  collectionDependencies: 'Collection Dependencies',
+  experimentCandidates: 'Experiment Candidates',
+  syncCostEstimate: 'Sync Cost Estimate',
   implementedFeaturesTracked:
     '{count} implemented features are tracked by the dashboard.',
   syncRunning: 'Sync running',
@@ -517,7 +523,81 @@ interface DashboardInsightData {
       href: string;
       metric: string;
       status: 'ready' | 'watch' | 'attention';
+      summary?: string;
     }[];
+    second50FeatureMatrix?: {
+      id: number;
+      category: string;
+      title: string;
+      href: string;
+      metric: string;
+      status: 'ready' | 'watch' | 'attention';
+      summary?: string;
+    }[];
+    adminQualityGates?: {
+      id: string;
+      title: string;
+      ok: boolean;
+      severity: 'error' | 'warning' | 'info';
+      message: string;
+      href: string;
+    }[];
+    sourceAudit?: {
+      id: string;
+      name: string;
+      configured: boolean;
+      status: string;
+      usedByCollections: number;
+      reliabilityScore?: number;
+      reliabilityStatus?: string;
+      message?: string;
+    }[];
+    collectionDependencies?: {
+      totalDependencies: number;
+      linkedGroups: {
+        linkId: string;
+        count: number;
+      }[];
+      multiSourceCollections: {
+        id: string;
+        name: string;
+        type: string;
+        sources: {
+          type: string;
+          name: string;
+        }[];
+      }[];
+    };
+    templateLibrary?: {
+      type: string;
+      count: number;
+      healthy: number;
+      readiness: number;
+      examples: {
+        id: string;
+        name: string;
+        score?: number;
+      }[];
+    }[];
+    experimentCandidates?: {
+      id: string;
+      name: string;
+      type: string;
+      libraryName?: string;
+      score: number;
+      reason: string;
+      href: string;
+    }[];
+    syncCostEstimate?: {
+      totalCollections: number;
+      autoRequestCount: number;
+      needsSyncCount: number;
+      warningCount: number;
+      criticalCount: number;
+      estimatedUnits: number;
+      risk: 'ready' | 'watch' | 'attention';
+      recommendation: string;
+    };
     backupHealth?: {
       latestBackupAt?: string;
       daysSinceBackup: number | null;
@@ -1659,6 +1739,52 @@ const DashboardInsights: React.FC = () => {
               count: (intelligence?.first50FeatureMatrix || []).length,
             })}
           </p>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-700 pt-4">
+            <h4 className="flex items-center text-sm font-semibold text-white">
+              <SparklesIcon className="mr-2 h-4 w-4 text-orange-400" />
+              {intl.formatMessage(messages.second50FeatureMatrix)}
+            </h4>
+            <a
+              href="/api/v1/dashboard/admin-quality"
+              className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60"
+            >
+              {intl.formatMessage(messages.adminQualityGates)}
+            </a>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            {(intelligence?.second50FeatureMatrix || [])
+              .slice(0, 8)
+              .map((feature) => (
+                <a
+                  key={feature.id}
+                  href={feature.href}
+                  className="rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-700"
+                >
+                  <p className="text-xs text-gray-500">
+                    #{feature.id} · {feature.category}
+                  </p>
+                  <p className="line-clamp-2 mt-1 text-sm font-semibold text-white">
+                    {feature.title}
+                  </p>
+                  <p
+                    className={`mt-1 text-xs ${
+                      feature.status === 'attention'
+                        ? 'text-red-300'
+                        : feature.status === 'watch'
+                        ? 'text-orange-300'
+                        : 'text-green-300'
+                    }`}
+                  >
+                    {feature.metric}
+                  </p>
+                </a>
+              ))}
+          </div>
+          <p className="mt-3 text-xs text-gray-500">
+            {intl.formatMessage(messages.implementedFeaturesTracked, {
+              count: (intelligence?.second50FeatureMatrix || []).length,
+            })}
+          </p>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
@@ -1695,6 +1821,102 @@ const DashboardInsights: React.FC = () => {
               {intl.formatMessage(messages.noItems)}
             </p>
           )}
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <CheckCircleIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.adminQualityGates)}
+          </h4>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {(intelligence?.adminQualityGates || []).map((gate) => (
+              <a
+                key={gate.id}
+                href={gate.href}
+                className="rounded bg-stone-900 px-3 py-2 transition-colors hover:bg-stone-700"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-white">
+                    {gate.title}
+                  </p>
+                  <span
+                    className={`rounded border px-2 py-1 text-xs font-semibold ${
+                      gate.ok
+                        ? 'border-green-500/40 text-green-300'
+                        : gate.severity === 'error'
+                        ? 'border-red-500/40 text-red-300'
+                        : 'border-orange-500/40 text-orange-300'
+                    }`}
+                  >
+                    {gate.ok
+                      ? intl.formatMessage(messages.moduleReady)
+                      : gate.severity === 'error'
+                      ? intl.formatMessage(messages.moduleAttention)
+                      : intl.formatMessage(messages.moduleWatch)}
+                  </span>
+                </div>
+                <p className="line-clamp-2 mt-2 text-xs text-gray-400">
+                  {gate.message}
+                </p>
+              </a>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="rounded bg-stone-900 px-3 py-2">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.syncCostEstimate)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {intelligence?.syncCostEstimate?.estimatedUnits || 0}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {intelligence?.syncCostEstimate?.recommendation || '-'}
+              </p>
+            </div>
+            <div className="rounded bg-stone-900 px-3 py-2">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.sourceAudit)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {intelligence?.sourceAudit?.length || 0}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {(intelligence?.sourceAudit || [])
+                  .filter((source) => !source.configured)
+                  .map((source) => source.name)
+                  .slice(0, 3)
+                  .join(', ') || intl.formatMessage(messages.moduleReady)}
+              </p>
+            </div>
+            <div className="rounded bg-stone-900 px-3 py-2">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.collectionDependencies)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {intelligence?.collectionDependencies?.totalDependencies || 0}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {
+                  (
+                    intelligence?.collectionDependencies
+                      ?.multiSourceCollections || []
+                  ).length
+                }{' '}
+                multi-source
+              </p>
+            </div>
+            <div className="rounded bg-stone-900 px-3 py-2">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.experimentCandidates)}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-white">
+                {intelligence?.experimentCandidates?.length || 0}
+              </p>
+              <p className="line-clamp-1 mt-1 text-xs text-gray-400">
+                {intelligence?.experimentCandidates?.[0]?.name || '-'}
+              </p>
+            </div>
+          </div>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4 lg:col-span-2">
