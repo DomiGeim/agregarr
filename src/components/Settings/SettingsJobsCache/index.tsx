@@ -186,7 +186,16 @@ const getTimeMs = (dateString?: string | null): number | undefined => {
 
 const describeCronSchedule = (cronSchedule: string, locale: string): string => {
   try {
-    return cronstrue.toString(cronSchedule, { locale });
+    const parts = cronSchedule.trim().split(/\s+/);
+    const normalizedCron =
+      parts.length === 6 && parts[0] === '0'
+        ? parts.slice(1).join(' ')
+        : cronSchedule;
+
+    return cronstrue.toString(normalizedCron, {
+      locale,
+      dayOfWeekStartIndexZero: true,
+    });
   } catch {
     return cronSchedule;
   }

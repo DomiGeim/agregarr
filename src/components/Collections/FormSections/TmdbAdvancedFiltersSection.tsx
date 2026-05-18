@@ -82,6 +82,18 @@ const MULTIVALUE_SEPARATOR_FIELDS = new Set([
   'with_watch_monetization_types',
 ]);
 
+const DYNAMIC_DATE_OPTIONS = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'tomorrow', label: 'Tomorrow' },
+  { value: 'this_week', label: 'This week' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'this_year', label: 'This year' },
+  { value: 'today_every_year', label: 'Today every year' },
+  { value: 'this_week_every_year', label: 'This week every year' },
+  { value: 'this_month_every_year', label: 'This month every year' },
+];
+
 // Fields that use TMDB search-as-you-type instead of free-text ID entry
 const TMDB_SEARCH_FIELDS: Record<string, string> = {
   with_cast: '/api/v1/search/person',
@@ -201,6 +213,42 @@ const FILTER_FIELDS: Record<string, FilterFieldConfig> = {
   'air_date.lte': {
     label: 'Aired before',
     type: 'date',
+    scope: 'tv' as FilterScope,
+  },
+  dynamic_air_date: {
+    label: 'Dynamic Air Date',
+    type: 'select',
+    scope: 'tv' as FilterScope,
+    options: DYNAMIC_DATE_OPTIONS,
+  },
+  tvdb_id: {
+    label: 'TVDB ID',
+    type: 'number',
+    min: 1,
+    scope: 'tv' as FilterScope,
+  },
+  'number_of_seasons.gte': {
+    label: 'Seasons at least',
+    type: 'number',
+    min: 0,
+    scope: 'tv' as FilterScope,
+  },
+  'number_of_seasons.lte': {
+    label: 'Seasons at most',
+    type: 'number',
+    min: 0,
+    scope: 'tv' as FilterScope,
+  },
+  'number_of_episodes.gte': {
+    label: 'Episodes at least',
+    type: 'number',
+    min: 0,
+    scope: 'tv' as FilterScope,
+  },
+  'number_of_episodes.lte': {
+    label: 'Episodes at most',
+    type: 'number',
+    min: 0,
     scope: 'tv' as FilterScope,
   },
   include_null_first_air_dates: {
@@ -334,6 +382,12 @@ const FILTER_FIELDS: Record<string, FilterFieldConfig> = {
     label: 'Release Date before',
     type: 'date',
     scope: 'movie' as FilterScope,
+  },
+  dynamic_release_date: {
+    label: 'Dynamic Release Date',
+    type: 'select',
+    scope: 'movie' as FilterScope,
+    options: DYNAMIC_DATE_OPTIONS,
   },
 
   // Runtime

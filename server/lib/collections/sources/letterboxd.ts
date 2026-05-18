@@ -824,11 +824,31 @@ export class LetterboxdCollectionSync extends BaseCollectionSync<'letterboxd'> {
       const patterns = [
         /<li[^>]*class="[^"]*posteritem[^"]*"[^>]*>(.*?)<\/li>/gs,
         /<li[^>]*class="[^"]*griditem[^"]*"[^>]*>(.*?)<\/li>/gs,
+        /<div[^>]*class="[^"]*film-poster[^"]*"[^>]*>/gs,
+        /<div[^>]*data-film-slug="[^"]+"[^>]*>/gs,
       ];
 
-      const targetLinkRegex = /data-target-link="([^"]+)"/;
-      const fullDisplayNameRegex = /data-item-full-display-name="([^"]+)"/;
-      const titleRegex = /data-item-name="([^"]+)"/;
+      const decodeHtml = (value: string): string =>
+        value
+          .replace(/&lrm;/g, '')
+          .replace(/&rlm;/g, '')
+          .replace(/&bull;/g, '•')
+          .replace(/&ndash;/g, '–')
+          .replace(/&mdash;/g, '—')
+          .replace(/&hellip;/g, '…')
+          .replace(/&quot;/g, '"')
+          .replace(/&#0?39;/g, "'")
+          .replace(/&#x27;/g, "'")
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>');
+
+      const targetLinkRegex =
+        /data-target-link="([^"]+)"|data-film-slug="([^"]+)"/;
+      const fullDisplayNameRegex =
+        /data-item-full-display-name="([^"]+)"|data-film-name="([^"]+)"/;
+      const titleRegex =
+        /data-item-name="([^"]+)"|data-film-name="([^"]+)"|alt="([^"]+)"/;
 
       let matches: RegExpMatchArray[] = [];
       let patternUsed = 0;
@@ -865,7 +885,7 @@ export class LetterboxdCollectionSync extends BaseCollectionSync<'letterboxd'> {
 
       for (const match of matches) {
         if (count >= maxItems) break;
-        const itemHtml = match[1];
+        const itemHtml = match[1] || match[0];
 
         // Extract target link (movie slug)
         const targetLinkMatch = itemHtml.match(targetLinkRegex);
@@ -876,7 +896,7 @@ export class LetterboxdCollectionSync extends BaseCollectionSync<'letterboxd'> {
         if (!titleMatch) continue;
 
         // Decode HTML entities in the title
-        let title = titleMatch[1];
+        let title = titleMatch[1] || titleMatch[2] || titleMatch[3] || '';
         // Strip year suffix like "(2004)" since year is extracted separately
         title = title.replace(/\s*\(\d{4}\)$/, '');
         title = title
@@ -892,19 +912,23 @@ export class LetterboxdCollectionSync extends BaseCollectionSync<'letterboxd'> {
           .replace(/&amp;/g, '&') // Replace ampersand (do this last)
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>');
+        title = decodeHtml(title).trim();
 
         // Extract year from full display name (e.g., "All of Us Strangers (2023)")
         const fullDisplayNameMatch = itemHtml.match(fullDisplayNameRegex);
         let year = new Date().getFullYear(); // default fallback
 
         if (fullDisplayNameMatch) {
-          const yearMatch = fullDisplayNameMatch[1].match(/\((\d{4})\)$/);
+          const fullDisplayName =
+            fullDisplayNameMatch[1] || fullDisplayNameMatch[2] || '';
+          const yearMatch = decodeHtml(fullDisplayName).match(/\((\d{4})\)$/);
           if (yearMatch) {
             year = parseInt(yearMatch[1]);
           }
         }
 
-        const slug = targetLinkMatch[1];
+        const rawSlug = targetLinkMatch[1] || targetLinkMatch[2] || '';
+        const slug = rawSlug.startsWith('/') ? rawSlug : `/film/${rawSlug}/`;
         const letterboxdUrl = `https://letterboxd.com${slug}`;
 
         items.push({

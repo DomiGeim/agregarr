@@ -310,7 +310,7 @@ class PlexSmartCollectionManager {
         }
       );
 
-      const type = mediaType === 'movie' ? 1 : 2;
+      let type = mediaType === 'movie' ? 1 : 2;
 
       // Build filter URI based on media type and subtype
       let filterUri: string;
@@ -318,7 +318,8 @@ class PlexSmartCollectionManager {
       if (subtype === 'recently_added') {
         // Recently Added: Sort by Date Added (addedAt), exclude placeholders
         if (mediaType === 'tv') {
-          // TV Shows: Filter out "Trailer (Placeholder)" episode titles
+          // TV libraries should mirror Plex's Recently Added hub, which is episode-based.
+          type = 4;
           const sortParam = 'addedAt:desc';
           const titleFilter = encodeURIComponent('Trailer (Placeholder)');
           filterUri = `/library/sections/${libraryKey}/all?type=${type}&sort=${sortParam}&episode.title!=${titleFilter}`;
@@ -349,6 +350,7 @@ class PlexSmartCollectionManager {
         // Last Episode Added: Sort by most recent episode added date (TV only)
         if (mediaType === 'tv') {
           // TV Shows: Sort by last episode added date, filter out "Trailer (Placeholder)"
+          type = 4;
           const sortParam = 'episode.addedAt:desc';
           const titleFilter = encodeURIComponent('Trailer (Placeholder)');
           filterUri = `/library/sections/${libraryKey}/all?type=${type}&sort=${sortParam}&episode.title!=${titleFilter}`;
@@ -692,7 +694,7 @@ class PlexSmartCollectionManager {
         }
       );
 
-      const type = mediaType === 'movie' ? 1 : 2;
+      let type = mediaType === 'movie' ? 1 : 2;
 
       // Build filter URI based on media type and subtype (same logic as createFilteredHub)
       let filterUri: string;
@@ -700,7 +702,8 @@ class PlexSmartCollectionManager {
       if (subtype === 'recently_added') {
         // Recently Added: Sort by Date Added (addedAt), exclude placeholders
         if (mediaType === 'tv') {
-          // TV Shows: Filter out "Trailer (Placeholder)" episode titles
+          // TV libraries should mirror Plex's Recently Added hub, which is episode-based.
+          type = 4;
           const sortParam = 'addedAt:desc';
           const titleFilter = encodeURIComponent('Trailer (Placeholder)');
           filterUri = `/library/sections/${libraryKey}/all?type=${type}&sort=${sortParam}&episode.title!=${titleFilter}`;
@@ -731,6 +734,7 @@ class PlexSmartCollectionManager {
         // Last Episode Added: Sort by most recent episode added date (TV only)
         if (mediaType === 'tv') {
           // TV Shows: Sort by last episode added date, filter out "Trailer (Placeholder)"
+          type = 4;
           const sortParam = 'episode.addedAt:desc';
           const titleFilter = encodeURIComponent('Trailer (Placeholder)');
           filterUri = `/library/sections/${libraryKey}/all?type=${type}&sort=${sortParam}&episode.title!=${titleFilter}`;
