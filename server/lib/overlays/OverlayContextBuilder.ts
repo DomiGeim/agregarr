@@ -13,6 +13,43 @@ import type { OverlayRenderContext } from './OverlayTemplateRenderer';
 
 const _langDisplayNames = new Intl.DisplayNames(['en'], { type: 'language' });
 
+function isGermanLocale(): boolean {
+  return getSettings().main.locale?.toLowerCase().startsWith('de') ?? false;
+}
+
+function getOverlayLabel(key: 'comingSoon'): string {
+  if (isGermanLocale()) {
+    return {
+      comingSoon: 'BALD VERFÜGBAR',
+    }[key];
+  }
+
+  return {
+    comingSoon: 'COMING SOON',
+  }[key];
+}
+
+function localizeOverlayStatus(status: string): string {
+  const normalized = status.trim().toUpperCase();
+
+  if (!isGermanLocale()) {
+    return normalized;
+  }
+
+  const germanStatusLabels: Record<string, string> = {
+    AIRING: 'LÄUFT',
+    CANCELLED: 'ABGESETZT',
+    CANCELED: 'ABGESETZT',
+    ENDED: 'BEENDET',
+    'IN PRODUCTION': 'IN PRODUKTION',
+    PILOT: 'PILOT',
+    PLANNED: 'GEPLANT',
+    RETURNING: 'KEHRT ZURÜCK',
+  };
+
+  return germanStatusLabels[normalized] ?? normalized;
+}
+
 /**
  * Convert an ISO 639-2 language code to its English display name.
  */
@@ -188,6 +225,7 @@ export async function buildRenderContext(
   const context: OverlayRenderContext = {
     title: item.title,
     year: item.year,
+    comingSoonLabel: getOverlayLabel('comingSoon'),
     isPlaceholder,
     mediaType,
     downloaded: !isPlaceholder, // Real items in Plex are downloaded, placeholders are not
@@ -450,7 +488,7 @@ export async function buildRenderContext(
           }
         }
 
-        context.tmdbStatus = mappedStatus;
+        context.tmdbStatus = localizeOverlayStatus(mappedStatus);
       }
 
       // TVDB Status (TV shows only)
@@ -504,7 +542,7 @@ export async function buildRenderContext(
               }
             }
 
-            context.tvdbStatus = mappedTvdbStatus;
+            context.tvdbStatus = localizeOverlayStatus(mappedTvdbStatus);
           }
         } catch (error) {
           logger.debug('Failed to fetch TVDB status', {

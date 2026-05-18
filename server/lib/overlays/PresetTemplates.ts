@@ -336,13 +336,13 @@ export const PRESET_TEMPLATES: {
         {
           id: 'coming-soon-text',
           layerOrder: 1,
-          type: 'text',
+          type: 'variable',
           x: 0,
           y: -25.5,
           width: 1000,
           height: 146,
           properties: {
-            text: 'COMING SOON',
+            segments: [{ type: 'variable', field: 'comingSoonLabel' }],
             fontSize: 74,
             fontFamily: 'Inter',
             fontWeight: 'bold',

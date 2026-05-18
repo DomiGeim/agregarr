@@ -254,6 +254,8 @@ export interface OverlayRenderContext {
   daysSinceLastPlayed?: number; // Days since item was last played
 
   // Status fields (for Coming Soon / New Release)
+  comingSoonLabel?: string;
+
   // PRIMARY RELEASE DATE - Smart calculated field
   // MOVIES: Earliest of Digital/Physical > Theatrical (+90 days estimate)
   // TV SHOWS: Series premiere date (NOT next episode!)
@@ -491,6 +493,11 @@ export const AVAILABLE_VARIABLES = {
     },
   ],
   status: [
+    {
+      field: 'comingSoonLabel',
+      label: 'Coming Soon Label',
+      example: 'COMING SOON',
+    },
     {
       field: 'isPlaceholder',
       label: 'Is Placeholder (Coming Soon)',
@@ -752,6 +759,7 @@ export const SAMPLE_PREVIEW_CONTEXTS: {
     rtAudienceScore: 85,
     rtCertifiedFresh: true,
     rtVerifiedHot: true,
+    comingSoonLabel: 'COMING SOON',
     plexUserRating: 8,
     // metacriticScore: 73, // TODO: Implement Metacritic integration
     director: 'Lana Wachowski',
@@ -813,6 +821,7 @@ export const SAMPLE_PREVIEW_CONTEXTS: {
     rtAudienceScore: 98,
     // rtCertifiedFresh not included - TV shows don't have Certified Fresh in RT API
     rtVerifiedHot: true,
+    comingSoonLabel: 'COMING SOON',
     plexUserRating: 10,
     // metacriticScore: 96, // TODO: Implement Metacritic integration
     seasonNumber: 5,

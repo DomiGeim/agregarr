@@ -411,6 +411,8 @@ export interface OverlayRenderContext {
   dateAdded?: Date; // Date added to Plex
 
   // Status fields (for Coming Soon / New Release)
+  comingSoonLabel?: string;
+
   // PRIMARY RELEASE DATE - Smart calculated field
   // MOVIES: Earliest of Digital/Physical > Theatrical (+90 days estimate)
   // TV SHOWS: Series premiere date (NOT next episode!)
