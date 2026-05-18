@@ -1,5 +1,6 @@
 import type PlexAPI from '@server/api/plexapi';
 import TmdbAPI from '@server/api/themoviedb';
+import type { TmdbTvDetails } from '@server/api/themoviedb/interfaces';
 import { BaseCollectionSync } from '@server/lib/collections/core/BaseCollectionSync';
 import {
   findPlexItemsByTmdbIds,
@@ -527,6 +528,63 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
           );
         }
 
+        const formatDate = (date: Date): string =>
+          date.toISOString().slice(0, 10);
+
+        const getDynamicDateRange = (
+          mode: string
+        ):
+          | {
+              gte?: string;
+              lte?: string;
+              everyYear?: boolean;
+              startMonth?: number;
+              startDay?: number;
+              endMonth?: number;
+              endDay?: number;
+            }
+          | undefined => {
+          const now = new Date();
+          const start = new Date(now);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(start);
+
+          if (mode === 'yesterday') {
+            start.setDate(start.getDate() - 1);
+            end.setDate(start.getDate());
+          } else if (mode === 'tomorrow') {
+            start.setDate(start.getDate() + 1);
+            end.setDate(start.getDate());
+          } else if (mode === 'this_week' || mode === 'this_week_every_year') {
+            const day = start.getDay();
+            const mondayOffset = day === 0 ? -6 : 1 - day;
+            start.setDate(start.getDate() + mondayOffset);
+            end.setTime(start.getTime());
+            end.setDate(start.getDate() + 6);
+          } else if (
+            mode === 'this_month' ||
+            mode === 'this_month_every_year'
+          ) {
+            start.setDate(1);
+            end.setMonth(start.getMonth() + 1, 0);
+          } else if (mode === 'this_year') {
+            start.setMonth(0, 1);
+            end.setMonth(11, 31);
+          }
+
+          if (mode.endsWith('_every_year') || mode === 'today_every_year') {
+            return {
+              everyYear: true,
+              startMonth: start.getMonth() + 1,
+              startDay: start.getDate(),
+              endMonth: end.getMonth() + 1,
+              endDay: end.getDate(),
+            };
+          }
+
+          return { gte: formatDate(start), lte: formatDate(end) };
+        };
+
         const normalizeDiscoverField = (field: string): string => {
           const trimmed = field.trim();
 
@@ -566,6 +624,11 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
               'vote_average.lte',
               'with_runtime.gte',
               'with_runtime.lte',
+              'tvdb_id',
+              'number_of_seasons.gte',
+              'number_of_seasons.lte',
+              'number_of_episodes.gte',
+              'number_of_episodes.lte',
               'with_networks', // TMDB requires integer for TV networks
             ]);
 
@@ -608,6 +671,17 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
         // Base discover params for this subtype.
         // If providers are used, TMDB expects watch_region; default to US if omitted.
         const baseFilters: Record<string, unknown> = {};
+        const postFilters: {
+          tvdbId?: number;
+          numberOfSeasonsGte?: number;
+          numberOfSeasonsLte?: number;
+          numberOfEpisodesGte?: number;
+          numberOfEpisodesLte?: number;
+          releaseStartMonth?: number;
+          releaseStartDay?: number;
+          releaseEndMonth?: number;
+          releaseEndDay?: number;
+        } = {};
 
         const normalizeLogicalOperator = (
           op: unknown
@@ -689,6 +763,7 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
               if (field === 'with_release_type') return false;
               if (field === 'year') return false;
               if (field === 'primary_release_year') return false;
+              if (field === 'dynamic_release_date') return false;
               if (field === 'region') return false;
               if (field.startsWith('certification')) return false;
               if (field.startsWith('release_date')) return false;
@@ -704,6 +779,10 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
             if (field === 'with_type') return false;
             if (field === 'timezone') return false;
             if (field === 'first_air_date_year') return false;
+            if (field === 'dynamic_air_date') return false;
+            if (field === 'tvdb_id') return false;
+            if (field.startsWith('number_of_seasons')) return false;
+            if (field.startsWith('number_of_episodes')) return false;
             if (field.startsWith('first_air_date')) return false;
             if (field.startsWith('air_date')) return false;
             return true;
@@ -721,6 +800,64 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
             if (!field) continue;
             if (!isSupportedForMediaType(field)) continue;
             let rawValue: unknown = coerceDiscoverValue(field, filter.value);
+
+            if (
+              field === 'dynamic_release_date' &&
+              typeof rawValue === 'string'
+            ) {
+              const range = getDynamicDateRange(rawValue);
+              if (!range) continue;
+              if (range.everyYear) {
+                postFilters.releaseStartMonth = range.startMonth;
+                postFilters.releaseStartDay = range.startDay;
+                postFilters.releaseEndMonth = range.endMonth;
+                postFilters.releaseEndDay = range.endDay;
+              } else {
+                groupFilters['primary_release_date.gte'] = range.gte;
+                groupFilters['primary_release_date.lte'] = range.lte;
+              }
+              continue;
+            }
+
+            if (field === 'dynamic_air_date' && typeof rawValue === 'string') {
+              const range = getDynamicDateRange(rawValue);
+              if (!range) continue;
+              if (range.everyYear) {
+                postFilters.releaseStartMonth = range.startMonth;
+                postFilters.releaseStartDay = range.startDay;
+                postFilters.releaseEndMonth = range.endMonth;
+                postFilters.releaseEndDay = range.endDay;
+              } else {
+                groupFilters['first_air_date.gte'] = range.gte;
+                groupFilters['first_air_date.lte'] = range.lte;
+              }
+              continue;
+            }
+
+            if (field === 'tvdb_id') {
+              const tvdbId = Number(rawValue);
+              if (Number.isFinite(tvdbId) && tvdbId > 0) {
+                postFilters.tvdbId = tvdbId;
+              }
+              continue;
+            }
+
+            if (field === 'number_of_seasons.gte') {
+              postFilters.numberOfSeasonsGte = Number(rawValue);
+              continue;
+            }
+            if (field === 'number_of_seasons.lte') {
+              postFilters.numberOfSeasonsLte = Number(rawValue);
+              continue;
+            }
+            if (field === 'number_of_episodes.gte') {
+              postFilters.numberOfEpisodesGte = Number(rawValue);
+              continue;
+            }
+            if (field === 'number_of_episodes.lte') {
+              postFilters.numberOfEpisodesLte = Number(rawValue);
+              continue;
+            }
 
             // ID-based fields: accept full TMDB slugs (e.g. "53714-rachel-mcadams")
             // but normalize to numeric IDs for the actual TMDB API call.
@@ -999,6 +1136,129 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
           return Number.isFinite(t) ? t : undefined;
         };
 
+        const dateMatchesEveryYear = (value: unknown): boolean => {
+          if (
+            !postFilters.releaseStartMonth ||
+            !postFilters.releaseStartDay ||
+            !postFilters.releaseEndMonth ||
+            !postFilters.releaseEndDay ||
+            typeof value !== 'string'
+          ) {
+            return true;
+          }
+
+          const [, month, day] = value.match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
+          if (!month || !day) return false;
+
+          const itemMonth = Number(month);
+          const itemDay = Number(day);
+          const itemOrdinal = itemMonth * 100 + itemDay;
+          const startOrdinal =
+            postFilters.releaseStartMonth * 100 + postFilters.releaseStartDay;
+          const endOrdinal =
+            postFilters.releaseEndMonth * 100 + postFilters.releaseEndDay;
+
+          return startOrdinal <= endOrdinal
+            ? itemOrdinal >= startOrdinal && itemOrdinal <= endOrdinal
+            : itemOrdinal >= startOrdinal || itemOrdinal <= endOrdinal;
+        };
+
+        const tvDetailsCache = new Map<number, TmdbTvDetails | null>();
+
+        const getCachedTvDetails = async (tvId: number) => {
+          if (tvDetailsCache.has(tvId)) {
+            return tvDetailsCache.get(tvId) ?? null;
+          }
+
+          try {
+            const details = await this.tmdbClient.getTvShow({ tvId });
+            tvDetailsCache.set(tvId, details);
+            return details;
+          } catch (error) {
+            logger.warn('Failed to fetch TMDB TV details for post-filtering', {
+              label: 'Collection Sync',
+              tvId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            tvDetailsCache.set(tvId, null);
+            return null;
+          }
+        };
+
+        const applyPostFilters = async (
+          items: TmdbSourceData[]
+        ): Promise<TmdbSourceData[]> => {
+          let filtered = items;
+
+          if (postFilters.releaseStartMonth) {
+            filtered = filtered.filter((item) =>
+              dateMatchesEveryYear(
+                mediaType === 'tv' ? item.first_air_date : item.release_date
+              )
+            );
+          }
+
+          const needsTvDetails =
+            mediaType === 'tv' &&
+            (postFilters.tvdbId !== undefined ||
+              postFilters.numberOfSeasonsGte !== undefined ||
+              postFilters.numberOfSeasonsLte !== undefined ||
+              postFilters.numberOfEpisodesGte !== undefined ||
+              postFilters.numberOfEpisodesLte !== undefined);
+
+          if (!needsTvDetails) {
+            return filtered;
+          }
+
+          const withDetails: TmdbSourceData[] = [];
+          for (const item of filtered) {
+            const id = getId(item);
+            if (id === undefined) continue;
+
+            const details = await getCachedTvDetails(id);
+            if (!details) continue;
+
+            if (
+              postFilters.tvdbId !== undefined &&
+              details.external_ids?.tvdb_id !== postFilters.tvdbId
+            ) {
+              continue;
+            }
+
+            if (
+              postFilters.numberOfSeasonsGte !== undefined &&
+              details.number_of_seasons < postFilters.numberOfSeasonsGte
+            ) {
+              continue;
+            }
+
+            if (
+              postFilters.numberOfSeasonsLte !== undefined &&
+              details.number_of_seasons > postFilters.numberOfSeasonsLte
+            ) {
+              continue;
+            }
+
+            if (
+              postFilters.numberOfEpisodesGte !== undefined &&
+              details.number_of_episodes < postFilters.numberOfEpisodesGte
+            ) {
+              continue;
+            }
+
+            if (
+              postFilters.numberOfEpisodesLte !== undefined &&
+              details.number_of_episodes > postFilters.numberOfEpisodesLte
+            ) {
+              continue;
+            }
+
+            withDetails.push(item);
+          }
+
+          return withDetails;
+        };
+
         const compareNullable = (
           a: number | string | undefined,
           b: number | string | undefined,
@@ -1084,6 +1344,8 @@ export class TmdbCollectionSync extends BaseCollectionSync<'tmdb'> {
             return aid - bid;
           });
         }
+
+        combinedOrdered = await applyPostFilters(combinedOrdered);
 
         // Keep the same overall cap behavior, but apply it after merge+sort
         // so later OR groups can contribute.

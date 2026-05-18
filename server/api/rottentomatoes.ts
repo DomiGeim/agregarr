@@ -158,6 +158,37 @@ class RottenTomatoes extends ExternalAPI {
     return result;
   }
 
+  private normalizeTitleForMatch(str: string): string {
+    return this.convertRomanToArabic(str)
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/&/g, ' and ')
+      .replace(/['’`´]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+
+  private getCandidateTitles(hit: RTAlgoliaHit): string[] {
+    return [hit.title, ...(hit.titles || []), ...(hit.aka || [])].filter(
+      Boolean
+    );
+  }
+
+  private titleMatches(hit: RTAlgoliaHit, requestedTitle: string): boolean {
+    const requested = this.normalizeTitleForMatch(requestedTitle);
+
+    return this.getCandidateTitles(hit).some((candidate) => {
+      const normalized = this.normalizeTitleForMatch(candidate);
+      return (
+        normalized === requested ||
+        normalized.includes(requested) ||
+        requested.includes(normalized)
+      );
+    });
+  }
+
   /**
    * Search the RT algolia api for the movie title
    *
@@ -209,8 +240,7 @@ class RottenTomatoes extends ExternalAPI {
       if (!movie) {
         movie = contentResults.hits.find(
           (movie) =>
-            movie.releaseYear === year &&
-            movie.title.toLowerCase().includes(nameLower)
+            movie.releaseYear === year && this.titleMatches(movie, name)
         );
       }
 
@@ -219,14 +249,14 @@ class RottenTomatoes extends ExternalAPI {
         movie = contentResults.hits.find(
           (movie) =>
             Math.abs(movie.releaseYear - year) <= 1 &&
-            movie.title.toLowerCase().includes(nameLower)
+            this.titleMatches(movie, name)
         );
       }
 
       // 5. Exact case-insensitive title only (no year constraint)
       if (!movie) {
-        movie = contentResults.hits.find(
-          (movie) => movie.title.toLowerCase() === nameLower
+        movie = contentResults.hits.find((movie) =>
+          this.titleMatches(movie, name)
         );
       }
 
@@ -326,8 +356,7 @@ class RottenTomatoes extends ExternalAPI {
         if (!tvshow) {
           tvshow = contentResults.hits.find(
             (series) =>
-              series.releaseYear === year &&
-              series.title.toLowerCase().includes(nameLower)
+              series.releaseYear === year && this.titleMatches(series, name)
           );
         }
 
@@ -336,14 +365,14 @@ class RottenTomatoes extends ExternalAPI {
           tvshow = contentResults.hits.find(
             (series) =>
               Math.abs(series.releaseYear - year) <= 1 &&
-              series.title.toLowerCase().includes(nameLower)
+              this.titleMatches(series, name)
           );
         }
 
         // 5. Exact case-insensitive title only (no year constraint)
         if (!tvshow) {
-          tvshow = contentResults.hits.find(
-            (series) => series.title.toLowerCase() === nameLower
+          tvshow = contentResults.hits.find((series) =>
+            this.titleMatches(series, name)
           );
         }
 
@@ -368,8 +397,8 @@ class RottenTomatoes extends ExternalAPI {
         }
       } else {
         // If no year provided, use exact case-insensitive title match
-        tvshow = contentResults.hits.find(
-          (series) => series.title.toLowerCase() === nameLower
+        tvshow = contentResults.hits.find((series) =>
+          this.titleMatches(series, name)
         );
 
         // Try Roman numeral conversion if no exact match

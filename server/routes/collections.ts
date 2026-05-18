@@ -573,7 +573,9 @@ collectionsRoutes.put('/:id/settings', isAuthenticated(), async (req, res) => {
       // Check for duplicate collection names within this library
       // Skip duplicate check for DYNAMIC_RANDOM_TITLE as each collection gets a unique title from the random list
       const templateValue = req.body.template || configToUpdate.template;
+      const collectionNameChanged = processedName !== configToUpdate.name;
       if (
+        collectionNameChanged &&
         templateValue !== 'DYNAMIC_RANDOM_TITLE' &&
         templateValue !== 'DYNAMIC_CYCLE_TITLE'
       ) {
