@@ -347,6 +347,9 @@ overlayTestRouter.post('/', async (req, res) => {
 
     const context: OverlayRenderContext = {
       ...baseContext,
+      comingSoonLabel: settings.main.locale?.toLowerCase().startsWith('de')
+        ? 'BALD VERFÜGBAR'
+        : 'COMING SOON',
       isPlaceholder: actualIsPlaceholder,
       downloaded,
       ...releaseDateContext,
