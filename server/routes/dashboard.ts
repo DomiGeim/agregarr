@@ -27,6 +27,13 @@ const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 const TAUTULLI_DASHBOARD_TIMEOUT_MS = 60000;
 const SETTINGS_BACKUP_RETENTION = 20;
 const SOURCE_AUTO_TEST_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const LATEST_RELEASE_CACHE_TTL_MS = 30 * 60 * 1000;
+let latestReleaseCache:
+  | {
+      value: LatestReleaseInfo | null;
+      expiresAt: number;
+    }
+  | undefined;
 
 type HealthSeverity = 'error' | 'warning' | 'info';
 
@@ -115,6 +122,12 @@ interface DashboardOperationItem {
   metric: string;
   summary: string;
   href: string;
+}
+
+interface LatestReleaseInfo {
+  version: string;
+  url?: string;
+  publishedAt?: string;
 }
 
 interface HealthSnapshot {
@@ -1749,7 +1762,11 @@ const runScheduledSourceTests = async (
   };
 };
 
-const getLatestReleaseInfo = async () => {
+const getLatestReleaseInfo = async (): Promise<LatestReleaseInfo | null> => {
+  if (latestReleaseCache && latestReleaseCache.expiresAt > Date.now()) {
+    return latestReleaseCache.value;
+  }
+
   try {
     const response = await axios.get(
       'https://api.github.com/repos/DomiGeim/agregarr/releases/latest',
@@ -1759,12 +1776,24 @@ const getLatestReleaseInfo = async () => {
       }
     );
 
-    return {
+    const release = {
       version: String(response.data?.tag_name || '').replace(/^v/, ''),
       url: response.data?.html_url as string | undefined,
       publishedAt: response.data?.published_at as string | undefined,
     };
+
+    latestReleaseCache = {
+      value: release,
+      expiresAt: Date.now() + LATEST_RELEASE_CACHE_TTL_MS,
+    };
+
+    return release;
   } catch (error) {
+    latestReleaseCache = {
+      value: null,
+      expiresAt: Date.now() + Math.floor(LATEST_RELEASE_CACHE_TTL_MS / 3),
+    };
+
     return null;
   }
 };
@@ -2956,6 +2985,36 @@ const getSyncCostEstimate = (
   };
 };
 
+const getSourceAudit = (
+  sourceStatus: ReturnType<typeof getSourceStatus>,
+  sourceReliability: {
+    id: string;
+    name: string;
+    score: number;
+    status: 'ok' | 'watch' | 'attention';
+    message: string;
+    lastLatencyMs?: number;
+    lastTestedAt?: string;
+  }[] = []
+) =>
+  sourceStatus.sources.map((source) => {
+    const reliability = sourceReliability.find((item) => item.id === source.id);
+
+    return {
+      ...source,
+      reliabilityScore: reliability?.score ?? (source.configured ? 70 : 0),
+      reliabilityStatus:
+        reliability?.status ?? (source.configured ? 'watch' : 'attention'),
+      message:
+        reliability?.message ||
+        (source.configured
+          ? 'Source is configured but has no recent test result.'
+          : 'Source is not configured.'),
+      lastLatencyMs: reliability?.lastLatencyMs,
+      lastTestedAt: reliability?.lastTestedAt,
+    };
+  });
+
 const getAdvancedIntelligence = async (
   settings: ReturnType<typeof getSettings>,
   collectionScores: CollectionHealthScore[],
@@ -4093,23 +4152,7 @@ const getAdvancedIntelligence = async (
   );
   const experimentCandidates = getExperimentCandidates(collectionScores);
   const syncCostEstimate = getSyncCostEstimate(settings, collectionScores);
-  const sourceAudit = sourceStatus.sources.map((source) => {
-    const reliability = sourceReliability.find((item) => item.id === source.id);
-
-    return {
-      ...source,
-      reliabilityScore: reliability?.score ?? (source.configured ? 70 : 0),
-      reliabilityStatus:
-        reliability?.status ?? (source.configured ? 'watch' : 'attention'),
-      message:
-        reliability?.message ||
-        (source.configured
-          ? 'Source is configured but has no recent test result.'
-          : 'Source is not configured.'),
-      lastLatencyMs: reliability?.lastLatencyMs,
-      lastTestedAt: reliability?.lastTestedAt,
-    };
-  });
+  const sourceAudit = getSourceAudit(sourceStatus, sourceReliability);
   const adminQualityGates = [
     {
       id: 'pre-sync',
@@ -5487,7 +5530,7 @@ dashboardRoutes.get('/admin-quality', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(
     localizeDashboardPayload(settings, {
       gates,
-      sourceAudit: sourceStatus.sources,
+      sourceAudit: getSourceAudit(sourceStatus),
       collectionDependencies: getCollectionDependencies(settings),
       templateLibrary: getCollectionTemplateLibrary(settings, collectionScores),
       experimentCandidates: getExperimentCandidates(collectionScores),
