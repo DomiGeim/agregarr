@@ -1,5 +1,6 @@
 import { getRepository } from '@server/datasource';
 import { OverlayLibraryConfig } from '@server/entity/OverlayLibraryConfig';
+import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 
 /**
@@ -58,6 +59,15 @@ class OverlayApplication {
     if (this.running) {
       logger.warn('Overlay application is already running', {
         label: 'Overlay Application',
+      });
+      return;
+    }
+
+    const settings = getSettings();
+    if (settings.plex.mediaServerType !== 'plex') {
+      logger.info('Overlay application is only available for Plex profiles', {
+        label: 'Overlay Application',
+        mediaServerType: settings.plex.mediaServerType,
       });
       return;
     }

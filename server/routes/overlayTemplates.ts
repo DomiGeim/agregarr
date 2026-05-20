@@ -1,4 +1,5 @@
 import ImdbRatingsAPI from '@server/api/imdbRatings';
+import MetacriticAPI from '@server/api/metacritic';
 import RottenTomatoes from '@server/api/rottentomatoes';
 import TheMovieDb from '@server/api/themoviedb';
 import { getRepository } from '@server/datasource';
@@ -48,6 +49,7 @@ async function fetchPreviewPosterMetadata(
   imdbRating?: number;
   rtCriticsScore?: number;
   rtAudienceScore?: number;
+  metacriticScore?: number;
 }> {
   const tmdbClient = new TheMovieDb({
     originalLanguage: await getTmdbLanguage(),
@@ -87,6 +89,7 @@ async function fetchPreviewPosterMetadata(
   let imdbRating: number | undefined;
   let rtCriticsScore: number | undefined;
   let rtAudienceScore: number | undefined;
+  let metacriticScore: number | undefined;
 
   if (imdbId) {
     try {
@@ -114,6 +117,20 @@ async function fetchPreviewPosterMetadata(
     } catch {
       // Ignore rating fetch errors
     }
+
+    try {
+      const metacriticApi = new MetacriticAPI();
+      const metacriticData =
+        mediaType === 'movie'
+          ? await metacriticApi.getMovieRating(title, year)
+          : await metacriticApi.getTVRating(title, year);
+
+      if (metacriticData) {
+        metacriticScore = metacriticData.metascore;
+      }
+    } catch {
+      // Ignore rating fetch errors
+    }
   }
 
   return {
@@ -124,6 +141,7 @@ async function fetchPreviewPosterMetadata(
     imdbRating,
     rtCriticsScore,
     rtAudienceScore,
+    metacriticScore,
   };
 }
 
@@ -141,6 +159,7 @@ interface PreviewPosterMetadata {
   imdbRating?: number;
   rtCriticsScore?: number;
   rtAudienceScore?: number;
+  metacriticScore?: number;
   director?: string;
   studio?: string;
   network?: string;
@@ -269,11 +288,12 @@ router.get('/preview-metadata/:posterId', async (req, res, next) => {
       // Try to get RT scores
       let rtCriticsScore: number | undefined;
       let rtAudienceScore: number | undefined;
+      let metacriticScore: number | undefined;
+      const releaseYear = movieDetails.release_date
+        ? new Date(movieDetails.release_date).getFullYear()
+        : new Date().getFullYear();
       try {
         const rtApi = new RottenTomatoes();
-        const releaseYear = movieDetails.release_date
-          ? new Date(movieDetails.release_date).getFullYear()
-          : new Date().getFullYear();
         const rtData = await rtApi.getMovieRatings(
           movieDetails.title,
           releaseYear
@@ -286,6 +306,19 @@ router.get('/preview-metadata/:posterId', async (req, res, next) => {
         // RT rating fetch failed, continue without it
       }
 
+      try {
+        const metacriticApi = new MetacriticAPI();
+        const metacriticData = await metacriticApi.getMovieRating(
+          movieDetails.title,
+          releaseYear
+        );
+        if (metacriticData) {
+          metacriticScore = metacriticData.metascore;
+        }
+      } catch {
+        // Metacritic rating fetch failed, continue without it
+      }
+
       metadata = {
         title: movieDetails.title,
         year: movieDetails.release_date
@@ -294,6 +327,7 @@ router.get('/preview-metadata/:posterId', async (req, res, next) => {
         imdbRating,
         rtCriticsScore,
         rtAudienceScore,
+        metacriticScore,
         director,
         studio,
         resolution: '4K', // Simulated technical info
@@ -333,11 +367,12 @@ router.get('/preview-metadata/:posterId', async (req, res, next) => {
       // Try to get RT scores
       let rtCriticsScore: number | undefined;
       let rtAudienceScore: number | undefined;
+      let metacriticScore: number | undefined;
+      const firstAirYear = tvDetails.first_air_date
+        ? new Date(tvDetails.first_air_date).getFullYear()
+        : new Date().getFullYear();
       try {
         const rtApi = new RottenTomatoes();
-        const firstAirYear = tvDetails.first_air_date
-          ? new Date(tvDetails.first_air_date).getFullYear()
-          : new Date().getFullYear();
         const rtData = await rtApi.getTVRatings(tvDetails.name, firstAirYear);
         if (rtData) {
           rtCriticsScore = rtData.criticsScore;
@@ -345,6 +380,19 @@ router.get('/preview-metadata/:posterId', async (req, res, next) => {
         }
       } catch {
         // RT rating fetch failed, continue without it
+      }
+
+      try {
+        const metacriticApi = new MetacriticAPI();
+        const metacriticData = await metacriticApi.getTVRating(
+          tvDetails.name,
+          firstAirYear
+        );
+        if (metacriticData) {
+          metacriticScore = metacriticData.metascore;
+        }
+      } catch {
+        // Metacritic rating fetch failed, continue without it
       }
 
       metadata = {
@@ -355,6 +403,7 @@ router.get('/preview-metadata/:posterId', async (req, res, next) => {
         imdbRating,
         rtCriticsScore,
         rtAudienceScore,
+        metacriticScore,
         network,
         resolution: '1080p', // Simulated technical info
         audioFormat: '5.1',
@@ -753,7 +802,7 @@ router.get('/:id/preview', async (req, res, next) => {
       // Ratings (additional)
       imdbTop250Rank: 42,
       isImdbTop250: true,
-      // metacriticScore: 85, // TODO: Implement Metacritic integration
+      metacriticScore: tmdbData.metacriticScore || 85,
 
       // TMDB Metadata
       director: 'Christopher Nolan',
@@ -966,7 +1015,7 @@ router.post('/combined-preview', async (req, res, next) => {
       // Ratings (additional)
       imdbTop250Rank: 42,
       isImdbTop250: true,
-      // metacriticScore: 85, // TODO: Implement Metacritic integration
+      metacriticScore: tmdbData.metacriticScore || 85,
 
       // TMDB Metadata
       director: 'Christopher Nolan',

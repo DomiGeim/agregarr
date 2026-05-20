@@ -41,6 +41,8 @@ const messages = defineMessages({
   loadingDashboardStats: 'Loading dashboard statistics...',
   tautulliTimedOut:
     'Tautulli is responding slowly. Showing collection data without play statistics.',
+  tautulliPlexOnly:
+    'Tautulli play statistics are only available for Plex profiles. Your active media server is {mediaServer}.',
   mediaServer: 'Media Server',
   libraries: 'libraries',
   active: 'active',
@@ -49,7 +51,8 @@ const messages = defineMessages({
   configured: 'Configured',
   missing: 'Missing',
   updateAvailable: 'Update Available',
-  updateDockerImage: 'A newer version is available for your Docker image.',
+  updateDockerImage:
+    'A newer version is available for your Docker image. Installed: {installedVersion}. Latest: {latestVersion}.',
 });
 
 interface DashboardData {
@@ -100,6 +103,8 @@ interface DashboardData {
     statsAvailable?: boolean;
     error?: string;
     timedOut?: boolean;
+    plexOnly?: boolean;
+    activeMediaServerType?: 'plex' | 'jellyfin' | 'emby';
     weeklyActivity?: {
       totalPlays: number;
       moviePlays: number;
@@ -206,6 +211,46 @@ const DashboardStats: React.FC = () => {
     dashboardData.tautulli?.configured === true ||
     dashboardData.tautulli?.isConnected === true ||
     dashboardData.activity != null;
+
+  if (dashboardData.tautulli?.plexOnly) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title={intl.formatMessage(messages.mediaServer)}
+            value={mediaServerName}
+            icon={ServerStackIcon}
+            subtitle={`${
+              dashboardData.mediaServer?.libraryCount || 0
+            } ${intl.formatMessage(messages.libraries)} • ${intl.formatMessage(
+              messages.active
+            )}`}
+          />
+          <StatCard
+            title={intl.formatMessage(messages.collections)}
+            value={dashboardData.collections.agregarr}
+            icon={CollectionIcon}
+            subtitle={`${
+              dashboardData.collections.preExisting
+            } ${intl.formatMessage(messages.preExistingCollections)}`}
+          />
+        </div>
+        <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
+          <div className="flex flex-col items-center py-8 text-center">
+            <ServerStackIcon className="mb-4 h-12 w-12 text-orange-400" />
+            <h4 className="mb-2 text-lg font-semibold text-white">
+              Tautulli
+            </h4>
+            <p className="max-w-md text-gray-400">
+              {intl.formatMessage(messages.tautulliPlexOnly, {
+                mediaServer: mediaServerName,
+              })}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // If Tautulli is not configured, show setup message
   if (!isTautulliConfigured) {
@@ -332,13 +377,17 @@ const DashboardStats: React.FC = () => {
                 {intl.formatMessage(messages.updateAvailable)}
               </p>
               <p className="mt-1 text-sm text-gray-300">
-                {intl.formatMessage(messages.updateDockerImage)}
+                {intl.formatMessage(messages.updateDockerImage, {
+                  installedVersion: statusData.version,
+                  latestVersion: statusData.latestVersion || 'latest',
+                })}
               </p>
             </div>
             <ArrowUpCircleIcon className="h-8 w-8 text-orange-400" />
           </div>
           <code className="mt-4 block overflow-x-auto rounded-md bg-stone-900 px-3 py-2 text-sm text-gray-200">
-            docker pull ghcr.io/domigeim/agregarr:latest
+            {statusData.dockerPullCommand ||
+              'docker pull ghcr.io/domigeim/agregarr:latest'}
           </code>
         </div>
       )}

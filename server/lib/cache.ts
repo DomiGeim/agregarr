@@ -6,6 +6,7 @@ export type AvailableCacheIds =
   | 'radarr'
   | 'sonarr'
   | 'rt'
+  | 'metacritic'
   | 'imdb'
   | 'flixpatrol'
   | 'github'
@@ -67,6 +68,10 @@ class CacheManager {
     radarr: new Cache('radarr', 'Radarr API'),
     sonarr: new Cache('sonarr', 'Sonarr API'),
     rt: new Cache('rt', 'Rotten Tomatoes API', {
+      stdTtl: 43200,
+      checkPeriod: 60 * 30,
+    }),
+    metacritic: new Cache('metacritic', 'Metacritic Web', {
       stdTtl: 43200,
       checkPeriod: 60 * 30,
     }),

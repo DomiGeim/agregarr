@@ -93,6 +93,15 @@ class OverlaysQuickSync {
         label: 'Overlays Quick Sync',
       });
 
+      const settings = getSettings();
+      if (settings.plex.mediaServerType !== 'plex') {
+        logger.info('Overlays Quick Sync is only available for Plex profiles', {
+          label: 'Overlays Quick Sync',
+          mediaServerType: settings.plex.mediaServerType,
+        });
+        return;
+      }
+
       // Safety check: don't run if base poster download is in progress
       const { plexBasePosterDownloadJob } = await import(
         '@server/lib/overlays/PlexBasePosterDownloadJob'
@@ -122,7 +131,6 @@ class OverlaysQuickSync {
       }
 
       // Get last run timestamp (or default to 24 hours ago)
-      const settings = getSettings();
       const lastRunStr = settings.main.lastOverlaysQuickSyncAt;
       const cutoffTime = lastRunStr
         ? new Date(lastRunStr).getTime()

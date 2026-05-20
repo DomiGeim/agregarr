@@ -94,8 +94,7 @@ const PosterSourceSetupModal: React.FC<PosterSourceSetupModalProps> = ({
   onClose,
   onComplete,
   isInitialSetup = false,
-  // TODO: Change default to 'plex' before release to latest (currently 'tmdb' to protect existing develop users)
-  currentPosterSource = 'tmdb',
+  currentPosterSource = 'plex',
 }) => {
   const intl = useIntl();
   const { addToast } = useToasts();

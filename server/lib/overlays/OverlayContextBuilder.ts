@@ -1,5 +1,6 @@
 import ImdbAPI from '@server/api/imdb';
 import ImdbRatingsAPI from '@server/api/imdbRatings';
+import MetacriticAPI from '@server/api/metacritic';
 import type { MaintainerrCollection } from '@server/api/maintainerr';
 import type { PlexLibraryItem } from '@server/api/plexapi';
 import RottenTomatoes from '@server/api/rottentomatoes';
@@ -307,6 +308,34 @@ export async function buildRenderContext(
         }
       } catch (error) {
         logger.debug('Failed to fetch RT rating', {
+          label: 'OverlayContextBuilder',
+          title: context.title,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      try {
+        const metacriticClient = new MetacriticAPI();
+        const metacriticTitle =
+          mediaType === 'movie'
+            ? (tmdbData as { title: string }).title
+            : (tmdbData as { name: string }).name;
+        const metacriticRating =
+          mediaType === 'movie'
+            ? await metacriticClient.getMovieRating(
+                metacriticTitle || context.title || '',
+                context.year
+              )
+            : await metacriticClient.getTVRating(
+                metacriticTitle || context.title || '',
+                context.year
+              );
+
+        if (metacriticRating) {
+          context.metacriticScore = metacriticRating.metascore;
+        }
+      } catch (error) {
+        logger.debug('Failed to fetch Metacritic rating', {
           label: 'OverlayContextBuilder',
           title: context.title,
           error: error instanceof Error ? error.message : String(error),

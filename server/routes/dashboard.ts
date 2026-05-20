@@ -1511,7 +1511,8 @@ const getTautulliDiagnostics = (
 
 const getJellyfinHealth = (settings: ReturnType<typeof getSettings>) => {
   const configured =
-    !!settings.jellyfin.ip && !!settings.jellyfin.jellyfinApiKey;
+    !!settings.jellyfin.ip &&
+    !!(settings.jellyfin.mediaServerApiKey || settings.jellyfin.jellyfinApiKey);
   const active = settings.plex.mediaServerType === 'jellyfin';
   const libraryCount = settings.jellyfin.libraries?.length || 0;
   const score = !active
@@ -1542,7 +1543,9 @@ const getJellyfinHealth = (settings: ReturnType<typeof getSettings>) => {
 };
 
 const getEmbyHealth = (settings: ReturnType<typeof getSettings>) => {
-  const configured = !!settings.emby.ip && !!settings.emby.jellyfinApiKey;
+  const configured =
+    !!settings.emby.ip &&
+    !!(settings.emby.mediaServerApiKey || settings.emby.jellyfinApiKey);
   const active = settings.plex.mediaServerType === 'emby';
   const libraryCount = settings.emby.libraries?.length || 0;
   const score = !active
@@ -4715,9 +4718,10 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
     const collectionRatingKeys = getCollectionRatingKeys(settings);
     const collectionMediaTypes = getCollectionMediaTypeByRatingKey(settings);
     const collectionHealthScores = getCollectionHealthScores(settings);
-    const cacheKey = `stats:${settings.main.locale}:${collectionRatingKeys.join(
-      ','
-    )}`;
+    const activeMediaServerType = settings.plex.mediaServerType || 'plex';
+    const cacheKey = `stats:${
+      settings.main.locale
+    }:${activeMediaServerType}:${collectionRatingKeys.join(',')}`;
     const cachedDashboardData = getCachedDashboardData(cacheKey);
 
     if (cachedDashboardData) {
@@ -4734,8 +4738,15 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
       total_plays?: number;
     }[] = [];
 
-    // Get Tautulli stats if configured
-    if (settings.tautulli.hostname && settings.tautulli.apiKey) {
+    if (activeMediaServerType !== 'plex') {
+      tautulliStats = {
+        isConnected: false,
+        configured: !!settings.tautulli.hostname && !!settings.tautulli.apiKey,
+        statsAvailable: false,
+        plexOnly: true,
+        activeMediaServerType,
+      };
+    } else if (settings.tautulli.hostname && settings.tautulli.apiKey) {
       try {
         const tautulli = new TautulliAPI(settings.tautulli);
 

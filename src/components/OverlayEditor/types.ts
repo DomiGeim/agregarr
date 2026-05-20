@@ -193,7 +193,7 @@ export interface OverlayRenderContext {
   rtCertifiedFresh?: boolean; // True if Rotten Tomatoes Certified Fresh
   rtVerifiedHot?: boolean; // True if Rotten Tomatoes Verified Hot (audience badge)
   plexUserRating?: number; // Plex user rating (0-10 scale where 10 = 5 stars)
-  // metacriticScore?: number; // TODO: Implement Metacritic integration
+  metacriticScore?: number;
 
   // TMDB Metadata
   title?: string;
@@ -347,7 +347,7 @@ export const AVAILABLE_VARIABLES = {
     { field: 'rtCertifiedFresh', label: 'RT Certified Fresh', example: 'true' },
     { field: 'rtVerifiedHot', label: 'RT Verified Hot', example: 'true' },
     { field: 'plexUserRating', label: 'Plex User Rating', example: '8' },
-    // { field: 'metacriticScore', label: 'Metacritic Score', example: '73' }, // TODO: Implement Metacritic integration
+    { field: 'metacriticScore', label: 'Metacritic Score', example: '73' },
   ],
   metadata: [
     { field: 'title', label: 'Title', example: 'The Matrix' },
@@ -625,7 +625,7 @@ export const CONDITION_FIELD_CATEGORIES = {
     { field: 'rtCertifiedFresh', label: 'RT Certified Fresh', example: 'true' },
     { field: 'rtVerifiedHot', label: 'RT Verified Hot', example: 'true' },
     { field: 'plexUserRating', label: 'Plex User Rating', example: '8' },
-    // { field: 'metacriticScore', label: 'Metacritic Score', example: '73' }, // TODO: Implement Metacritic integration
+    { field: 'metacriticScore', label: 'Metacritic Score', example: '73' },
   ],
   Collections: [
     {
@@ -761,7 +761,7 @@ export const SAMPLE_PREVIEW_CONTEXTS: {
     rtVerifiedHot: true,
     comingSoonLabel: 'COMING SOON',
     plexUserRating: 8,
-    // metacriticScore: 73, // TODO: Implement Metacritic integration
+    metacriticScore: 73,
     director: 'Lana Wachowski',
     studio: 'Warner Bros.',
     genre: 'Sci-Fi',
@@ -823,7 +823,7 @@ export const SAMPLE_PREVIEW_CONTEXTS: {
     rtVerifiedHot: true,
     comingSoonLabel: 'COMING SOON',
     plexUserRating: 10,
-    // metacriticScore: 96, // TODO: Implement Metacritic integration
+    metacriticScore: 96,
     seasonNumber: 5,
     episodeNumber: 16,
     episodeLabel: 'SERIES FINALE',
