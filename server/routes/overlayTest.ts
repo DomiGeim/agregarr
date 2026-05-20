@@ -8,6 +8,7 @@ import {
   checkMonitoringStatus,
   fetchReleaseDateInfo,
 } from '@server/lib/overlays/OverlayContextBuilder';
+import { getOverlayLabel } from '@server/lib/overlays/OverlayLocalization';
 import type { OverlayRenderContext } from '@server/lib/overlays/OverlayTemplateRenderer';
 import {
   evaluateConditionDetailed,
@@ -347,9 +348,7 @@ overlayTestRouter.post('/', async (req, res) => {
 
     const context: OverlayRenderContext = {
       ...baseContext,
-      comingSoonLabel: settings.main.locale?.toLowerCase().startsWith('de')
-        ? 'BALD VERFÜGBAR'
-        : 'COMING SOON',
+      comingSoonLabel: getOverlayLabel('comingSoon'),
       isPlaceholder: actualIsPlaceholder,
       downloaded,
       ...releaseDateContext,

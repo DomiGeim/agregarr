@@ -8,6 +8,7 @@ const messages = defineMessages({
   menuGeneralSettings: 'General',
   menuPlexSettings: 'Plex',
   menuJellyfinSettings: 'Jellyfin',
+  menuEmbySettings: 'Emby',
   menuSources: 'Sources',
   menuDownloads: 'Downloads',
   menuLogs: 'Logs',
@@ -37,6 +38,11 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       text: intl.formatMessage(messages.menuJellyfinSettings),
       route: '/settings/jellyfin',
       regex: /^\/settings\/jellyfin/,
+    },
+    {
+      text: intl.formatMessage(messages.menuEmbySettings),
+      route: '/settings/emby',
+      regex: /^\/settings\/emby/,
     },
     {
       text: intl.formatMessage(messages.menuSources),

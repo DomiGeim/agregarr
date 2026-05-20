@@ -54,7 +54,7 @@ const messages = defineMessages({
 
 interface DashboardData {
   mediaServer?: {
-    activeType: 'plex' | 'jellyfin';
+    activeType: 'plex' | 'jellyfin' | 'emby';
     name?: string;
     libraryCount: number;
     lastGlobalSyncAt?: string;
@@ -65,6 +65,10 @@ interface DashboardData {
         libraryCount: number;
       };
       jellyfin: {
+        configured: boolean;
+        libraryCount: number;
+      };
+      emby: {
         configured: boolean;
         libraryCount: number;
       };
@@ -190,6 +194,13 @@ const DashboardStats: React.FC = () => {
     );
   }
 
+  const mediaServerName =
+    dashboardData.mediaServer?.activeType === 'jellyfin'
+      ? 'Jellyfin'
+      : dashboardData.mediaServer?.activeType === 'emby'
+      ? 'Emby'
+      : 'Plex';
+
   // Check if Tautulli is not configured
   const isTautulliConfigured =
     dashboardData.tautulli?.configured === true ||
@@ -203,11 +214,7 @@ const DashboardStats: React.FC = () => {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title={intl.formatMessage(messages.mediaServer)}
-            value={
-              dashboardData.mediaServer?.activeType === 'jellyfin'
-                ? 'Jellyfin'
-                : 'Plex'
-            }
+            value={mediaServerName}
             icon={ServerStackIcon}
             subtitle={`${
               dashboardData.mediaServer?.libraryCount || 0
@@ -277,11 +284,7 @@ const DashboardStats: React.FC = () => {
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
         title={intl.formatMessage(messages.mediaServer)}
-        value={
-          dashboardData.mediaServer?.activeType === 'jellyfin'
-            ? 'Jellyfin'
-            : 'Plex'
-        }
+        value={mediaServerName}
         icon={ServerStackIcon}
         subtitle={`${
           dashboardData.mediaServer?.libraryCount || 0

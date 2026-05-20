@@ -1114,27 +1114,36 @@ const getSettingsConsistency = (
     message: string;
   }[] = [];
 
-  if (settings.plex.mediaServerType === 'jellyfin' && settings.plex.machineId) {
+  if (
+    (settings.plex.mediaServerType === 'jellyfin' ||
+      settings.plex.mediaServerType === 'emby') &&
+    settings.plex.machineId
+  ) {
+    const mediaServerName = getMediaServerDisplayName(
+      settings.plex.mediaServerType
+    );
     issues.push({
-      id: 'jellyfin-plex-machine-id',
+      id: `${settings.plex.mediaServerType}-plex-machine-id`,
       severity: 'warning',
-      title: 'Jellyfin mit Plex Machine ID',
-      message:
-        'Jellyfin ist aktiv, aber eine Plex Machine ID ist gesetzt. Das kann alte Plex-Reste anzeigen.',
+      title: `${mediaServerName} mit Plex Machine ID`,
+      message: `${mediaServerName} ist aktiv, aber eine Plex Machine ID ist gesetzt. Das kann alte Plex-Reste anzeigen.`,
     });
   }
 
   if (
     settings.tautulli.hostname &&
     settings.tautulli.apiKey &&
-    settings.plex.mediaServerType === 'jellyfin'
+    (settings.plex.mediaServerType === 'jellyfin' ||
+      settings.plex.mediaServerType === 'emby')
   ) {
+    const mediaServerName = getMediaServerDisplayName(
+      settings.plex.mediaServerType
+    );
     issues.push({
-      id: 'tautulli-jellyfin',
+      id: `tautulli-${settings.plex.mediaServerType}`,
       severity: 'warning',
-      title: 'Tautulli mit Jellyfin',
-      message:
-        'Tautulli ist fuer Plex gedacht. Bei aktivem Jellyfin koennen Tautulli-Werte leer bleiben.',
+      title: `Tautulli mit ${mediaServerName}`,
+      message: `Tautulli ist fuer Plex gedacht. Bei aktivem ${mediaServerName} koennen Tautulli-Werte leer bleiben.`,
     });
   }
 
@@ -1532,6 +1541,46 @@ const getJellyfinHealth = (settings: ReturnType<typeof getSettings>) => {
   };
 };
 
+const getEmbyHealth = (settings: ReturnType<typeof getSettings>) => {
+  const configured = !!settings.emby.ip && !!settings.emby.jellyfinApiKey;
+  const active = settings.plex.mediaServerType === 'emby';
+  const libraryCount = settings.emby.libraries?.length || 0;
+  const score = !active
+    ? 100
+    : configured && libraryCount
+    ? 100
+    : configured
+    ? 70
+    : 30;
+
+  return {
+    active,
+    configured,
+    libraryCount,
+    score,
+    status:
+      score >= 90
+        ? ('ready' as const)
+        : score >= 60
+        ? ('watch' as const)
+        : ('attention' as const),
+    message: active
+      ? configured
+        ? `${libraryCount} Emby libraries synced.`
+        : 'Emby is active but not fully configured.'
+      : 'Emby is configured as an optional profile.',
+  };
+};
+
+const getMediaServerDisplayName = (
+  mediaServerType?: 'plex' | 'jellyfin' | 'emby'
+) =>
+  mediaServerType === 'jellyfin'
+    ? 'Jellyfin'
+    : mediaServerType === 'emby'
+    ? 'Emby'
+    : 'Plex';
+
 const getPreSyncValidation = async (
   settings: ReturnType<typeof getSettings>,
   collectionScores: CollectionHealthScore[],
@@ -1552,14 +1601,14 @@ const getPreSyncValidation = async (
     },
     {
       id: 'media-server',
-      ok: !!settings.plex.ip || !!settings.jellyfin.ip,
+      ok: !!settings.plex.ip || !!settings.jellyfin.ip || !!settings.emby.ip,
       severity:
-        !settings.plex.ip && !settings.jellyfin.ip
+        !settings.plex.ip && !settings.jellyfin.ip && !settings.emby.ip
           ? ('error' as const)
           : ('info' as const),
       title: 'Media server',
       message:
-        settings.plex.ip || settings.jellyfin.ip
+        settings.plex.ip || settings.jellyfin.ip || settings.emby.ip
           ? 'Media server connection is configured.'
           : 'No media server connection is configured.',
     },
@@ -2259,7 +2308,7 @@ const getSourceStatus = (settings: ReturnType<typeof getSettings>) => {
   const sources = [
     {
       id: 'media-server',
-      name: settings.plex.mediaServerType === 'jellyfin' ? 'Jellyfin' : 'Plex',
+      name: getMediaServerDisplayName(settings.plex.mediaServerType),
       configured: !!settings.plex.ip,
       usedByCollections: collectionConfigs.length,
       status: settings.plex.ip ? 'configured' : 'missing',
@@ -3545,6 +3594,7 @@ const getAdvancedIntelligence = async (
     sourceReliability
   );
   const jellyfinHealth = getJellyfinHealth(settings);
+  const embyHealth = getEmbyHealth(settings);
   const preSyncValidation = await getPreSyncValidation(
     settings,
     collectionScores,
@@ -3555,6 +3605,303 @@ const getAdvancedIntelligence = async (
     collectionScores,
     tautulliMappingDebugger
   );
+  const operationText: Record<
+    string,
+    { title: { de: string; en: string }; summary: { de: string; en: string } }
+  > = {
+    'collection-diff-preview': {
+      title: {
+        de: 'Echte Collection Diff Preview',
+        en: 'Real Collection Diff Preview',
+      },
+      summary: {
+        de: 'Zeigt Collections, bei denen ein naechster Sync wahrscheinlich Unterschiede erzeugt.',
+        en: 'Shows collections where the next sync is likely to create changes.',
+      },
+    },
+    'diagnostic-export': {
+      title: {
+        de: 'Diagnosebericht Download',
+        en: 'Diagnostic Report Download',
+      },
+      summary: {
+        de: 'Fasst Version, Quellen, Health und letzte Fehler ohne Tokens zusammen.',
+        en: 'Summarizes version, sources, health, and latest errors without tokens.',
+      },
+    },
+    'source-test-center': {
+      title: {
+        de: 'Ausfuehrbares Source Test Center',
+        en: 'Runnable Source Test Center',
+      },
+      summary: {
+        de: 'Buendelt Quellenstatus, Konfiguration und Zuverlaessigkeit pro Provider.',
+        en: 'Combines source status, configuration, and reliability per provider.',
+      },
+    },
+    'clickable-actions': {
+      title: {
+        de: 'Action Center mit echten Aktionen',
+        en: 'Action Center With Real Actions',
+      },
+      summary: {
+        de: 'Verlinkt direkt zu betroffenen Bereichen wie Collections oder Quellen.',
+        en: 'Links directly to affected areas such as collections or sources.',
+      },
+    },
+    'detail-drawer': {
+      title: { de: 'Problem Details', en: 'Problem Details' },
+      summary: {
+        de: 'Warnungen bekommen Ursache, Bereich, Aktion und Ziel-Link.',
+        en: 'Warnings include cause, area, action, and target link.',
+      },
+    },
+    'problem-collections': {
+      title: { de: 'Problem Collections', en: 'Problem Collections' },
+      summary: {
+        de: 'Listet kritische Collections mit Sync-Fehlern, fehlenden Keys oder Bibliotheken.',
+        en: 'Lists critical collections with sync errors, missing keys, or missing libraries.',
+      },
+    },
+    'activity-log': {
+      title: {
+        de: 'Persistente Collection Timeline',
+        en: 'Persistent Collection Timeline',
+      },
+      summary: {
+        de: 'Nutzt Requests, Placeholder und Metadata-Updates als Timeline-Signal.',
+        en: 'Uses requests, placeholders, and metadata updates as timeline signals.',
+      },
+    },
+    'smart-notifications': {
+      title: { de: 'Source-Test Verlauf', en: 'Source Test History' },
+      summary: {
+        de: 'Speichert Tests mit Erfolgsquote, Fehlern und Latenzsignalen.',
+        en: 'Stores tests with success rate, errors, and latency signals.',
+      },
+    },
+    'pin-to-dashboard': {
+      title: { de: 'Wartungsmodus Banner', en: 'Maintenance Mode Banner' },
+      summary: {
+        de: 'Zeigt den aktiven Wartungsmodus sichtbar oben im Dashboard.',
+        en: 'Shows active maintenance mode visibly at the top of the dashboard.',
+      },
+    },
+    'maintenance-mode': {
+      title: { de: 'Wartungsmodus', en: 'Maintenance Mode' },
+      summary: {
+        de: 'Blockiert neue Dashboard-Sync-Aktionen, solange Wartungsarbeiten laufen.',
+        en: 'Blocks new dashboard sync actions while maintenance work is running.',
+      },
+    },
+    'bulk-actions': {
+      title: { de: 'Bulk-Aktionen', en: 'Bulk Actions' },
+      summary: {
+        de: 'Gruppiert Collections mit gleichem Handlungsbedarf fuer spaetere Sammelaktionen.',
+        en: 'Groups collections with the same action need for later bulk actions.',
+      },
+    },
+    'job-overview': {
+      title: { de: 'Job-Uebersicht', en: 'Job Overview' },
+      summary: {
+        de: 'Zeigt, ob automatische Collection-Syncs grundsaetzlich aktiv sind.',
+        en: 'Shows whether automatic collection syncs are generally active.',
+      },
+    },
+    'sync-calendar': {
+      title: { de: 'Sync-Kalender', en: 'Sync Calendar' },
+      summary: {
+        de: 'Nutzt letzten globalen Sync als Basis fuer eine Kalenderansicht.',
+        en: 'Uses the last global sync as the basis for a calendar view.',
+      },
+    },
+    'dependency-view': {
+      title: {
+        de: 'Collection Dependency View',
+        en: 'Collection Dependency View',
+      },
+      summary: {
+        de: 'Erkennt verlinkte und Multi-Source Collections als Abhaengigkeiten.',
+        en: 'Detects linked and multi-source collections as dependencies.',
+      },
+    },
+    'multi-source-debugger': {
+      title: { de: 'Multi-Source Debugger', en: 'Multi-Source Debugger' },
+      summary: {
+        de: 'Hebt Multi-Source Collections fuer detaillierte Quellenanalyse hervor.',
+        en: 'Highlights multi-source collections for detailed source analysis.',
+      },
+    },
+    'placeholder-detail': {
+      title: { de: 'Placeholder-Detailseite', en: 'Placeholder Detail Page' },
+      summary: {
+        de: 'Zeigt Alter, Quelle, Typ und Plex-Zuordnung der letzten Placeholder.',
+        en: 'Shows age, source, type, and Plex mapping for recent placeholders.',
+      },
+    },
+    'rating-key-repair': {
+      title: {
+        de: 'Auto-Repair fuer Rating Keys',
+        en: 'Auto-Repair for Rating Keys',
+      },
+      summary: {
+        de: 'Findet Collections ohne Plex Rating Key als Reparaturkandidaten.',
+        en: 'Finds collections without a Plex rating key as repair candidates.',
+      },
+    },
+    'empty-collection-analysis': {
+      title: {
+        de: 'Warum ist diese Collection leer?',
+        en: 'Why Is This Collection Empty?',
+      },
+      summary: {
+        de: 'Health-Gruende liefern erste Hinweise auf leere oder wertlose Collections.',
+        en: 'Health reasons provide first hints for empty or low-value collections.',
+      },
+    },
+    'duplicate-detection': {
+      title: {
+        de: 'Doppelte Collections erkennen',
+        en: 'Detect Duplicate Collections',
+      },
+      summary: {
+        de: 'Erkennt doppelte Collection-Namen als Cleanup-Kandidaten.',
+        en: 'Detects duplicate collection names as cleanup candidates.',
+      },
+    },
+    'source-watchlist': {
+      title: {
+        de: 'Watchlist fuer fehleranfaellige Quellen',
+        en: 'Watchlist for Error-Prone Sources',
+      },
+      summary: {
+        de: 'Quellen mit niedriger Reliability werden automatisch hervorgehoben.',
+        en: 'Sources with low reliability are highlighted automatically.',
+      },
+    },
+    'tautulli-quality': {
+      title: {
+        de: 'Tautulli Datenqualitaets-Check',
+        en: 'Tautulli Data Quality Check',
+      },
+      summary: {
+        de: 'Prueft, ob Tautulli Trends und Plays fuer Dashboard-Signale liefert.',
+        en: 'Checks whether Tautulli provides trends and plays for dashboard signals.',
+      },
+    },
+    'arr-profile-audit': {
+      title: {
+        de: 'Radarr/Sonarr Profil-Audit',
+        en: 'Radarr/Sonarr Profile Audit',
+      },
+      summary: {
+        de: 'Findet Collections, die Download- oder Placeholder-Automation nutzen.',
+        en: 'Finds collections that use download or placeholder automation.',
+      },
+    },
+    'root-folder-warning': {
+      title: {
+        de: 'Root-Folder und Speicherplatz-Warnungen',
+        en: 'Root Folder and Storage Warnings',
+      },
+      summary: {
+        de: 'Prueft, ob mindestens ein Radarr/Sonarr Root Folder in Settings gesetzt ist.',
+        en: 'Checks whether at least one Radarr/Sonarr root folder is configured.',
+      },
+    },
+    'api-permission-check': {
+      title: {
+        de: 'API-Key und Berechtigungspruefung',
+        en: 'API Key and Permission Check',
+      },
+      summary: {
+        de: 'Vergleicht konfigurierte Quellen mit Quellen, die Aufmerksamkeit brauchen.',
+        en: 'Compares configured sources with sources that need attention.',
+      },
+    },
+    'backup-restore-preview': {
+      title: {
+        de: 'Restore-Dry-Run mit Diff',
+        en: 'Restore Dry Run With Diff',
+      },
+      summary: {
+        de: 'Settings-Umfang ist sichtbar und kann fuer sichere Restore-Vorschauen genutzt werden.',
+        en: 'Settings scope is visible and can be used for safer restore previews.',
+      },
+    },
+    'collection-json-export': {
+      title: {
+        de: 'Import/Export einzelner Collections',
+        en: 'Import/Export Individual Collections',
+      },
+      summary: {
+        de: 'Alle Collections sind eindeutig identifizierbar und exportierbar.',
+        en: 'All collections are uniquely identifiable and exportable.',
+      },
+    },
+    'template-library': {
+      title: {
+        de: 'Collection-Vorlagenbibliothek',
+        en: 'Collection Template Library',
+      },
+      summary: {
+        de: 'Vorhandene Collection-Typen bilden die Grundlage fuer wiederverwendbare Vorlagen.',
+        en: 'Existing collection types form the basis for reusable templates.',
+      },
+    },
+    'experiment-mode': {
+      title: { de: 'Experiment Mode', en: 'Experiment Mode' },
+      summary: {
+        de: 'Dry-Run-Daten zeigen, welche Collections sich fuer Testlaeufe ohne Plex-Aenderung eignen.',
+        en: 'Dry-run data shows which collections are suitable for test runs without Plex changes.',
+      },
+    },
+    'sync-cost-estimate': {
+      title: { de: 'Sync-Kosten-Schaetzung', en: 'Sync Cost Estimate' },
+      summary: {
+        de: 'Schaetzt Aufwand aus Collection-Anzahl plus aktivem Missing-Media-Handling.',
+        en: 'Estimates effort from collection count plus active missing-media handling.',
+      },
+    },
+    'dashboard-search': {
+      title: { de: 'Dashboard-Suche', en: 'Dashboard Search' },
+      summary: {
+        de: 'Collections, Placeholder und Requests werden als Suchbasis zusammengefuehrt.',
+        en: 'Collections, placeholders, and requests are combined as a search base.',
+      },
+    },
+    'tautulli-data-quality': {
+      title: {
+        de: 'Tautulli Datenqualitaet pro Collection',
+        en: 'Tautulli Data Quality per Collection',
+      },
+      summary: {
+        de: 'Zeigt Collections ohne Rating Key oder ohne Treffer in Tautulli.',
+        en: 'Shows collections without a rating key or without a Tautulli match.',
+      },
+    },
+    'release-update-hint': {
+      title: { de: 'Release/Update Hinweis', en: 'Release/Update Hint' },
+      summary: {
+        de: 'Vergleicht die installierte Version mit dem neuesten GitHub Release.',
+        en: 'Compares the installed version with the newest GitHub release.',
+      },
+    },
+    'audit-log': {
+      title: { de: 'Audit Log', en: 'Audit Log' },
+      summary: {
+        de: 'Zeichnet Dashboard-Aktionen wie Tests, Wartung und Sync-Starts dauerhaft auf.',
+        en: 'Persistently records dashboard actions such as tests, maintenance, and sync starts.',
+      },
+    },
+    'tautulli-artwork-cache': {
+      title: { de: 'Tautulli Artwork Cache', en: 'Tautulli Artwork Cache' },
+      summary: {
+        de: 'Dashboard nutzt stabile Proxy-URLs, damit Poster wiederverwendbar geladen werden.',
+        en: 'Dashboard uses stable proxy URLs so posters can be loaded repeatedly.',
+      },
+    },
+  };
   const operationsSuite = [
     {
       id: 'auto-heal-mode',
@@ -3687,6 +4034,15 @@ const getAdvancedIntelligence = async (
       metric: `${jellyfinHealth.score}%`,
       summary: jellyfinHealth.message,
       href: '/settings/main',
+    },
+    {
+      id: 'emby-health',
+      title: isGerman ? 'Emby Health' : 'Emby Health',
+      category: 'Media Server',
+      status: embyHealth.status,
+      metric: `${embyHealth.score}%`,
+      summary: embyHealth.message,
+      href: '/settings/emby',
     },
     {
       id: 'empty-collection-why',
@@ -4136,6 +4492,16 @@ const getAdvancedIntelligence = async (
   ].map(
     (item, index): DashboardOperationItem => ({
       ...item,
+      title: operationText[item.id]
+        ? isGerman
+          ? operationText[item.id].title.de
+          : operationText[item.id].title.en
+        : item.title,
+      summary: operationText[item.id]
+        ? isGerman
+          ? operationText[item.id].summary.de
+          : operationText[item.id].summary.en
+        : item.summary,
       status:
         item.status === 'attention'
           ? 'attention'
@@ -4211,12 +4577,19 @@ const getAdvancedIntelligence = async (
     collectionTimeline,
     changelog: {
       version: getAppVersion(),
-      highlights: [
-        'Action Center fuer direkte naechste Schritte',
-        'Collection Timeline aus Requests, Placeholdern und Metadata-Updates',
-        'Heat Scores und Source Reliability fuer bessere Priorisierung',
-        'Placeholder Lifecycle View und Erklaerungen fuer Dashboard-Zahlen',
-      ],
+      highlights: isGerman
+        ? [
+            'Action Center fuer direkte naechste Schritte',
+            'Collection Timeline aus Requests, Placeholdern und Metadata-Updates',
+            'Heat Scores und Source Reliability fuer bessere Priorisierung',
+            'Placeholder Lifecycle View und Erklaerungen fuer Dashboard-Zahlen',
+          ]
+        : [
+            'Action Center for direct next steps',
+            'Collection timeline from requests, placeholders, and metadata updates',
+            'Heat scores and source reliability for better prioritization',
+            'Placeholder lifecycle view and explanations for dashboard numbers',
+          ],
     },
     heatScores: heatItems,
     autoSnoozeCandidates,
@@ -4277,6 +4650,7 @@ const getAdvancedIntelligence = async (
     },
     tautulliDiagnostics,
     jellyfinHealth,
+    embyHealth,
     preSyncValidation,
     ghcrStatus,
     emptyCollectionInsights,
@@ -4311,17 +4685,19 @@ const getAdvancedIntelligence = async (
     availableActions: [
       {
         id: 'sync-collections',
-        title: 'Collections synchronisieren',
+        title: isGerman ? 'Collections synchronisieren' : 'Sync Collections',
         danger: true,
       },
       {
         id: 'test-tautulli',
-        title: 'Tautulli testen',
+        title: isGerman ? 'Tautulli testen' : 'Test Tautulli',
         danger: false,
       },
       {
         id: 'export-diagnostics',
-        title: 'Diagnosebericht herunterladen',
+        title: isGerman
+          ? 'Diagnosebericht herunterladen'
+          : 'Download Diagnostic Report',
         danger: false,
       },
     ],
@@ -4560,6 +4936,10 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
           jellyfin: {
             configured: !!settings.jellyfin.ip,
             libraryCount: settings.jellyfin.libraries?.length || 0,
+          },
+          emby: {
+            configured: !!settings.emby.ip,
+            libraryCount: settings.emby.libraries?.length || 0,
           },
         },
       },

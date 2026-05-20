@@ -1,3 +1,4 @@
+import EmbyAPI from '@server/api/emby';
 import JellyfinAPI from '@server/api/jellyfin';
 import PlexAPI, { type PlexLibraryItem } from '@server/api/plexapi';
 import { getRepository } from '@server/datasource';
@@ -69,6 +70,10 @@ class CollectionsQuickSync {
       return new JellyfinAPI(settings.plex) as unknown as PlexAPI;
     }
 
+    if (settings.plex.mediaServerType === 'emby') {
+      return new EmbyAPI(settings.plex) as unknown as PlexAPI;
+    }
+
     const { getAdminUser } = await import(
       '@server/lib/collections/core/CollectionUtilities'
     );
@@ -138,11 +143,13 @@ class CollectionsQuickSync {
       });
 
       // Get media server client
-      this.setStage(
-        `Connecting to ${
-          settings.plex.mediaServerType === 'jellyfin' ? 'Jellyfin' : 'Plex'
-        }...`
-      );
+      const mediaServerName =
+        settings.plex.mediaServerType === 'jellyfin'
+          ? 'Jellyfin'
+          : settings.plex.mediaServerType === 'emby'
+          ? 'Emby'
+          : 'Plex';
+      this.setStage(`Connecting to ${mediaServerName}...`);
       const plexClient = await this.getPlexClient();
 
       // Test connection

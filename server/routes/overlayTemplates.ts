@@ -8,9 +8,10 @@ import type {
   OverlayVariableElementProps,
 } from '@server/entity/OverlayTemplate';
 import { OverlayTemplate } from '@server/entity/OverlayTemplate';
+import { getOverlayLabel } from '@server/lib/overlays/OverlayLocalization';
 import { overlayTemplateRenderer } from '@server/lib/overlays/OverlayTemplateRenderer';
 import { presetTemplateService } from '@server/lib/overlays/PresetTemplates';
-import { getSettings, getTmdbLanguage } from '@server/lib/settings';
+import { getTmdbLanguage } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
 import { Router } from 'express';
@@ -31,11 +32,6 @@ const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 // Contexts allow us to deduplicate rapid requests in a modal while allowing
 // parallel requests from different UI components (like library grid)
 const latestPreviewRequestTimestamp = new Map<string, number>();
-
-const getComingSoonPreviewLabel = (): string =>
-  getSettings().main.locale?.toLowerCase().startsWith('de')
-    ? 'BALD VERFÜGBAR'
-    : 'COMING SOON';
 
 /**
  * Fetch TMDB metadata and ratings for a preview poster
@@ -750,7 +746,7 @@ router.get('/:id/preview', async (req, res, next) => {
       rtAudienceScore: tmdbData.rtAudienceScore || 88,
       rtCertifiedFresh: true,
       rtVerifiedHot: true,
-      comingSoonLabel: getComingSoonPreviewLabel(),
+      comingSoonLabel: getOverlayLabel('comingSoon'),
       studio: tmdbData.studio || 'Warner Bros.',
       mediaType: mediaType === 'movie' ? ('movie' as const) : ('show' as const),
 
@@ -963,7 +959,7 @@ router.post('/combined-preview', async (req, res, next) => {
       rtAudienceScore: tmdbData.rtAudienceScore || 88,
       rtCertifiedFresh: true,
       rtVerifiedHot: true,
-      comingSoonLabel: getComingSoonPreviewLabel(),
+      comingSoonLabel: getOverlayLabel('comingSoon'),
       studio: tmdbData.studio || 'Warner Bros.',
       mediaType: mediaType === 'movie' ? ('movie' as const) : ('show' as const),
 
