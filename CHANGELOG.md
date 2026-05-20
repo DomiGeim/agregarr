@@ -1,3 +1,34 @@
+# 2.5.13 (2026-05-20)
+
+## Highlights
+
+### Features
+
+- Added first-class Emby media server support with its own settings tab, profile activation, connection testing, library sync, and dashboard status.
+- Extended collection sync, quick sync, and scheduled individual collection syncs to use Emby through the same media-server adapter path as Jellyfin.
+- Made Operational Intelligence fully hideable from the dashboard.
+
+### Localization
+
+- Cleaned up English/German dashboard and overlay localization so language selection is respected more consistently.
+- Added English and German GUI text for the new Emby settings and dashboard health panels.
+
+### Maintenance
+
+- Added Emby release/status coverage to dashboard intelligence and media-server profile reporting.
+- Verified server/client typechecks, linting, i18n audits, and server build for this release.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.13
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.12...v2.5.13
+
 # 1.0.0 (2026-05-07)
 
 
