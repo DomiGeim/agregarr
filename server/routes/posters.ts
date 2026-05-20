@@ -9,6 +9,7 @@ import {
   loadIconFile,
 } from '@server/lib/iconManager';
 import {
+  deletePosterWithThumbnail,
   loadPosterFile,
   loadThumbnailFile,
 } from '@server/lib/posterFileManager';
@@ -707,12 +708,18 @@ router.delete('/saved/:id', async (req, res, next) => {
     poster.isActive = false;
     await posterRepository.save(poster);
 
-    // TODO: Also clean up associated files (filename, thumbnailFilename)
-    // This will be handled in Phase 3 when we set up file management
+    if (poster.filename) {
+      await deletePosterWithThumbnail(
+        poster.filename,
+        poster.thumbnailFilename || undefined
+      );
+    }
 
     logger.info('Deleted database poster', {
       posterId,
       name: poster.name,
+      filename: poster.filename,
+      thumbnailFilename: poster.thumbnailFilename,
       userId: req.user?.id,
     });
 

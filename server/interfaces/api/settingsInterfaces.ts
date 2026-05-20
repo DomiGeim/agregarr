@@ -59,4 +59,8 @@ export interface StatusResponse {
   updateAvailable: boolean;
   commitsBehind: number;
   restartRequired: boolean;
+  latestVersion?: string;
+  latestUrl?: string;
+  dockerImage?: string;
+  dockerPullCommand?: string;
 }

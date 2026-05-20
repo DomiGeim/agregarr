@@ -75,7 +75,8 @@ const activateMediaServerProfile = (
     ip: source.ip,
     port: source.port,
     useSsl: source.useSsl,
-    jellyfinApiKey: source.jellyfinApiKey,
+    mediaServerApiKey: source.mediaServerApiKey || source.jellyfinApiKey || '',
+    jellyfinApiKey: source.mediaServerApiKey || source.jellyfinApiKey || '',
     libraries: source.libraries || [],
     webAppUrl: source.webAppUrl,
     collectionConfigs: source.collectionConfigs || [],
@@ -300,6 +301,9 @@ settingsRoutes.post('/jellyfin', async (req, res, next) => {
     ...settings.jellyfin,
     ...req.body,
     mediaServerType,
+    mediaServerApiKey:
+      req.body.mediaServerApiKey || req.body.jellyfinApiKey || '',
+    jellyfinApiKey: req.body.mediaServerApiKey || req.body.jellyfinApiKey || '',
   };
 
   try {
@@ -372,6 +376,9 @@ settingsRoutes.post('/emby', async (req, res, next) => {
     ...settings.emby,
     ...req.body,
     mediaServerType,
+    mediaServerApiKey:
+      req.body.mediaServerApiKey || req.body.jellyfinApiKey || '',
+    jellyfinApiKey: req.body.mediaServerApiKey || req.body.jellyfinApiKey || '',
   };
 
   try {

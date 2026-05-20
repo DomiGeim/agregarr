@@ -82,6 +82,9 @@ const normalizeBaseUrl = (settings: PlexSettings): string => {
   return `${protocol}://${host}:${settings.port}`;
 };
 
+const getMediaServerApiKey = (settings: PlexSettings): string =>
+  settings.mediaServerApiKey || settings.jellyfinApiKey || '';
+
 class JellyfinAPI {
   private client: AxiosInstance;
   private settings: PlexSettings;
@@ -98,12 +101,11 @@ class JellyfinAPI {
     this.settings = settings;
     this.profileType = options.profileType || 'jellyfin';
     this.displayName = options.displayName || 'Jellyfin';
+    const apiKey = getMediaServerApiKey(settings);
     this.client = axios.create({
       baseURL: normalizeBaseUrl(settings),
       timeout: 30000,
-      headers: settings.jellyfinApiKey
-        ? { 'X-Emby-Token': settings.jellyfinApiKey }
-        : undefined,
+      headers: apiKey ? { 'X-Emby-Token': apiKey } : undefined,
     });
   }
 
@@ -208,7 +210,7 @@ class JellyfinAPI {
       version?: string;
     };
   }> {
-    const endpoint = this.settings.jellyfinApiKey
+    const endpoint = getMediaServerApiKey(this.settings)
       ? '/System/Info'
       : '/System/Info/Public';
     const response = await this.client.get<JellyfinSystemInfo>(endpoint);

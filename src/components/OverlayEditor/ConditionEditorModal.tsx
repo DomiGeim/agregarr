@@ -72,7 +72,7 @@ const NUMERIC_FIELDS = [
   'rtCriticsScore',
   'rtAudienceScore',
   'plexUserRating',
-  // 'metacriticScore', // TODO: Implement Metacritic integration
+  'metacriticScore',
   'year',
   'runtime',
   'daysUntilRelease',

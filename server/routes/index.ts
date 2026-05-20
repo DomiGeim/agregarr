@@ -64,6 +64,8 @@ router.get('/status', async (_req, res) => {
   const commitTag = getCommitTag();
   let updateAvailable = false;
   let commitsBehind = 0;
+  let latestVersion: string | undefined;
+  let latestUrl: string | undefined;
 
   if (currentVersion.startsWith('develop-') && commitTag !== 'local') {
     const commits = await githubApi.getAgregarrCommits();
@@ -88,13 +90,17 @@ router.get('/status', async (_req, res) => {
     const releases = await githubApi.getAgregarrReleases();
 
     if (releases.length) {
-      const latestVersion = releases[0];
+      const latestRelease = releases[0];
+      latestUrl = latestRelease.html_url;
 
-      if (!latestVersion.name.includes(currentVersion)) {
+      if (!latestRelease.name.includes(currentVersion)) {
         updateAvailable = true;
       }
+      latestVersion = latestRelease.name;
     }
   }
+
+  const dockerImage = 'ghcr.io/domigeim/agregarr:latest';
 
   return res.status(200).json({
     version: getAppVersion(),
@@ -102,6 +108,10 @@ router.get('/status', async (_req, res) => {
     updateAvailable,
     commitsBehind,
     restartRequired: restartFlag.isSet(),
+    latestVersion,
+    latestUrl,
+    dockerImage,
+    dockerPullCommand: `docker pull ${dockerImage}`,
   });
 });
 

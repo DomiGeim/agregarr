@@ -480,6 +480,8 @@ export interface PlexSettings {
   ip: string;
   port: number;
   useSsl?: boolean;
+  mediaServerApiKey?: string;
+  /** @deprecated Use mediaServerApiKey. Kept for existing settings/backups. */
   jellyfinApiKey?: string;
   libraries: Library[];
   webAppUrl?: string;
@@ -772,6 +774,7 @@ class Settings {
         ip: '',
         port: 8096,
         useSsl: false,
+        mediaServerApiKey: '',
         jellyfinApiKey: '',
         libraries: [],
         collectionConfigs: [],
@@ -784,6 +787,7 @@ class Settings {
         ip: '',
         port: 8096,
         useSsl: false,
+        mediaServerApiKey: '',
         jellyfinApiKey: '',
         libraries: [],
         collectionConfigs: [],
@@ -858,6 +862,7 @@ class Settings {
         ip: '',
         port: 8096,
         useSsl: false,
+        mediaServerApiKey: '',
         jellyfinApiKey: '',
         libraries: [],
         collectionConfigs: [],
@@ -873,6 +878,7 @@ class Settings {
         ip: '',
         port: 8096,
         useSsl: false,
+        mediaServerApiKey: '',
         jellyfinApiKey: '',
         libraries: [],
         collectionConfigs: [],
@@ -938,6 +944,17 @@ class Settings {
       : 'plex';
     this.data.jellyfin.mediaServerType = 'jellyfin';
     this.data.emby.mediaServerType = 'emby';
+    this.normalizeMediaServerApiKey(this.data.plex);
+    this.normalizeMediaServerApiKey(this.data.plexProfile);
+    this.normalizeMediaServerApiKey(this.data.jellyfin);
+    this.normalizeMediaServerApiKey(this.data.emby);
+  }
+
+  private normalizeMediaServerApiKey(profile: PlexSettings): void {
+    const apiKey = profile.mediaServerApiKey || profile.jellyfinApiKey || '';
+
+    profile.mediaServerApiKey = apiKey;
+    profile.jellyfinApiKey = apiKey;
   }
 
   private normalizeTagSettings(): void {

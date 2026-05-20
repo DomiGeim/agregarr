@@ -1,3 +1,35 @@
+# 2.5.14 (2026-05-21)
+
+## Highlights
+
+### Features
+
+- Added Metacritic score support for overlay variables, overlay conditions, preview metadata, and rendered poster overlays.
+- Added a shared Emby/Jellyfin settings implementation with a generic media-server API key while preserving existing Jellyfin-key settings and backups.
+- Improved dashboard release status with installed/latest version context and the exact GHCR pull command.
+
+### Fixes
+
+- Cleaned up saved poster files and thumbnails when database-backed posters are deleted.
+- Made Tautulli dashboard stats explicitly Plex-only, so active Emby/Jellyfin profiles no longer show misleading Tautulli setup warnings.
+- Guarded Plex-only overlay sync jobs when Emby or Jellyfin is active.
+- Defaulted new overlay poster-source setup to Plex posters.
+
+### Localization
+
+- Polished English/German dashboard and media-server settings text, including Tautulli playback wording.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.14
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.13...v2.5.14
+
 # 2.5.13 (2026-05-20)
 
 ## Highlights
