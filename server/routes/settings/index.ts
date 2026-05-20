@@ -1,3 +1,4 @@
+import EmbyAPI from '@server/api/emby';
 import JellyfinAPI from '@server/api/jellyfin';
 import MaintainerrAPI from '@server/api/maintainerr';
 import MDBListAPI from '@server/api/mdblist';
@@ -24,6 +25,7 @@ import cacheManager from '@server/lib/cache';
 import type {
   JobId,
   MainSettings,
+  MediaServerType,
   WatchlistSyncSettings,
 } from '@server/lib/settings';
 import { getSettings } from '@server/lib/settings';
@@ -57,10 +59,14 @@ settingsRoutes.use('/sonarr', sonarrRoutes);
 
 const activateMediaServerProfile = (
   settings: ReturnType<typeof getSettings>,
-  mediaServerType: 'plex' | 'jellyfin'
+  mediaServerType: MediaServerType
 ) => {
   const source =
-    mediaServerType === 'jellyfin' ? settings.jellyfin : settings.plexProfile;
+    mediaServerType === 'jellyfin'
+      ? settings.jellyfin
+      : mediaServerType === 'emby'
+      ? settings.emby
+      : settings.plexProfile;
 
   Object.assign(settings.plex, {
     mediaServerType,
@@ -87,6 +93,12 @@ const persistActiveMediaServerProfile = (
       ...settings.jellyfin,
       ...settings.plex,
       mediaServerType: 'jellyfin',
+    };
+  } else if (settings.plex.mediaServerType === 'emby') {
+    settings.emby = {
+      ...settings.emby,
+      ...settings.plex,
+      mediaServerType: 'emby',
     };
   } else {
     settings.plexProfile = {
@@ -146,7 +158,9 @@ settingsRoutes.get('/plex', (_req, res) => {
 
   res.status(200).json({
     ...settings.plexProfile,
-    active: settings.plex.mediaServerType !== 'jellyfin',
+    active:
+      settings.plex.mediaServerType !== 'jellyfin' &&
+      settings.plex.mediaServerType !== 'emby',
   });
 });
 
@@ -156,6 +170,15 @@ settingsRoutes.get('/jellyfin', (_req, res) => {
   res.status(200).json({
     ...settings.jellyfin,
     active: settings.plex.mediaServerType === 'jellyfin',
+  });
+});
+
+settingsRoutes.get('/emby', (_req, res) => {
+  const settings = getSettings();
+
+  res.status(200).json({
+    ...settings.emby,
+    active: settings.plex.mediaServerType === 'emby',
   });
 });
 
@@ -334,14 +357,90 @@ settingsRoutes.post('/jellyfin', async (req, res, next) => {
   }
 });
 
+settingsRoutes.post('/emby', async (req, res, next) => {
+  const settings = getSettings();
+  const mediaServerType = 'emby';
+
+  logger.debug('Emby settings update requested', {
+    label: 'Emby Settings',
+    ip: req.body.ip,
+    port: req.body.port,
+    useSsl: req.body.useSsl,
+  });
+
+  const nextEmbySettings = {
+    ...settings.emby,
+    ...req.body,
+    mediaServerType,
+  };
+
+  try {
+    const connectionUrl = `${nextEmbySettings.useSsl ? 'https' : 'http'}://${
+      nextEmbySettings.ip
+    }:${nextEmbySettings.port}`;
+    logger.debug('Testing Emby connection with new settings', {
+      label: 'Emby Settings',
+      url: connectionUrl,
+    });
+
+    const result = await new EmbyAPI(nextEmbySettings).getStatus();
+
+    if (!result?.MediaContainer?.machineIdentifier) {
+      throw new Error('Server not found');
+    }
+
+    settings.emby = {
+      ...nextEmbySettings,
+      machineId: result.MediaContainer.machineIdentifier,
+      name: result.MediaContainer.friendlyName,
+    };
+
+    activateMediaServerProfile(settings, 'emby');
+    settings.save();
+
+    logger.info('Emby settings updated successfully', {
+      label: 'Emby Settings',
+      serverName: result.MediaContainer.friendlyName,
+      machineId:
+        result.MediaContainer.machineIdentifier.substring(0, 8) + '...',
+    });
+
+    return res.status(200).json({
+      ...settings.emby,
+      active: true,
+    });
+  } catch (e) {
+    const connectionUrl = `${nextEmbySettings.useSsl ? 'https' : 'http'}://${
+      nextEmbySettings.ip
+    }:${nextEmbySettings.port}`;
+
+    logger.error('Failed to connect to Emby with new settings', {
+      label: 'Emby Settings',
+      error: e.message,
+      errorType: e.constructor?.name,
+      errorCode: e.code,
+      connectionUrl,
+    });
+
+    return next({
+      status: 500,
+      message: `Unable to connect to Emby at ${connectionUrl}: ${e.message}`,
+    });
+  }
+});
+
 settingsRoutes.post('/media-server/activate', (req, res, next) => {
   const settings = getSettings();
   const mediaServerType = req.body.mediaServerType;
 
-  if (mediaServerType !== 'plex' && mediaServerType !== 'jellyfin') {
+  if (
+    mediaServerType !== 'plex' &&
+    mediaServerType !== 'jellyfin' &&
+    mediaServerType !== 'emby'
+  ) {
     return next({
       status: 400,
-      message: 'mediaServerType must be plex or jellyfin',
+      message: 'mediaServerType must be plex, jellyfin, or emby',
     });
   }
 
@@ -480,12 +579,36 @@ settingsRoutes.get('/jellyfin/library', async (req, res) => {
   return res.status(200).json(settings.jellyfin.libraries || []);
 });
 
+settingsRoutes.get('/emby/library', async (req, res) => {
+  const settings = getSettings();
+
+  if (req.query.sync) {
+    settings.plex = {
+      ...settings.plex,
+      ...settings.emby,
+      mediaServerType: 'emby',
+    };
+    await new EmbyAPI(settings.plex).syncLibraries();
+    settings.emby = {
+      ...settings.emby,
+      ...settings.plex,
+      mediaServerType: 'emby',
+    };
+  }
+
+  settings.save();
+  return res.status(200).json(settings.emby.libraries || []);
+});
+
 settingsRoutes.get('/plex/libraries', async (req, res) => {
   try {
     const settings = getSettings();
 
     if (settings.plex.mediaServerType === 'jellyfin') {
       await new JellyfinAPI(settings.plex).syncLibraries();
+      return res.status(200).json(settings.plex.libraries);
+    } else if (settings.plex.mediaServerType === 'emby') {
+      await new EmbyAPI(settings.plex).syncLibraries();
       return res.status(200).json(settings.plex.libraries);
     } else {
       activateMediaServerProfile(settings, 'plex');
@@ -552,18 +675,49 @@ settingsRoutes.get('/jellyfin/libraries', async (_req, res) => {
   }
 });
 
+settingsRoutes.get('/emby/libraries', async (_req, res) => {
+  try {
+    const settings = getSettings();
+
+    settings.plex = {
+      ...settings.plex,
+      ...settings.emby,
+      mediaServerType: 'emby',
+    };
+    await new EmbyAPI(settings.plex).syncLibraries();
+    settings.emby = {
+      ...settings.emby,
+      ...settings.plex,
+      mediaServerType: 'emby',
+    };
+    settings.save();
+
+    return res.status(200).json(settings.emby.libraries || []);
+  } catch (error) {
+    logger.error('Failed to sync Emby libraries', {
+      label: 'Settings Routes',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ error: 'Failed to sync Emby libraries' });
+  }
+});
+
 settingsRoutes.get('/media-server/status', (_req, res) => {
   const settings = getSettings();
   const activeSettings =
     settings.plex.mediaServerType === 'jellyfin'
       ? settings.jellyfin
+      : settings.plex.mediaServerType === 'emby'
+      ? settings.emby
       : settings.plex;
 
   return res.status(200).json({
     activeType: settings.plex.mediaServerType || 'plex',
     plex: {
       configured: !!settings.plexProfile.ip,
-      active: settings.plex.mediaServerType !== 'jellyfin',
+      active:
+        settings.plex.mediaServerType !== 'jellyfin' &&
+        settings.plex.mediaServerType !== 'emby',
       name: settings.plexProfile.name,
       libraryCount: settings.plexProfile.libraries?.length || 0,
       collectionCount: settings.plexProfile.collectionConfigs?.length || 0,
@@ -574,6 +728,13 @@ settingsRoutes.get('/media-server/status', (_req, res) => {
       name: settings.jellyfin.name,
       libraryCount: settings.jellyfin.libraries?.length || 0,
       collectionCount: settings.jellyfin.collectionConfigs?.length || 0,
+    },
+    emby: {
+      configured: !!settings.emby.ip,
+      active: settings.plex.mediaServerType === 'emby',
+      name: settings.emby.name,
+      libraryCount: settings.emby.libraries?.length || 0,
+      collectionCount: settings.emby.collectionConfigs?.length || 0,
     },
     active: {
       name: activeSettings.name,

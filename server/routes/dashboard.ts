@@ -1114,27 +1114,36 @@ const getSettingsConsistency = (
     message: string;
   }[] = [];
 
-  if (settings.plex.mediaServerType === 'jellyfin' && settings.plex.machineId) {
+  if (
+    (settings.plex.mediaServerType === 'jellyfin' ||
+      settings.plex.mediaServerType === 'emby') &&
+    settings.plex.machineId
+  ) {
+    const mediaServerName = getMediaServerDisplayName(
+      settings.plex.mediaServerType
+    );
     issues.push({
-      id: 'jellyfin-plex-machine-id',
+      id: `${settings.plex.mediaServerType}-plex-machine-id`,
       severity: 'warning',
-      title: 'Jellyfin mit Plex Machine ID',
-      message:
-        'Jellyfin ist aktiv, aber eine Plex Machine ID ist gesetzt. Das kann alte Plex-Reste anzeigen.',
+      title: `${mediaServerName} mit Plex Machine ID`,
+      message: `${mediaServerName} ist aktiv, aber eine Plex Machine ID ist gesetzt. Das kann alte Plex-Reste anzeigen.`,
     });
   }
 
   if (
     settings.tautulli.hostname &&
     settings.tautulli.apiKey &&
-    settings.plex.mediaServerType === 'jellyfin'
+    (settings.plex.mediaServerType === 'jellyfin' ||
+      settings.plex.mediaServerType === 'emby')
   ) {
+    const mediaServerName = getMediaServerDisplayName(
+      settings.plex.mediaServerType
+    );
     issues.push({
-      id: 'tautulli-jellyfin',
+      id: `tautulli-${settings.plex.mediaServerType}`,
       severity: 'warning',
-      title: 'Tautulli mit Jellyfin',
-      message:
-        'Tautulli ist fuer Plex gedacht. Bei aktivem Jellyfin koennen Tautulli-Werte leer bleiben.',
+      title: `Tautulli mit ${mediaServerName}`,
+      message: `Tautulli ist fuer Plex gedacht. Bei aktivem ${mediaServerName} koennen Tautulli-Werte leer bleiben.`,
     });
   }
 
@@ -1532,6 +1541,46 @@ const getJellyfinHealth = (settings: ReturnType<typeof getSettings>) => {
   };
 };
 
+const getEmbyHealth = (settings: ReturnType<typeof getSettings>) => {
+  const configured = !!settings.emby.ip && !!settings.emby.jellyfinApiKey;
+  const active = settings.plex.mediaServerType === 'emby';
+  const libraryCount = settings.emby.libraries?.length || 0;
+  const score = !active
+    ? 100
+    : configured && libraryCount
+    ? 100
+    : configured
+    ? 70
+    : 30;
+
+  return {
+    active,
+    configured,
+    libraryCount,
+    score,
+    status:
+      score >= 90
+        ? ('ready' as const)
+        : score >= 60
+        ? ('watch' as const)
+        : ('attention' as const),
+    message: active
+      ? configured
+        ? `${libraryCount} Emby libraries synced.`
+        : 'Emby is active but not fully configured.'
+      : 'Emby is configured as an optional profile.',
+  };
+};
+
+const getMediaServerDisplayName = (
+  mediaServerType?: 'plex' | 'jellyfin' | 'emby'
+) =>
+  mediaServerType === 'jellyfin'
+    ? 'Jellyfin'
+    : mediaServerType === 'emby'
+    ? 'Emby'
+    : 'Plex';
+
 const getPreSyncValidation = async (
   settings: ReturnType<typeof getSettings>,
   collectionScores: CollectionHealthScore[],
@@ -1552,14 +1601,14 @@ const getPreSyncValidation = async (
     },
     {
       id: 'media-server',
-      ok: !!settings.plex.ip || !!settings.jellyfin.ip,
+      ok: !!settings.plex.ip || !!settings.jellyfin.ip || !!settings.emby.ip,
       severity:
-        !settings.plex.ip && !settings.jellyfin.ip
+        !settings.plex.ip && !settings.jellyfin.ip && !settings.emby.ip
           ? ('error' as const)
           : ('info' as const),
       title: 'Media server',
       message:
-        settings.plex.ip || settings.jellyfin.ip
+        settings.plex.ip || settings.jellyfin.ip || settings.emby.ip
           ? 'Media server connection is configured.'
           : 'No media server connection is configured.',
     },
@@ -2259,7 +2308,7 @@ const getSourceStatus = (settings: ReturnType<typeof getSettings>) => {
   const sources = [
     {
       id: 'media-server',
-      name: settings.plex.mediaServerType === 'jellyfin' ? 'Jellyfin' : 'Plex',
+      name: getMediaServerDisplayName(settings.plex.mediaServerType),
       configured: !!settings.plex.ip,
       usedByCollections: collectionConfigs.length,
       status: settings.plex.ip ? 'configured' : 'missing',
@@ -3545,6 +3594,7 @@ const getAdvancedIntelligence = async (
     sourceReliability
   );
   const jellyfinHealth = getJellyfinHealth(settings);
+  const embyHealth = getEmbyHealth(settings);
   const preSyncValidation = await getPreSyncValidation(
     settings,
     collectionScores,
@@ -3984,6 +4034,15 @@ const getAdvancedIntelligence = async (
       metric: `${jellyfinHealth.score}%`,
       summary: jellyfinHealth.message,
       href: '/settings/main',
+    },
+    {
+      id: 'emby-health',
+      title: isGerman ? 'Emby Health' : 'Emby Health',
+      category: 'Media Server',
+      status: embyHealth.status,
+      metric: `${embyHealth.score}%`,
+      summary: embyHealth.message,
+      href: '/settings/emby',
     },
     {
       id: 'empty-collection-why',
@@ -4591,6 +4650,7 @@ const getAdvancedIntelligence = async (
     },
     tautulliDiagnostics,
     jellyfinHealth,
+    embyHealth,
     preSyncValidation,
     ghcrStatus,
     emptyCollectionInsights,
@@ -4876,6 +4936,10 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
           jellyfin: {
             configured: !!settings.jellyfin.ip,
             libraryCount: settings.jellyfin.libraries?.length || 0,
+          },
+          emby: {
+            configured: !!settings.emby.ip,
+            libraryCount: settings.emby.libraries?.length || 0,
           },
         },
       },

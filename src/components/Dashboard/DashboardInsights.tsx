@@ -146,6 +146,7 @@ const messages = defineMessages({
   preSyncValidator: 'Pre-Sync Validator',
   ghcrImageStatus: 'GHCR Image Status',
   jellyfinHealth: 'Jellyfin Health',
+  embyHealth: 'Emby Health',
   whyEmpty: 'Why Empty?',
   supportPackage: 'Support Package',
   downloadSupportPackage: 'Download support package',
@@ -409,6 +410,14 @@ interface DashboardInsightData {
       }[];
     };
     jellyfinHealth?: {
+      active: boolean;
+      configured: boolean;
+      libraryCount: number;
+      score: number;
+      status: 'ready' | 'watch' | 'attention';
+      message: string;
+    };
+    embyHealth?: {
       active: boolean;
       configured: boolean;
       libraryCount: number;
@@ -3519,6 +3528,28 @@ const DashboardInsights: React.FC = () => {
           </p>
           <p className="mt-2 text-xs text-gray-500">
             {intelligence?.jellyfinHealth?.message}
+          </p>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <ServerStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.embyHealth)}
+          </h4>
+          <p
+            className={`rounded bg-stone-900 px-3 py-2 text-sm font-semibold ${
+              intelligence?.embyHealth?.status === 'attention'
+                ? 'text-red-300'
+                : intelligence?.embyHealth?.status === 'watch'
+                ? 'text-orange-300'
+                : 'text-green-300'
+            }`}
+          >
+            {intelligence?.embyHealth?.score || 0}% /{' '}
+            {intelligence?.embyHealth?.libraryCount || 0} libraries
+          </p>
+          <p className="mt-2 text-xs text-gray-500">
+            {intelligence?.embyHealth?.message}
           </p>
         </section>
 

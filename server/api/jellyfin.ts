@@ -3,7 +3,11 @@ import type {
   PlexLibraryItem,
   PlexMetadata,
 } from '@server/api/plexapi';
-import type { Library, PlexSettings } from '@server/lib/settings';
+import type {
+  Library,
+  MediaServerType,
+  PlexSettings,
+} from '@server/lib/settings';
 import logger from '@server/logger';
 import axios, { type AxiosInstance } from 'axios';
 
@@ -81,9 +85,19 @@ const normalizeBaseUrl = (settings: PlexSettings): string => {
 class JellyfinAPI {
   private client: AxiosInstance;
   private settings: PlexSettings;
+  private profileType: Extract<MediaServerType, 'jellyfin' | 'emby'>;
+  private displayName: 'Jellyfin' | 'Emby';
 
-  constructor(settings: PlexSettings) {
+  constructor(
+    settings: PlexSettings,
+    options: {
+      profileType?: Extract<MediaServerType, 'jellyfin' | 'emby'>;
+      displayName?: 'Jellyfin' | 'Emby';
+    } = {}
+  ) {
     this.settings = settings;
+    this.profileType = options.profileType || 'jellyfin';
+    this.displayName = options.displayName || 'Jellyfin';
     this.client = axios.create({
       baseURL: normalizeBaseUrl(settings),
       timeout: 30000,
@@ -232,8 +246,9 @@ class JellyfinAPI {
 
     try {
       const libraries = await this.getLibraries();
+      const profileSettings = settings[this.profileType];
       const existingLibraries =
-        settings.jellyfin?.libraries || settings.plex.libraries || [];
+        profileSettings?.libraries || settings.plex.libraries || [];
       const syncedLibraries = libraries.map((library) => {
         const existing = existingLibraries.find(
           (saved) => saved.key === library.key && saved.name === library.name
@@ -244,16 +259,16 @@ class JellyfinAPI {
           lastScan: existing?.lastScan,
         };
       });
-      settings.jellyfin.libraries = syncedLibraries;
-      if (settings.plex.mediaServerType === 'jellyfin') {
+      profileSettings.libraries = syncedLibraries;
+      if (settings.plex.mediaServerType === this.profileType) {
         settings.plex.libraries = syncedLibraries;
       }
       settings.save();
     } catch (error) {
       logger.error(
-        'Failed to sync Jellyfin libraries - keeping existing data',
+        `Failed to sync ${this.displayName} libraries - keeping existing data`,
         {
-          label: 'Jellyfin API',
+          label: `${this.displayName} API`,
           message: error instanceof Error ? error.message : String(error),
         }
       );
@@ -401,8 +416,8 @@ class JellyfinAPI {
     try {
       return await this.getCollectionMetadata(ratingKey);
     } catch (error) {
-      logger.warn('Failed to fetch Jellyfin collection metadata', {
-        label: 'Jellyfin API',
+      logger.warn(`Failed to fetch ${this.displayName} collection metadata`, {
+        label: `${this.displayName} API`,
         ratingKey,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -631,15 +646,15 @@ class JellyfinAPI {
   }
 
   public async createLabelBasedSmartCollection(): Promise<null> {
-    logger.warn('Jellyfin does not support Plex smart collections', {
-      label: 'Jellyfin API',
+    logger.warn(`${this.displayName} does not support Plex smart collections`, {
+      label: `${this.displayName} API`,
     });
     return null;
   }
 
   public async updateLabelBasedSmartCollectionUri(): Promise<void> {
-    logger.warn('Jellyfin does not support Plex smart collections', {
-      label: 'Jellyfin API',
+    logger.warn(`${this.displayName} does not support Plex smart collections`, {
+      label: `${this.displayName} API`,
     });
   }
 

@@ -471,8 +471,10 @@ export interface PreExistingCollectionConfig {
   applyOverlaysDuringSync?: boolean; // Apply item overlays during sync
 }
 
+export type MediaServerType = 'plex' | 'jellyfin' | 'emby';
+
 export interface PlexSettings {
-  mediaServerType?: 'plex' | 'jellyfin';
+  mediaServerType?: MediaServerType;
   name: string;
   machineId?: string;
   ip: string;
@@ -702,6 +704,7 @@ interface AllSettings {
   plex: PlexSettings;
   plexProfile: PlexSettings;
   jellyfin: PlexSettings;
+  emby: PlexSettings;
   tautulli: TautulliSettings;
   maintainerr: MaintainerrSettings;
   overseerr: OverseerrSettings;
@@ -765,6 +768,18 @@ class Settings {
       },
       jellyfin: {
         mediaServerType: 'jellyfin',
+        name: '',
+        ip: '',
+        port: 8096,
+        useSsl: false,
+        jellyfinApiKey: '',
+        libraries: [],
+        collectionConfigs: [],
+        hubConfigs: [],
+        preExistingCollectionConfigs: [],
+      },
+      emby: {
+        mediaServerType: 'emby',
         name: '',
         ip: '',
         port: 8096,
@@ -851,6 +866,21 @@ class Settings {
       };
     }
 
+    if (!this.data.emby) {
+      this.data.emby = {
+        mediaServerType: 'emby',
+        name: '',
+        ip: '',
+        port: 8096,
+        useSsl: false,
+        jellyfinApiKey: '',
+        libraries: [],
+        collectionConfigs: [],
+        hubConfigs: [],
+        preExistingCollectionConfigs: [],
+      };
+    }
+
     if (!this.data.plexProfile) {
       this.data.plexProfile = {
         mediaServerType: 'plex',
@@ -877,7 +907,23 @@ class Settings {
       };
     }
 
-    if (this.data.plex.mediaServerType !== 'jellyfin' && this.data.plex.ip) {
+    if (
+      this.data.plex.mediaServerType === 'emby' &&
+      this.data.plex.ip &&
+      !this.data.emby.ip
+    ) {
+      this.data.emby = {
+        ...this.data.emby,
+        ...this.data.plex,
+        mediaServerType: 'emby',
+      };
+    }
+
+    if (
+      this.data.plex.mediaServerType !== 'jellyfin' &&
+      this.data.plex.mediaServerType !== 'emby' &&
+      this.data.plex.ip
+    ) {
       this.data.plexProfile = {
         ...this.data.plexProfile,
         ...this.data.plex,
@@ -885,9 +931,13 @@ class Settings {
       };
     }
 
-    this.data.plex.mediaServerType =
-      this.data.plex.mediaServerType === 'jellyfin' ? 'jellyfin' : 'plex';
+    this.data.plex.mediaServerType = (
+      ['plex', 'jellyfin', 'emby'] as MediaServerType[]
+    ).includes(this.data.plex.mediaServerType as MediaServerType)
+      ? this.data.plex.mediaServerType
+      : 'plex';
     this.data.jellyfin.mediaServerType = 'jellyfin';
+    this.data.emby.mediaServerType = 'emby';
   }
 
   private normalizeTagSettings(): void {
@@ -1065,6 +1115,14 @@ class Settings {
 
   set jellyfin(data: PlexSettings) {
     this.data.jellyfin = data;
+  }
+
+  get emby(): PlexSettings {
+    return this.data.emby;
+  }
+
+  set emby(data: PlexSettings) {
+    this.data.emby = data;
   }
 
   get tautulli(): TautulliSettings {

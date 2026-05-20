@@ -1,3 +1,4 @@
+import EmbyAPI from '@server/api/emby';
 import JellyfinAPI from '@server/api/jellyfin';
 import PlexAPI from '@server/api/plexapi';
 import { extractErrorMessage } from '@server/lib/collections/core/CollectionUtilities';
@@ -66,6 +67,10 @@ class CollectionsSync {
       return new JellyfinAPI(settings.plex) as unknown as PlexAPI;
     }
 
+    if (settings.plex.mediaServerType === 'emby') {
+      return new EmbyAPI(settings.plex) as unknown as PlexAPI;
+    }
+
     // Get Plex token from LOCAL admin user (not external Overseerr)
     const { getAdminUser } = await import(
       '@server/lib/collections/core/CollectionUtilities'
@@ -90,9 +95,13 @@ class CollectionsSync {
     const settings = getSettings();
 
     try {
-      if (settings.plex.mediaServerType === 'jellyfin') {
-        logger.debug('Skipping Plex user refresh for Jellyfin server', {
+      if (
+        settings.plex.mediaServerType === 'jellyfin' ||
+        settings.plex.mediaServerType === 'emby'
+      ) {
+        logger.debug('Skipping Plex user refresh for non-Plex media server', {
           label: 'Collections Sync',
+          mediaServerType: settings.plex.mediaServerType,
         });
       } else {
         // Refresh admin Plex user info if we have an admin
@@ -270,9 +279,15 @@ class CollectionsSync {
     const settings = getSettings();
 
     const isJellyfin = settings.plex.mediaServerType === 'jellyfin';
+    const isEmby = settings.plex.mediaServerType === 'emby';
+    const isPlexCompatibleServer = isJellyfin || isEmby;
+    const mediaServerName = isEmby ? 'Emby' : isJellyfin ? 'Jellyfin' : 'Plex';
 
     // Validate media server configuration
-    if (!settings.plex.ip || (!settings.plex.machineId && !isJellyfin)) {
+    if (
+      !settings.plex.ip ||
+      (!settings.plex.machineId && !isPlexCompatibleServer)
+    ) {
       logger.error(
         'Media server configuration incomplete. Please check media server settings.',
         { label: 'Collections Sync' }
@@ -280,7 +295,7 @@ class CollectionsSync {
       return;
     }
 
-    if (!isJellyfin) {
+    if (!isPlexCompatibleServer) {
       // Get admin user for Plex token
       // Check local admin user for Plex token (not external Overseerr)
       const { getAdminUser } = await import(
@@ -303,9 +318,7 @@ class CollectionsSync {
 
     try {
       // Initialize media server client
-      this.setStage(
-        `Connecting to ${isJellyfin ? 'Jellyfin' : 'Plex'} server...`
-      );
+      this.setStage(`Connecting to ${mediaServerName} server...`);
       const plexClient = await this.getPlexClient();
 
       // Test connection
@@ -341,7 +354,7 @@ class CollectionsSync {
         }
       );
 
-      if (!isJellyfin) {
+      if (!isPlexCompatibleServer) {
         // Sync hub visibility settings
         this.setStage('Syncing hub visibility settings...');
         const { HubSyncService } = await import(
@@ -553,7 +566,7 @@ class CollectionsSync {
         // Don't fail the sync if discovery fails
       }
 
-      if (!isJellyfin) {
+      if (!isPlexCompatibleServer) {
         // Randomize home order for collections with randomizeHomeOrder enabled
         try {
           this.setStage('Randomizing home order...');

@@ -1,3 +1,4 @@
+import EmbyAPI from '@server/api/emby';
 import JellyfinAPI from '@server/api/jellyfin';
 import PlexAPI from '@server/api/plexapi';
 import type {
@@ -803,9 +804,12 @@ export class IndividualCollectionScheduler {
 
       let plexClient: PlexAPI;
       const isJellyfin = settings.plex.mediaServerType === 'jellyfin';
+      const isEmby = settings.plex.mediaServerType === 'emby';
 
       if (isJellyfin) {
         plexClient = new JellyfinAPI(settings.plex) as unknown as PlexAPI;
+      } else if (isEmby) {
+        plexClient = new EmbyAPI(settings.plex) as unknown as PlexAPI;
       } else {
         // Get admin user for Plex API (same approach as full sync)
         const { getAdminUser } = await import(
@@ -917,7 +921,7 @@ export class IndividualCollectionScheduler {
       settings.markCollectionSynced(collectionId, 'collection');
       settings.save();
 
-      if (!isJellyfin) {
+      if (!isJellyfin && !isEmby) {
         // Sync Plex collection ordering after collection sync
         const { HubSyncService } = await import(
           '@server/lib/collections/plex/HubSyncService'
