@@ -97,6 +97,8 @@ const messages = defineMessages({
   backupPreview: 'Preview backup',
   collapseSection: 'Collapse',
   expandSection: 'Expand',
+  hideOperationalIntelligence: 'Hide Operational Intelligence',
+  showOperationalIntelligence: 'Show Operational Intelligence',
   repairRetrySync: 'Retry sync',
   repairRatingKey: 'Find rating key',
   repairMakeVisible: 'Make visible',
@@ -768,17 +770,25 @@ const DashboardInsights: React.FC = () => {
   const dashboardRootRef = useRef<HTMLDivElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const layoutInputRef = useRef<HTMLInputElement>(null);
+  const [operationalIntelligenceHidden, setOperationalIntelligenceHidden] =
+    useState(
+      () =>
+        typeof window !== 'undefined' &&
+        localStorage.getItem('agregarr-dashboard-operational-hidden') === 'on'
+    );
   const { data, error, mutate } = useSWR<DashboardInsightData>(
-    '/api/v1/dashboard/stats'
+    operationalIntelligenceHidden ? null : '/api/v1/dashboard/stats'
   );
   const { data: backupList } = useSWR<BackupListData>(
-    '/api/v1/dashboard/backups'
+    operationalIntelligenceHidden ? null : '/api/v1/dashboard/backups'
   );
   const { data: syncHistory } = useSWR<SyncHistoryData>(
-    '/api/v1/dashboard/sync-history'
+    operationalIntelligenceHidden ? null : '/api/v1/dashboard/sync-history'
   );
   const { data: duplicateMergePreview } = useSWR<DuplicateMergePreviewData>(
-    '/api/v1/dashboard/duplicate-merge-preview'
+    operationalIntelligenceHidden
+      ? null
+      : '/api/v1/dashboard/duplicate-merge-preview'
   );
   const [operationQuery, setOperationQuery] = useState('');
   const [dashboardSearchQuery, setDashboardSearchQuery] = useState('');
@@ -1338,9 +1348,20 @@ const DashboardInsights: React.FC = () => {
       setRunningAction(null);
     }
   };
+  const toggleOperationalIntelligence = () => {
+    const nextHidden = !operationalIntelligenceHidden;
+
+    setOperationalIntelligenceHidden(nextHidden);
+
+    if (nextHidden) {
+      localStorage.setItem('agregarr-dashboard-operational-hidden', 'on');
+    } else {
+      localStorage.removeItem('agregarr-dashboard-operational-hidden');
+    }
+  };
 
   useEffect(() => {
-    if (!data) {
+    if (!data || operationalIntelligenceHidden) {
       return;
     }
 
@@ -1356,12 +1377,12 @@ const DashboardInsights: React.FC = () => {
     axios
       .post('/api/v1/dashboard/source-test-all')
       .catch(() => localStorage.removeItem(autoTestKey));
-  }, [data]);
+  }, [data, operationalIntelligenceHidden]);
 
   useEffect(() => {
     const root = dashboardRootRef.current;
 
-    if (!root) {
+    if (!root || operationalIntelligenceHidden) {
       return;
     }
 
@@ -1467,7 +1488,32 @@ const DashboardInsights: React.FC = () => {
       applyState(collapsed);
       applyOrder();
     });
-  }, [data, intl]);
+  }, [data, intl, operationalIntelligenceHidden]);
+
+  if (operationalIntelligenceHidden) {
+    return (
+      <div className="rounded-lg border border-gray-700 bg-stone-800 px-6 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="flex items-center text-lg font-medium text-white">
+              <SparklesIcon className="mr-2 h-5 w-5 text-orange-400" />
+              {intl.formatMessage(messages.title)}
+            </h3>
+            <p className="mt-1 text-sm text-gray-400">
+              {intl.formatMessage(messages.subtitle)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={toggleOperationalIntelligence}
+            className="rounded border border-orange-500/50 px-3 py-2 text-xs font-semibold text-orange-100 transition-colors hover:bg-orange-500/10"
+          >
+            {intl.formatMessage(messages.showOperationalIntelligence)}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -1596,6 +1642,13 @@ const DashboardInsights: React.FC = () => {
             className="rounded border border-gray-700 px-2 py-1 text-xs font-semibold text-gray-300 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {intl.formatMessage(messages.loadLayoutServer)}
+          </button>
+          <button
+            type="button"
+            onClick={toggleOperationalIntelligence}
+            className="rounded border border-red-500/50 px-2 py-1 text-xs font-semibold text-red-100 transition-colors hover:bg-red-500/10"
+          >
+            {intl.formatMessage(messages.hideOperationalIntelligence)}
           </button>
         </div>
       </div>
