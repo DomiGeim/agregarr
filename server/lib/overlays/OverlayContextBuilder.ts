@@ -9,46 +9,10 @@ import TheMovieDb from '@server/api/themoviedb';
 import TvdbAPI from '@server/api/tvdb';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
+import { getOverlayLabel, localizeOverlayStatus } from './OverlayLocalization';
 import type { OverlayRenderContext } from './OverlayTemplateRenderer';
 
 const _langDisplayNames = new Intl.DisplayNames(['en'], { type: 'language' });
-
-function isGermanLocale(): boolean {
-  return getSettings().main.locale?.toLowerCase().startsWith('de') ?? false;
-}
-
-function getOverlayLabel(key: 'comingSoon'): string {
-  if (isGermanLocale()) {
-    return {
-      comingSoon: 'BALD VERFÜGBAR',
-    }[key];
-  }
-
-  return {
-    comingSoon: 'COMING SOON',
-  }[key];
-}
-
-function localizeOverlayStatus(status: string): string {
-  const normalized = status.trim().toUpperCase();
-
-  if (!isGermanLocale()) {
-    return normalized;
-  }
-
-  const germanStatusLabels: Record<string, string> = {
-    AIRING: 'LÄUFT',
-    CANCELLED: 'ABGESETZT',
-    CANCELED: 'ABGESETZT',
-    ENDED: 'BEENDET',
-    'IN PRODUCTION': 'IN PRODUKTION',
-    PILOT: 'PILOT',
-    PLANNED: 'GEPLANT',
-    RETURNING: 'KEHRT ZURÜCK',
-  };
-
-  return germanStatusLabels[normalized] ?? normalized;
-}
 
 /**
  * Convert an ISO 639-2 language code to its English display name.

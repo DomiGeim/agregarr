@@ -11,7 +11,7 @@ const localePath = path.join(
 );
 const englishMessages = JSON.parse(fs.readFileSync(localePath, 'utf-8'));
 const germanPatterns = [
-  /\b(und|oder|nicht|keine|kein|fehlgeschlagen|sammlung|sammlungen|quelle|quellen|wartung|zurueck|pruefen|fuer|verfuegbar|fehler|anzeigen|konfigurieren)\b/i,
+  /\b(und|oder|nicht|keine|kein|fehlgeschlagen|sammlung|sammlungen|quelle|quellen|wartung|zurueck|zurück|pruefen|prüfen|fuer|für|verfuegbar|verfügbar|fehler|anzeigen|konfigurieren)\b/i,
   /[äöüÄÖÜß]/,
 ];
 const allowed = new Set([

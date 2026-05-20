@@ -15,7 +15,6 @@ const messages = defineMessages({
   selectPoster: 'Select Poster',
   uploadNewPoster: 'Upload New Poster',
   createPoster: 'Create New Poster',
-  generatePoster: 'Generate Poster',
   addFromUrl: 'Add from URL',
   enterPosterUrl: 'Enter poster URL',
   invalidUrl: 'Please enter a valid URL',
@@ -23,11 +22,9 @@ const messages = defineMessages({
   posterDownloadError: 'Failed to download poster from URL',
   noPosterAvailable: 'No posters available',
   uploadingPoster: 'Uploading...',
-  generating: 'Generating...',
   posterUploadSuccess: 'Poster uploaded successfully',
   posterDeleteSuccess: 'Poster deleted successfully',
   posterUploadError: 'Failed to upload poster',
-  posterGenerateError: 'Failed to generate poster',
   posterDeleteError: 'Failed to delete poster',
   confirmDelete: 'Are you sure you want to delete this poster?',
   posterInUse: 'Poster is Currently in Use',
@@ -84,7 +81,6 @@ const PosterSelectionPopover: React.FC<PosterSelectionPopoverProps> = ({
   const [posters, setPosters] = useState<Poster[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  // const [generating, setGenerating] = useState(false); // TODO: Re-enable when handleGeneratePoster is restored
   const [deleting, setDeleting] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [downloadingFromUrl, setDownloadingFromUrl] = useState(false);
@@ -257,47 +253,6 @@ const PosterSelectionPopover: React.FC<PosterSelectionPopoverProps> = ({
       setDownloadingFromUrl(false);
     }
   };
-
-  // TODO: Re-enable when needed - this is now handled by autoPoster option
-  // const handleGeneratePoster = async () => {
-  //   if (!collectionConfig?.name) {
-  //     addToast('Collection name is required to generate a poster', {
-  //       appearance: 'error',
-  //     });
-  //     return;
-  //   }
-
-  //   try {
-  //     setGenerating(true);
-
-  //     const response = await axios.post('/api/v1/collections/generate-poster', {
-  //       collectionName: collectionConfig.name,
-  //       collectionType: collectionConfig.type,
-  //       collectionSubtype: collectionConfig.subtype,
-  //       mediaType: collectionConfig.mediaType,
-  //       template: collectionConfig.template,
-  //       customMovieTemplate: collectionConfig.customMovieTemplate,
-  //       customTVTemplate: collectionConfig.customTVTemplate,
-  //     });
-
-  //     // Refresh poster list
-  //     await refetchPosters();
-
-  //     // Auto-select the newly generated poster
-  //     onSelect(response.data.filename);
-  //     onClose();
-  //   } catch (error) {
-  //     if (axios.isAxiosError(error) && error.response?.data?.error) {
-  //       addToast(error.response.data.error, { appearance: 'error' });
-  //     } else {
-  //       addToast(intl.formatMessage(messages.posterGenerateError), {
-  //         appearance: 'error',
-  //       });
-  //     }
-  //   } finally {
-  //     setGenerating(false);
-  //   }
-  // };
 
   const handleDeletePoster = async (
     filename: string,
@@ -513,39 +468,7 @@ const PosterSelectionPopover: React.FC<PosterSelectionPopoverProps> = ({
               </div>
             )}
 
-            {/* Action buttons */}
             <div className="space-y-2">
-              {/* Generate Poster Button - Commented out for future use
-              TODO: Re-enable when needed - this is now handled by autoPoster option
-              {collectionConfig?.name && (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center rounded bg-orange-600 px-3 py-2 text-sm text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={handleGeneratePoster}
-                  disabled={generating || uploading}
-                >
-                  {generating ? (
-                    <>
-                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
-                      {intl.formatMessage(messages.generating)}
-                    </>
-                  ) : (
-                    <>
-                      <svg
-                        className="mr-2 h-4 w-4"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                      </svg>
-                      {intl.formatMessage(messages.generatePoster)}
-                    </>
-                  )}
-                </button>
-              )}
-              */}
-
-              {/* Create New Poster Button */}
               <button
                 type="button"
                 className="flex w-full items-center justify-center rounded border border-dashed border-orange-600 px-3 py-2 text-sm text-white transition-colors hover:border-orange-500 disabled:opacity-50"

@@ -3555,6 +3555,303 @@ const getAdvancedIntelligence = async (
     collectionScores,
     tautulliMappingDebugger
   );
+  const operationText: Record<
+    string,
+    { title: { de: string; en: string }; summary: { de: string; en: string } }
+  > = {
+    'collection-diff-preview': {
+      title: {
+        de: 'Echte Collection Diff Preview',
+        en: 'Real Collection Diff Preview',
+      },
+      summary: {
+        de: 'Zeigt Collections, bei denen ein naechster Sync wahrscheinlich Unterschiede erzeugt.',
+        en: 'Shows collections where the next sync is likely to create changes.',
+      },
+    },
+    'diagnostic-export': {
+      title: {
+        de: 'Diagnosebericht Download',
+        en: 'Diagnostic Report Download',
+      },
+      summary: {
+        de: 'Fasst Version, Quellen, Health und letzte Fehler ohne Tokens zusammen.',
+        en: 'Summarizes version, sources, health, and latest errors without tokens.',
+      },
+    },
+    'source-test-center': {
+      title: {
+        de: 'Ausfuehrbares Source Test Center',
+        en: 'Runnable Source Test Center',
+      },
+      summary: {
+        de: 'Buendelt Quellenstatus, Konfiguration und Zuverlaessigkeit pro Provider.',
+        en: 'Combines source status, configuration, and reliability per provider.',
+      },
+    },
+    'clickable-actions': {
+      title: {
+        de: 'Action Center mit echten Aktionen',
+        en: 'Action Center With Real Actions',
+      },
+      summary: {
+        de: 'Verlinkt direkt zu betroffenen Bereichen wie Collections oder Quellen.',
+        en: 'Links directly to affected areas such as collections or sources.',
+      },
+    },
+    'detail-drawer': {
+      title: { de: 'Problem Details', en: 'Problem Details' },
+      summary: {
+        de: 'Warnungen bekommen Ursache, Bereich, Aktion und Ziel-Link.',
+        en: 'Warnings include cause, area, action, and target link.',
+      },
+    },
+    'problem-collections': {
+      title: { de: 'Problem Collections', en: 'Problem Collections' },
+      summary: {
+        de: 'Listet kritische Collections mit Sync-Fehlern, fehlenden Keys oder Bibliotheken.',
+        en: 'Lists critical collections with sync errors, missing keys, or missing libraries.',
+      },
+    },
+    'activity-log': {
+      title: {
+        de: 'Persistente Collection Timeline',
+        en: 'Persistent Collection Timeline',
+      },
+      summary: {
+        de: 'Nutzt Requests, Placeholder und Metadata-Updates als Timeline-Signal.',
+        en: 'Uses requests, placeholders, and metadata updates as timeline signals.',
+      },
+    },
+    'smart-notifications': {
+      title: { de: 'Source-Test Verlauf', en: 'Source Test History' },
+      summary: {
+        de: 'Speichert Tests mit Erfolgsquote, Fehlern und Latenzsignalen.',
+        en: 'Stores tests with success rate, errors, and latency signals.',
+      },
+    },
+    'pin-to-dashboard': {
+      title: { de: 'Wartungsmodus Banner', en: 'Maintenance Mode Banner' },
+      summary: {
+        de: 'Zeigt den aktiven Wartungsmodus sichtbar oben im Dashboard.',
+        en: 'Shows active maintenance mode visibly at the top of the dashboard.',
+      },
+    },
+    'maintenance-mode': {
+      title: { de: 'Wartungsmodus', en: 'Maintenance Mode' },
+      summary: {
+        de: 'Blockiert neue Dashboard-Sync-Aktionen, solange Wartungsarbeiten laufen.',
+        en: 'Blocks new dashboard sync actions while maintenance work is running.',
+      },
+    },
+    'bulk-actions': {
+      title: { de: 'Bulk-Aktionen', en: 'Bulk Actions' },
+      summary: {
+        de: 'Gruppiert Collections mit gleichem Handlungsbedarf fuer spaetere Sammelaktionen.',
+        en: 'Groups collections with the same action need for later bulk actions.',
+      },
+    },
+    'job-overview': {
+      title: { de: 'Job-Uebersicht', en: 'Job Overview' },
+      summary: {
+        de: 'Zeigt, ob automatische Collection-Syncs grundsaetzlich aktiv sind.',
+        en: 'Shows whether automatic collection syncs are generally active.',
+      },
+    },
+    'sync-calendar': {
+      title: { de: 'Sync-Kalender', en: 'Sync Calendar' },
+      summary: {
+        de: 'Nutzt letzten globalen Sync als Basis fuer eine Kalenderansicht.',
+        en: 'Uses the last global sync as the basis for a calendar view.',
+      },
+    },
+    'dependency-view': {
+      title: {
+        de: 'Collection Dependency View',
+        en: 'Collection Dependency View',
+      },
+      summary: {
+        de: 'Erkennt verlinkte und Multi-Source Collections als Abhaengigkeiten.',
+        en: 'Detects linked and multi-source collections as dependencies.',
+      },
+    },
+    'multi-source-debugger': {
+      title: { de: 'Multi-Source Debugger', en: 'Multi-Source Debugger' },
+      summary: {
+        de: 'Hebt Multi-Source Collections fuer detaillierte Quellenanalyse hervor.',
+        en: 'Highlights multi-source collections for detailed source analysis.',
+      },
+    },
+    'placeholder-detail': {
+      title: { de: 'Placeholder-Detailseite', en: 'Placeholder Detail Page' },
+      summary: {
+        de: 'Zeigt Alter, Quelle, Typ und Plex-Zuordnung der letzten Placeholder.',
+        en: 'Shows age, source, type, and Plex mapping for recent placeholders.',
+      },
+    },
+    'rating-key-repair': {
+      title: {
+        de: 'Auto-Repair fuer Rating Keys',
+        en: 'Auto-Repair for Rating Keys',
+      },
+      summary: {
+        de: 'Findet Collections ohne Plex Rating Key als Reparaturkandidaten.',
+        en: 'Finds collections without a Plex rating key as repair candidates.',
+      },
+    },
+    'empty-collection-analysis': {
+      title: {
+        de: 'Warum ist diese Collection leer?',
+        en: 'Why Is This Collection Empty?',
+      },
+      summary: {
+        de: 'Health-Gruende liefern erste Hinweise auf leere oder wertlose Collections.',
+        en: 'Health reasons provide first hints for empty or low-value collections.',
+      },
+    },
+    'duplicate-detection': {
+      title: {
+        de: 'Doppelte Collections erkennen',
+        en: 'Detect Duplicate Collections',
+      },
+      summary: {
+        de: 'Erkennt doppelte Collection-Namen als Cleanup-Kandidaten.',
+        en: 'Detects duplicate collection names as cleanup candidates.',
+      },
+    },
+    'source-watchlist': {
+      title: {
+        de: 'Watchlist fuer fehleranfaellige Quellen',
+        en: 'Watchlist for Error-Prone Sources',
+      },
+      summary: {
+        de: 'Quellen mit niedriger Reliability werden automatisch hervorgehoben.',
+        en: 'Sources with low reliability are highlighted automatically.',
+      },
+    },
+    'tautulli-quality': {
+      title: {
+        de: 'Tautulli Datenqualitaets-Check',
+        en: 'Tautulli Data Quality Check',
+      },
+      summary: {
+        de: 'Prueft, ob Tautulli Trends und Plays fuer Dashboard-Signale liefert.',
+        en: 'Checks whether Tautulli provides trends and plays for dashboard signals.',
+      },
+    },
+    'arr-profile-audit': {
+      title: {
+        de: 'Radarr/Sonarr Profil-Audit',
+        en: 'Radarr/Sonarr Profile Audit',
+      },
+      summary: {
+        de: 'Findet Collections, die Download- oder Placeholder-Automation nutzen.',
+        en: 'Finds collections that use download or placeholder automation.',
+      },
+    },
+    'root-folder-warning': {
+      title: {
+        de: 'Root-Folder und Speicherplatz-Warnungen',
+        en: 'Root Folder and Storage Warnings',
+      },
+      summary: {
+        de: 'Prueft, ob mindestens ein Radarr/Sonarr Root Folder in Settings gesetzt ist.',
+        en: 'Checks whether at least one Radarr/Sonarr root folder is configured.',
+      },
+    },
+    'api-permission-check': {
+      title: {
+        de: 'API-Key und Berechtigungspruefung',
+        en: 'API Key and Permission Check',
+      },
+      summary: {
+        de: 'Vergleicht konfigurierte Quellen mit Quellen, die Aufmerksamkeit brauchen.',
+        en: 'Compares configured sources with sources that need attention.',
+      },
+    },
+    'backup-restore-preview': {
+      title: {
+        de: 'Restore-Dry-Run mit Diff',
+        en: 'Restore Dry Run With Diff',
+      },
+      summary: {
+        de: 'Settings-Umfang ist sichtbar und kann fuer sichere Restore-Vorschauen genutzt werden.',
+        en: 'Settings scope is visible and can be used for safer restore previews.',
+      },
+    },
+    'collection-json-export': {
+      title: {
+        de: 'Import/Export einzelner Collections',
+        en: 'Import/Export Individual Collections',
+      },
+      summary: {
+        de: 'Alle Collections sind eindeutig identifizierbar und exportierbar.',
+        en: 'All collections are uniquely identifiable and exportable.',
+      },
+    },
+    'template-library': {
+      title: {
+        de: 'Collection-Vorlagenbibliothek',
+        en: 'Collection Template Library',
+      },
+      summary: {
+        de: 'Vorhandene Collection-Typen bilden die Grundlage fuer wiederverwendbare Vorlagen.',
+        en: 'Existing collection types form the basis for reusable templates.',
+      },
+    },
+    'experiment-mode': {
+      title: { de: 'Experiment Mode', en: 'Experiment Mode' },
+      summary: {
+        de: 'Dry-Run-Daten zeigen, welche Collections sich fuer Testlaeufe ohne Plex-Aenderung eignen.',
+        en: 'Dry-run data shows which collections are suitable for test runs without Plex changes.',
+      },
+    },
+    'sync-cost-estimate': {
+      title: { de: 'Sync-Kosten-Schaetzung', en: 'Sync Cost Estimate' },
+      summary: {
+        de: 'Schaetzt Aufwand aus Collection-Anzahl plus aktivem Missing-Media-Handling.',
+        en: 'Estimates effort from collection count plus active missing-media handling.',
+      },
+    },
+    'dashboard-search': {
+      title: { de: 'Dashboard-Suche', en: 'Dashboard Search' },
+      summary: {
+        de: 'Collections, Placeholder und Requests werden als Suchbasis zusammengefuehrt.',
+        en: 'Collections, placeholders, and requests are combined as a search base.',
+      },
+    },
+    'tautulli-data-quality': {
+      title: {
+        de: 'Tautulli Datenqualitaet pro Collection',
+        en: 'Tautulli Data Quality per Collection',
+      },
+      summary: {
+        de: 'Zeigt Collections ohne Rating Key oder ohne Treffer in Tautulli.',
+        en: 'Shows collections without a rating key or without a Tautulli match.',
+      },
+    },
+    'release-update-hint': {
+      title: { de: 'Release/Update Hinweis', en: 'Release/Update Hint' },
+      summary: {
+        de: 'Vergleicht die installierte Version mit dem neuesten GitHub Release.',
+        en: 'Compares the installed version with the newest GitHub release.',
+      },
+    },
+    'audit-log': {
+      title: { de: 'Audit Log', en: 'Audit Log' },
+      summary: {
+        de: 'Zeichnet Dashboard-Aktionen wie Tests, Wartung und Sync-Starts dauerhaft auf.',
+        en: 'Persistently records dashboard actions such as tests, maintenance, and sync starts.',
+      },
+    },
+    'tautulli-artwork-cache': {
+      title: { de: 'Tautulli Artwork Cache', en: 'Tautulli Artwork Cache' },
+      summary: {
+        de: 'Dashboard nutzt stabile Proxy-URLs, damit Poster wiederverwendbar geladen werden.',
+        en: 'Dashboard uses stable proxy URLs so posters can be loaded repeatedly.',
+      },
+    },
+  };
   const operationsSuite = [
     {
       id: 'auto-heal-mode',
@@ -4136,6 +4433,16 @@ const getAdvancedIntelligence = async (
   ].map(
     (item, index): DashboardOperationItem => ({
       ...item,
+      title: operationText[item.id]
+        ? isGerman
+          ? operationText[item.id].title.de
+          : operationText[item.id].title.en
+        : item.title,
+      summary: operationText[item.id]
+        ? isGerman
+          ? operationText[item.id].summary.de
+          : operationText[item.id].summary.en
+        : item.summary,
       status:
         item.status === 'attention'
           ? 'attention'
@@ -4211,12 +4518,19 @@ const getAdvancedIntelligence = async (
     collectionTimeline,
     changelog: {
       version: getAppVersion(),
-      highlights: [
-        'Action Center fuer direkte naechste Schritte',
-        'Collection Timeline aus Requests, Placeholdern und Metadata-Updates',
-        'Heat Scores und Source Reliability fuer bessere Priorisierung',
-        'Placeholder Lifecycle View und Erklaerungen fuer Dashboard-Zahlen',
-      ],
+      highlights: isGerman
+        ? [
+            'Action Center fuer direkte naechste Schritte',
+            'Collection Timeline aus Requests, Placeholdern und Metadata-Updates',
+            'Heat Scores und Source Reliability fuer bessere Priorisierung',
+            'Placeholder Lifecycle View und Erklaerungen fuer Dashboard-Zahlen',
+          ]
+        : [
+            'Action Center for direct next steps',
+            'Collection timeline from requests, placeholders, and metadata updates',
+            'Heat scores and source reliability for better prioritization',
+            'Placeholder lifecycle view and explanations for dashboard numbers',
+          ],
     },
     heatScores: heatItems,
     autoSnoozeCandidates,
@@ -4311,17 +4625,19 @@ const getAdvancedIntelligence = async (
     availableActions: [
       {
         id: 'sync-collections',
-        title: 'Collections synchronisieren',
+        title: isGerman ? 'Collections synchronisieren' : 'Sync Collections',
         danger: true,
       },
       {
         id: 'test-tautulli',
-        title: 'Tautulli testen',
+        title: isGerman ? 'Tautulli testen' : 'Test Tautulli',
         danger: false,
       },
       {
         id: 'export-diagnostics',
-        title: 'Diagnosebericht herunterladen',
+        title: isGerman
+          ? 'Diagnosebericht herunterladen'
+          : 'Download Diagnostic Report',
         danger: false,
       },
     ],
