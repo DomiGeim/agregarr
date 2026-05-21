@@ -1,3 +1,36 @@
+# 2.5.15 (2026-05-21)
+
+## Highlights
+
+### Features
+
+- Added collapsible and hideable dashboard stat tiles with browser-persisted visibility controls.
+- Added a media-server capability matrix so Plex-only features are clearly visible when Jellyfin or Emby is active.
+- Added Jellyfin/Emby connection diagnostics covering input, network reachability, authentication, response timing, and server identity.
+- Added GHCR tag checks for the installed version tag and `latest` to the status API.
+- Added a poster orphan cleanup API that can dry-run or remove unreferenced poster files.
+
+### Fixes
+
+- Made Metacritic overlay ratings more resilient by trying multiple candidate slugs before giving up.
+- Strengthened settings backup validation with schema errors and restore warnings instead of a generic failure.
+
+### Maintenance
+
+- Kept all new dashboard and settings text available in English and German.
+- Verified i18n audits, server/client typechecks, ESLint, and server build for this release.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.15
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.14...v2.5.15
+
 # 2.5.14 (2026-05-21)
 
 ## Highlights

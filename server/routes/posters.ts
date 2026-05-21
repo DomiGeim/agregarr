@@ -436,6 +436,78 @@ router.get('/saved', async (req, res, next) => {
   }
 });
 
+// POST /api/v1/posters/cleanup-orphans - Find or delete orphaned poster files
+router.post('/cleanup-orphans', async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        error: 'Authentication required',
+      });
+    }
+
+    const dryRun = req.body?.dryRun !== false;
+    const posterRepository = getRepository(SavedPoster);
+    const activePosters = await posterRepository.find({
+      where: { isActive: true },
+    });
+    const referencedFiles = new Set(
+      activePosters
+        .flatMap((poster) => [poster.filename, poster.thumbnailFilename])
+        .filter((filename): filename is string => !!filename)
+    );
+    const { getAllPosterFiles, deletePosterFile, getPosterUsage } =
+      await import('@server/lib/posterStorage');
+    const allFiles = await getAllPosterFiles();
+    const orphaned: { filename: string; reason: string }[] = [];
+    const deleted: string[] = [];
+    const skipped: { filename: string; reason: string }[] = [];
+
+    for (const filename of allFiles) {
+      if (referencedFiles.has(filename)) {
+        continue;
+      }
+
+      const usedBy = await getPosterUsage(filename);
+      if (usedBy.length > 0) {
+        skipped.push({
+          filename,
+          reason: `Still referenced by ${usedBy.length} collection(s).`,
+        });
+        continue;
+      }
+
+      orphaned.push({
+        filename,
+        reason: 'No active saved poster or collection references this file.',
+      });
+
+      if (!dryRun) {
+        await deletePosterFile(filename);
+        deleted.push(filename);
+      }
+    }
+
+    return res.status(200).json({
+      dryRun,
+      orphaned,
+      deleted,
+      skipped,
+      counts: {
+        scanned: allFiles.length,
+        orphaned: orphaned.length,
+        deleted: deleted.length,
+        skipped: skipped.length,
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to clean up orphaned posters:', error);
+    return next({
+      status: 500,
+      message: 'Failed to clean up orphaned posters',
+    });
+  }
+});
+
 // POST /api/v1/posters/saved - Create new saved poster
 router.post('/saved', async (req, res, next) => {
   try {

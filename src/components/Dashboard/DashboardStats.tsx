@@ -3,9 +3,12 @@ import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import {
   ArrowUpCircleIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CogIcon,
   ExclamationCircleIcon,
   FilmIcon,
+  EyeSlashIcon,
   PlayIcon,
   RectangleStackIcon as CollectionIcon,
   ServerStackIcon,
@@ -15,6 +18,7 @@ import {
 import type { StatusResponse } from '@server/interfaces/api/settingsInterfaces';
 import Link from 'next/link';
 import type React from 'react';
+import { useEffect, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import useSWR from 'swr';
 
@@ -53,6 +57,12 @@ const messages = defineMessages({
   updateAvailable: 'Update Available',
   updateDockerImage:
     'A newer version is available for your Docker image. Installed: {installedVersion}. Latest: {latestVersion}.',
+  collapseTile: 'Collapse tile',
+  expandTile: 'Expand tile',
+  hideTile: 'Hide tile',
+  showAllTiles: 'Show all tiles',
+  hiddenTiles: '{count} dashboard tile(s) hidden',
+  mediaServerCapabilities: 'Media Server Capabilities',
 });
 
 interface DashboardData {
@@ -76,6 +86,12 @@ interface DashboardData {
         libraryCount: number;
       };
     };
+    capabilities?: {
+      id: string;
+      label: string;
+      available: boolean;
+      note: string;
+    }[];
   };
   collections: {
     agregarr: number;
@@ -138,25 +154,63 @@ interface DashboardData {
 }
 
 const StatCard = ({
+  tileId,
   title,
   value,
   icon: Icon,
   subtitle,
+  collapsed = false,
+  onToggleCollapse,
+  onHide,
 }: {
+  tileId?: string;
   title: string;
   value: string | number;
   icon: React.ElementType;
   subtitle?: string;
+  collapsed?: boolean;
+  onToggleCollapse?: (tileId: string) => void;
+  onHide?: (tileId: string) => void;
 }) => (
   <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
     <div className="flex items-center justify-between">
       <div>
         <p className="text-sm font-medium text-gray-400">{title}</p>
-        <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
-        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+        {!collapsed && (
+          <>
+            <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
+            {subtitle && (
+              <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
+            )}
+          </>
+        )}
       </div>
-      <div className="flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center gap-2">
         <Icon className="h-8 w-8 text-orange-400" />
+        {tileId && onToggleCollapse && (
+          <button
+            type="button"
+            aria-label={collapsed ? 'Expand tile' : 'Collapse tile'}
+            className="text-gray-500 transition hover:text-gray-200"
+            onClick={() => onToggleCollapse(tileId)}
+          >
+            {collapsed ? (
+              <ChevronDownIcon className="h-5 w-5" />
+            ) : (
+              <ChevronUpIcon className="h-5 w-5" />
+            )}
+          </button>
+        )}
+        {tileId && onHide && (
+          <button
+            type="button"
+            aria-label="Hide tile"
+            className="text-gray-500 transition hover:text-gray-200"
+            onClick={() => onHide(tileId)}
+          >
+            <EyeSlashIcon className="h-5 w-5" />
+          </button>
+        )}
       </div>
     </div>
   </div>
@@ -164,12 +218,66 @@ const StatCard = ({
 
 const DashboardStats: React.FC = () => {
   const intl = useIntl();
+  const [collapsedTiles, setCollapsedTiles] = useState<string[]>([]);
+  const [hiddenTiles, setHiddenTiles] = useState<string[]>([]);
   const { data: dashboardData, error } = useSWR<DashboardData>(
     '/api/v1/dashboard/stats'
   );
   const { data: statusData } = useSWR<StatusResponse>('/api/v1/status', {
     refreshInterval: 60 * 1000,
   });
+  const collapsedStorageKey = 'agregarr-dashboard-stat-collapsed';
+  const hiddenStorageKey = 'agregarr-dashboard-stat-hidden';
+
+  useEffect(() => {
+    try {
+      setCollapsedTiles(JSON.parse(localStorage.getItem(collapsedStorageKey) || '[]'));
+      setHiddenTiles(JSON.parse(localStorage.getItem(hiddenStorageKey) || '[]'));
+    } catch {
+      setCollapsedTiles([]);
+      setHiddenTiles([]);
+    }
+  }, []);
+
+  const toggleCollapsedTile = (tileId: string) => {
+    setCollapsedTiles((current) => {
+      const next = current.includes(tileId)
+        ? current.filter((id) => id !== tileId)
+        : [...current, tileId];
+      localStorage.setItem(collapsedStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const hideTile = (tileId: string) => {
+    setHiddenTiles((current) => {
+      const next = current.includes(tileId) ? current : [...current, tileId];
+      localStorage.setItem(hiddenStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const showAllTiles = () => {
+    setHiddenTiles([]);
+    localStorage.removeItem(hiddenStorageKey);
+  };
+
+  const renderStatCard = (
+    tileId: string,
+    props: Omit<
+      React.ComponentProps<typeof StatCard>,
+      'tileId' | 'collapsed' | 'onToggleCollapse' | 'onHide'
+    >
+  ) =>
+    hiddenTiles.includes(tileId) ? null : (
+      <StatCard
+        tileId={tileId}
+        collapsed={collapsedTiles.includes(tileId)}
+        onToggleCollapse={toggleCollapsedTile}
+        onHide={hideTile}
+        {...props}
+      />
+    );
 
   if (error) {
     return (
@@ -327,48 +435,62 @@ const DashboardStats: React.FC = () => {
 
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-      <StatCard
-        title={intl.formatMessage(messages.mediaServer)}
-        value={mediaServerName}
-        icon={ServerStackIcon}
-        subtitle={`${
+      {hiddenTiles.length > 0 && (
+        <div className="rounded-lg border border-gray-700 bg-stone-800 p-4 shadow-sm sm:col-span-2 lg:col-span-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-gray-300">
+              {intl.formatMessage(messages.hiddenTiles, {
+                count: hiddenTiles.length,
+              })}
+            </p>
+            <Button buttonType="default" onClick={showAllTiles}>
+              {intl.formatMessage(messages.showAllTiles)}
+            </Button>
+          </div>
+        </div>
+      )}
+      {renderStatCard('media-server', {
+        title: intl.formatMessage(messages.mediaServer),
+        value: mediaServerName,
+        icon: ServerStackIcon,
+        subtitle: `${
           dashboardData.mediaServer?.libraryCount || 0
-        } ${intl.formatMessage(messages.libraries)} • ${intl.formatMessage(
+        } ${intl.formatMessage(messages.libraries)} / ${intl.formatMessage(
           messages.active
-        )}`}
-      />
-      <StatCard
-        title={intl.formatMessage(messages.collections)}
-        value={dashboardData.collections.agregarr}
-        icon={CollectionIcon}
-        subtitle={`${
+        )}`,
+      })}
+      {renderStatCard('collections', {
+        title: intl.formatMessage(messages.collections),
+        value: dashboardData.collections.agregarr,
+        icon: CollectionIcon,
+        subtitle: `${
           dashboardData.collections.preExisting
-        } ${intl.formatMessage(messages.preExistingCollections)}`}
-      />
-      <StatCard
-        title={intl.formatMessage(messages.collectionPlays)}
-        value={hasTautulliStats ? collectionPlays : '-'}
-        icon={PlayIcon}
-        subtitle={`${totalPlays} ${intl.formatMessage(
+        } ${intl.formatMessage(messages.preExistingCollections)}`,
+      })}
+      {renderStatCard('collection-plays', {
+        title: intl.formatMessage(messages.collectionPlays),
+        value: hasTautulliStats ? collectionPlays : '-',
+        icon: PlayIcon,
+        subtitle: `${totalPlays} ${intl.formatMessage(
           messages.totalServer
-        )} • ${intl.formatMessage(messages.thisWeek)}`}
-      />
-      <StatCard
-        title={intl.formatMessage(messages.movieCollectionPlays)}
-        value={hasTautulliStats ? movieCollectionPlays : '-'}
-        icon={FilmIcon}
-        subtitle={`${totalMoviePlays} ${intl.formatMessage(
+        )} / ${intl.formatMessage(messages.thisWeek)}`,
+      })}
+      {renderStatCard('movie-collection-plays', {
+        title: intl.formatMessage(messages.movieCollectionPlays),
+        value: hasTautulliStats ? movieCollectionPlays : '-',
+        icon: FilmIcon,
+        subtitle: `${totalMoviePlays} ${intl.formatMessage(
           messages.totalServer
-        )} • ${intl.formatMessage(messages.thisWeek)}`}
-      />
-      <StatCard
-        title={intl.formatMessage(messages.tvCollectionPlays)}
-        value={hasTautulliStats ? tvCollectionPlays : '-'}
-        icon={TvIcon}
-        subtitle={`${totalTvPlays} ${intl.formatMessage(
+        )} / ${intl.formatMessage(messages.thisWeek)}`,
+      })}
+      {renderStatCard('tv-collection-plays', {
+        title: intl.formatMessage(messages.tvCollectionPlays),
+        value: hasTautulliStats ? tvCollectionPlays : '-',
+        icon: TvIcon,
+        subtitle: `${totalTvPlays} ${intl.formatMessage(
           messages.totalServer
-        )} • ${intl.formatMessage(messages.thisWeek)}`}
-      />
+        )} / ${intl.formatMessage(messages.thisWeek)}`,
+      })}
       {statusData?.updateAvailable && (
         <div className="rounded-lg border border-orange-500/40 bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -496,6 +618,42 @@ const DashboardStats: React.FC = () => {
                     ? intl.formatMessage(messages.configured)
                     : intl.formatMessage(messages.missing)}
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {dashboardData.mediaServer?.capabilities && (
+        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-gray-400">
+              {intl.formatMessage(messages.mediaServerCapabilities)}
+            </p>
+            <span className="text-sm text-gray-500">{mediaServerName}</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {dashboardData.mediaServer.capabilities.map((capability) => (
+              <div
+                key={capability.id}
+                className="rounded-md border border-gray-700 px-3 py-2 text-sm"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-gray-200">
+                    {capability.label}
+                  </span>
+                  <span
+                    className={
+                      capability.available ? 'text-green-300' : 'text-gray-500'
+                    }
+                  >
+                    {capability.available
+                      ? intl.formatMessage(messages.configured)
+                      : 'Plex-only'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {capability.note}
+                </p>
               </div>
             ))}
           </div>

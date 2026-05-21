@@ -39,6 +39,7 @@ import {
   persistTraktTokens,
 } from '@server/utils/traktAuth';
 import archiver from 'archiver';
+import axios from 'axios';
 import parser from 'cron-parser';
 import type { Request } from 'express';
 import { Router } from 'express';
@@ -121,6 +122,50 @@ const filteredMainSettings = (
 const getTraktRedirectUri = (req?: Request) => {
   const settings = getSettings();
   return buildTraktRedirectUri(settings, req);
+};
+
+const validateSettingsBackupPayload = (backup: unknown) => {
+  const requiredKeys = ['main', 'plex', 'tautulli', 'radarr', 'sonarr'];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!backup || typeof backup !== 'object') {
+    return {
+      valid: false,
+      errors: ['Backup root must be a JSON object.'],
+      warnings,
+      missingKeys: requiredKeys,
+    };
+  }
+
+  const data = backup as Record<string, unknown>;
+  const missingKeys = requiredKeys.filter((key) => !(key in data));
+
+  if (missingKeys.length > 0) {
+    errors.push(`Missing required sections: ${missingKeys.join(', ')}`);
+  }
+  if (data.main && typeof data.main !== 'object') {
+    errors.push('main must be an object.');
+  }
+  if (data.plex && typeof data.plex !== 'object') {
+    errors.push('plex must be an object.');
+  }
+  if (data.radarr && !Array.isArray(data.radarr)) {
+    errors.push('radarr must be an array.');
+  }
+  if (data.sonarr && !Array.isArray(data.sonarr)) {
+    errors.push('sonarr must be an array.');
+  }
+  if (!('clientId' in data)) {
+    warnings.push('clientId is missing and will be regenerated if needed.');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    missingKeys,
+  };
 };
 
 settingsRoutes.get('/main', (req, res, next) => {
@@ -750,6 +795,105 @@ settingsRoutes.get('/media-server/status', (_req, res) => {
       lastGlobalSyncAt: settings.main.lastGlobalSyncAt,
       globalSyncError: settings.main.globalSyncError,
     },
+  });
+});
+
+settingsRoutes.post('/media-server/diagnostics', async (req, res) => {
+  const mediaServerType = req.body.mediaServerType as MediaServerType;
+
+  if (mediaServerType !== 'jellyfin' && mediaServerType !== 'emby') {
+    return res.status(400).json({
+      ok: false,
+      message: 'Diagnostics are currently available for Jellyfin and Emby.',
+    });
+  }
+
+  const protocol = req.body.useSsl ? 'https' : 'http';
+  const host = String(req.body.ip || '').replace(/^https?:\/\//, '');
+  const port = Number(req.body.port || 8096);
+  const baseUrl = `${protocol}://${host}:${port}`;
+  const apiKey = req.body.mediaServerApiKey || req.body.jellyfinApiKey || '';
+  const profile = {
+    ...getSettings()[mediaServerType],
+    ...req.body,
+    ip: host,
+    port,
+    mediaServerType,
+    mediaServerApiKey: apiKey,
+    jellyfinApiKey: apiKey,
+  };
+  const startedAt = Date.now();
+  const checks: {
+    id: string;
+    label: string;
+    ok: boolean;
+    message: string;
+    durationMs?: number;
+  }[] = [
+    {
+      id: 'input',
+      label: 'Input',
+      ok: !!host && !!port && !!apiKey,
+      message:
+        host && port && apiKey
+          ? 'Host, port, and API key are present.'
+          : 'Host, port, and API key are required.',
+    },
+  ];
+
+  try {
+    const healthStart = Date.now();
+    const response = await axios.get(`${baseUrl}/System/Info/Public`, {
+      timeout: 10000,
+      validateStatus: () => true,
+    });
+    checks.push({
+      id: 'network',
+      label: 'Network',
+      ok: response.status >= 200 && response.status < 500,
+      message: `HTTP ${response.status} from ${baseUrl}`,
+      durationMs: Date.now() - healthStart,
+    });
+  } catch (error) {
+    checks.push({
+      id: 'network',
+      label: 'Network',
+      ok: false,
+      message: error instanceof Error ? error.message : 'Network failed',
+    });
+  }
+
+  try {
+    const authStart = Date.now();
+    const api =
+      mediaServerType === 'emby'
+        ? new EmbyAPI(profile)
+        : new JellyfinAPI(profile);
+    const status = await api.getStatus();
+    checks.push({
+      id: 'auth',
+      label: 'Authentication',
+      ok: !!status?.MediaContainer?.machineIdentifier,
+      message: status?.MediaContainer?.friendlyName
+        ? `Connected to ${status.MediaContainer.friendlyName}`
+        : 'Server returned no machine identifier.',
+      durationMs: Date.now() - authStart,
+    });
+  } catch (error) {
+    checks.push({
+      id: 'auth',
+      label: 'Authentication',
+      ok: false,
+      message: error instanceof Error ? error.message : 'Authentication failed',
+    });
+  }
+
+  return res.status(200).json({
+    ok: checks.every((check) => check.ok),
+    mediaServerType,
+    baseUrl,
+    durationMs: Date.now() - startedAt,
+    checks,
   });
 });
 
@@ -2012,12 +2156,14 @@ settingsRoutes.post('/backup/restore', isAuthenticated(), (req, res, next) => {
     }
 
     const backup = req.body;
-    const requiredKeys = ['main', 'plex', 'tautulli', 'radarr', 'sonarr'];
+    const backupStatus = validateSettingsBackupPayload(backup);
 
-    if (!requiredKeys.every((key) => key in backup)) {
+    if (!backupStatus.valid) {
       return next({
         status: 400,
-        message: 'The selected file does not look like an Agregarr backup.',
+        message: backupStatus.errors.join(' '),
+        errors: backupStatus.errors,
+        warnings: backupStatus.warnings,
       });
     }
 
@@ -2045,7 +2191,11 @@ settingsRoutes.post('/backup/restore', isAuthenticated(), (req, res, next) => {
       safetyBackupPath,
     });
 
-    return res.status(200).json({ success: true, safetyBackupPath });
+    return res.status(200).json({
+      success: true,
+      safetyBackupPath,
+      warnings: backupStatus.warnings,
+    });
   } catch (error) {
     logger.error('Failed to restore settings backup', {
       label: 'Settings',

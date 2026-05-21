@@ -858,19 +858,26 @@ const localizeDashboardPayload = <T>(
 
 const validateSettingsBackup = (
   backup: unknown
-): { valid: boolean; missingKeys: string[]; collectionCount: number } => {
+): {
+  valid: boolean;
+  missingKeys: string[];
+  schemaWarnings: string[];
+  collectionCount: number;
+} => {
   const requiredKeys = ['main', 'plex', 'tautulli', 'radarr', 'sonarr'];
 
   if (!backup || typeof backup !== 'object') {
     return {
       valid: false,
       missingKeys: requiredKeys,
+      schemaWarnings: ['Backup root must be a JSON object.'],
       collectionCount: 0,
     };
   }
 
   const data = backup as Record<string, unknown>;
   const missingKeys = requiredKeys.filter((key) => !(key in data));
+  const schemaWarnings: string[] = [];
   const plex = data.plex as
     | {
         collectionConfigs?: unknown[];
@@ -878,13 +885,89 @@ const validateSettingsBackup = (
       }
     | undefined;
 
+  if (data.main && typeof data.main !== 'object') {
+    schemaWarnings.push('main must be an object.');
+  }
+  if (data.plex && typeof data.plex !== 'object') {
+    schemaWarnings.push('plex must be an object.');
+  }
+  if (plex?.collectionConfigs && !Array.isArray(plex.collectionConfigs)) {
+    schemaWarnings.push('plex.collectionConfigs must be an array.');
+  }
+  if (
+    plex?.preExistingCollectionConfigs &&
+    !Array.isArray(plex.preExistingCollectionConfigs)
+  ) {
+    schemaWarnings.push('plex.preExistingCollectionConfigs must be an array.');
+  }
+  if (data.radarr && !Array.isArray(data.radarr)) {
+    schemaWarnings.push('radarr must be an array.');
+  }
+  if (data.sonarr && !Array.isArray(data.sonarr)) {
+    schemaWarnings.push('sonarr must be an array.');
+  }
+
   return {
-    valid: missingKeys.length === 0,
+    valid: missingKeys.length === 0 && schemaWarnings.length === 0,
     missingKeys,
+    schemaWarnings,
     collectionCount:
       (plex?.collectionConfigs?.length || 0) +
       (plex?.preExistingCollectionConfigs?.length || 0),
   };
+};
+
+const getMediaServerCapabilities = (
+  mediaServerType: 'plex' | 'jellyfin' | 'emby'
+) => {
+  const plexOnly = mediaServerType === 'plex';
+
+  return [
+    {
+      id: 'collection-sync',
+      label: 'Collection sync',
+      available: true,
+      note: 'Supported by Plex, Jellyfin, and Emby profiles.',
+    },
+    {
+      id: 'library-sync',
+      label: 'Library discovery',
+      available: true,
+      note: 'Uses the active media server profile.',
+    },
+    {
+      id: 'tautulli-stats',
+      label: 'Tautulli play statistics',
+      available: plexOnly,
+      note: plexOnly
+        ? 'Available for Plex through Tautulli.'
+        : 'Tautulli only tracks Plex playback statistics.',
+    },
+    {
+      id: 'poster-overlays',
+      label: 'Poster overlays',
+      available: plexOnly,
+      note: plexOnly
+        ? 'Overlay jobs can apply posters directly to Plex.'
+        : 'Overlay jobs are skipped because direct poster application is Plex-only.',
+    },
+    {
+      id: 'plex-hubs',
+      label: 'Home and Recommended hubs',
+      available: plexOnly,
+      note: plexOnly
+        ? 'Plex hub visibility and ordering is available.'
+        : 'Jellyfin and Emby do not expose Plex hub controls.',
+    },
+    {
+      id: 'watchlist-sync',
+      label: 'Plex watchlist sync',
+      available: plexOnly,
+      note: plexOnly
+        ? 'Plex watchlist sync can use Plex users.'
+        : 'Watchlist sync depends on Plex account/watchlist APIs.',
+    },
+  ];
 };
 
 const buildSettingsRestoreDiff = (
@@ -1733,6 +1816,11 @@ const getGhcrImageStatus = async (version: string) => {
     ready: results.every((result) => result.available),
     checkedAt: new Date().toISOString(),
   };
+};
+
+const getGhcrTagStatus = async (version: string) => {
+  const normalizedVersion = version.replace(/^v/, '');
+  return getGhcrImageStatus(normalizedVersion);
 };
 
 const readDashboardLayout = async () => {
@@ -4937,6 +5025,9 @@ dashboardRoutes.get('/stats', isAuthenticated(), async (req, res) => {
         activeType: settings.plex.mediaServerType || 'plex',
         name: settings.plex.name,
         libraryCount: settings.plex.libraries?.length || 0,
+        capabilities: getMediaServerCapabilities(
+          settings.plex.mediaServerType || 'plex'
+        ),
         lastGlobalSyncAt: settings.main.lastGlobalSyncAt,
         globalSyncError: settings.main.globalSyncError,
         profiles: {
@@ -5991,6 +6082,10 @@ dashboardRoutes.get(
 
 dashboardRoutes.get('/ghcr-status', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(await getGhcrImageStatus(getAppVersion()));
+});
+
+dashboardRoutes.get('/ghcr-status/:version', isAuthenticated(), async (req, res) => {
+  return res.status(200).json(await getGhcrTagStatus(req.params.version));
 });
 
 dashboardRoutes.get(
