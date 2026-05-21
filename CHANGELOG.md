@@ -1,3 +1,41 @@
+# 2.5.17 (2026-05-22)
+
+## Highlights
+
+### Dashboard
+
+- Made the larger dashboard sections collapsible with browser-persisted state: Collection Health, Source Status, Media Server Capabilities, Operational Intelligence, Collection Statistics, and Tautulli Recently Added.
+- Added a dashboard compact mode for denser day-to-day operation screens.
+- Added a Backup Health stat tile so the latest backup status is visible without opening Operational Intelligence.
+- Added source re-check controls and a translation audit action directly from the dashboard.
+- Added quick recovery actions to Tautulli Recently Added for Tautulli testing, source settings, and dashboard cache clearing.
+
+### Tautulli
+
+- Split Tautulli Recently Added into Movies, TV Shows, Seasons, and Episodes tabs.
+- Improved Tautulli recently-added image fallback handling for season, episode, and art thumbnails.
+- Fixed the Tautulli Recently Added modal so it keeps the selected media type when opening "View All".
+
+### Localization
+
+- Added English and German text for the new dashboard collapse, compact mode, backup, translation audit, and Tautulli controls.
+- Fixed additional English/German GUI mismatches, including the poster default-template toggle and media-server feature wording.
+
+### Maintenance
+
+- Verified ESLint, server/client typechecks, i18n duplicate checks, English locale language audit, locale JSON parsing, and full production build for this release.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.17
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.16...v2.5.17
+
 # 2.5.16 (2026-05-21)
 
 ## Highlights
