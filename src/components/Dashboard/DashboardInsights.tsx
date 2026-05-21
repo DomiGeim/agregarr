@@ -5,6 +5,8 @@ import {
   BeakerIcon,
   BoltIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ClockIcon,
   ExclamationTriangleIcon,
   LightBulbIcon,
@@ -99,6 +101,8 @@ const messages = defineMessages({
   expandSection: 'Expand',
   hideOperationalIntelligence: 'Hide Operational Intelligence',
   showOperationalIntelligence: 'Show Operational Intelligence',
+  collapseTile: 'Collapse tile',
+  expandTile: 'Expand tile',
   repairRetrySync: 'Retry sync',
   repairRatingKey: 'Find rating key',
   repairMakeVisible: 'Make visible',
@@ -812,17 +816,31 @@ const DashboardInsights: React.FC = () => {
         typeof window !== 'undefined' &&
         localStorage.getItem('agregarr-dashboard-operational-hidden') === 'on'
     );
+  const [
+    operationalIntelligenceCollapsed,
+    setOperationalIntelligenceCollapsed,
+  ] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      localStorage.getItem('agregarr-dashboard-operational-collapsed') === 'on'
+  );
   const { data, error, mutate } = useSWR<DashboardInsightData>(
-    operationalIntelligenceHidden ? null : '/api/v1/dashboard/stats'
+    operationalIntelligenceHidden || operationalIntelligenceCollapsed
+      ? null
+      : '/api/v1/dashboard/stats'
   );
   const { data: backupList } = useSWR<BackupListData>(
-    operationalIntelligenceHidden ? null : '/api/v1/dashboard/backups'
+    operationalIntelligenceHidden || operationalIntelligenceCollapsed
+      ? null
+      : '/api/v1/dashboard/backups'
   );
   const { data: syncHistory } = useSWR<SyncHistoryData>(
-    operationalIntelligenceHidden ? null : '/api/v1/dashboard/sync-history'
+    operationalIntelligenceHidden || operationalIntelligenceCollapsed
+      ? null
+      : '/api/v1/dashboard/sync-history'
   );
   const { data: duplicateMergePreview } = useSWR<DuplicateMergePreviewData>(
-    operationalIntelligenceHidden
+    operationalIntelligenceHidden || operationalIntelligenceCollapsed
       ? null
       : '/api/v1/dashboard/duplicate-merge-preview'
   );
@@ -1459,8 +1477,26 @@ const DashboardInsights: React.FC = () => {
     }
   };
 
+  const toggleOperationalIntelligenceCollapsed = () => {
+    setOperationalIntelligenceCollapsed((current) => {
+      const next = !current;
+
+      if (next) {
+        localStorage.setItem('agregarr-dashboard-operational-collapsed', 'on');
+      } else {
+        localStorage.removeItem('agregarr-dashboard-operational-collapsed');
+      }
+
+      return next;
+    });
+  };
+
   useEffect(() => {
-    if (!data || operationalIntelligenceHidden) {
+    if (
+      !data ||
+      operationalIntelligenceHidden ||
+      operationalIntelligenceCollapsed
+    ) {
       return;
     }
 
@@ -1476,12 +1512,16 @@ const DashboardInsights: React.FC = () => {
     axios
       .post('/api/v1/dashboard/source-test-all')
       .catch(() => localStorage.removeItem(autoTestKey));
-  }, [data, operationalIntelligenceHidden]);
+  }, [data, operationalIntelligenceHidden, operationalIntelligenceCollapsed]);
 
   useEffect(() => {
     const root = dashboardRootRef.current;
 
-    if (!root || operationalIntelligenceHidden) {
+    if (
+      !root ||
+      operationalIntelligenceHidden ||
+      operationalIntelligenceCollapsed
+    ) {
       return;
     }
 
@@ -1587,7 +1627,12 @@ const DashboardInsights: React.FC = () => {
       applyState(collapsed);
       applyOrder();
     });
-  }, [data, intl, operationalIntelligenceHidden]);
+  }, [
+    data,
+    intl,
+    operationalIntelligenceHidden,
+    operationalIntelligenceCollapsed,
+  ]);
 
   if (operationalIntelligenceHidden) {
     return (
@@ -1608,6 +1653,32 @@ const DashboardInsights: React.FC = () => {
             className="rounded border border-orange-500/50 px-3 py-2 text-xs font-semibold text-orange-100 transition-colors hover:bg-orange-500/10"
           >
             {intl.formatMessage(messages.showOperationalIntelligence)}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (operationalIntelligenceCollapsed) {
+    return (
+      <div className="rounded-lg border border-gray-700 bg-stone-800 px-6 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="flex items-center text-lg font-medium text-white">
+              <SparklesIcon className="mr-2 h-5 w-5 text-orange-400" />
+              {intl.formatMessage(messages.title)}
+            </h3>
+            <p className="mt-1 text-sm text-gray-400">
+              {intl.formatMessage(messages.subtitle)}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label={intl.formatMessage(messages.expandTile)}
+            className="text-gray-500 transition hover:text-gray-200"
+            onClick={toggleOperationalIntelligenceCollapsed}
+          >
+            <ChevronDownIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -1648,13 +1719,25 @@ const DashboardInsights: React.FC = () => {
   return (
     <div ref={dashboardRootRef} className="rounded-lg bg-stone-800 shadow-sm">
       <div className="border-b border-gray-700 px-6 py-4">
-        <h3 className="flex items-center text-lg font-medium text-white">
-          <SparklesIcon className="mr-2 h-5 w-5 text-orange-400" />
-          {intl.formatMessage(messages.title)}
-        </h3>
-        <p className="mt-1 text-sm text-gray-400">
-          {intl.formatMessage(messages.subtitle)}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="flex items-center text-lg font-medium text-white">
+              <SparklesIcon className="mr-2 h-5 w-5 text-orange-400" />
+              {intl.formatMessage(messages.title)}
+            </h3>
+            <p className="mt-1 text-sm text-gray-400">
+              {intl.formatMessage(messages.subtitle)}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label={intl.formatMessage(messages.collapseTile)}
+            className="text-gray-500 transition hover:text-gray-200"
+            onClick={toggleOperationalIntelligenceCollapsed}
+          >
+            <ChevronUpIcon className="h-5 w-5" />
+          </button>
+        </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"

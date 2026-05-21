@@ -39,12 +39,38 @@ let latestReleaseCache:
   | undefined;
 
 type HealthSeverity = 'error' | 'warning' | 'info';
+type TautulliDashboardMediaType = 'movie' | 'tv' | 'season' | 'episode';
 
 interface HealthIssue {
   severity: HealthSeverity;
   area: string;
   message: string;
 }
+
+const getRequestedTautulliMediaType = (
+  value: unknown
+): TautulliDashboardMediaType => {
+  if (value === 'tv' || value === 'season' || value === 'episode') {
+    return value;
+  }
+
+  return 'movie';
+};
+
+const matchesRequestedTautulliMediaType = (
+  requestedMediaType: TautulliDashboardMediaType,
+  tautulliMediaType?: string
+): boolean => {
+  if (requestedMediaType === 'movie') {
+    return tautulliMediaType === 'movie';
+  }
+
+  if (requestedMediaType === 'tv') {
+    return tautulliMediaType === 'show';
+  }
+
+  return tautulliMediaType === requestedMediaType;
+};
 
 interface CollectionHealthScore {
   id: string;
@@ -7006,6 +7032,24 @@ dashboardRoutes.post(
       return res.status(200).json(result);
     }
 
+    if (actionId === 'clear-dashboard-cache') {
+      dashboardCache.clear();
+
+      await appendDashboardEvent({
+        type: 'action',
+        title: 'Dashboard cache cleared',
+        message: 'Dashboard data will be freshly loaded on the next request.',
+        metadata: {
+          actionId,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Dashboard cache cleared',
+      });
+    }
+
     if (actionId === 'export-diagnostics') {
       return res.status(200).json({
         success: true,
@@ -7084,6 +7128,81 @@ dashboardRoutes.get('/maintenance', isAuthenticated(), (_req, res) => {
   });
 });
 
+dashboardRoutes.get('/i18n-audit', isAuthenticated(), async (_req, res) => {
+  const issues: {
+    locale: string;
+    key: string;
+    value: string;
+    reason: string;
+  }[] = [];
+
+  const collectStrings = (
+    value: unknown,
+    prefix = ''
+  ): { key: string; value: string }[] => {
+    if (typeof value === 'string') {
+      return [{ key: prefix, value }];
+    }
+
+    if (!value || typeof value !== 'object') {
+      return [];
+    }
+
+    return Object.entries(value as Record<string, unknown>).flatMap(
+      ([key, child]) => collectStrings(child, prefix ? `${prefix}.${key}` : key)
+    );
+  };
+
+  const localeFiles = [
+    {
+      locale: 'en',
+      path: path.join(process.cwd(), 'src/i18n/locale/en.json'),
+      suspicious:
+        /\b(Sammlung|Sammlungen|Quelle|Quellen|Konfiguriert|Fehlt|Fehler|Anzeigen|Ausblenden|Zuletzt|Medienserver-Funktionen|Kürzlich|Kuerzlich)\b/i,
+      reason: 'German text found in English locale',
+    },
+    {
+      locale: 'de',
+      path: path.join(process.cwd(), 'src/i18n/locale/de.json'),
+      suspicious:
+        /\b(Collection Health|Source Status|Media Server Capabilities|Recently Added|Operational Intelligence|Collection Statistics|Failed to|Configure Tautulli)\b/i,
+      reason: 'English text found in German locale',
+    },
+  ];
+
+  for (const localeFile of localeFiles) {
+    try {
+      const payload = JSON.parse(await fs.readFile(localeFile.path, 'utf-8'));
+
+      collectStrings(payload).forEach((entry) => {
+        if (localeFile.suspicious.test(entry.value)) {
+          issues.push({
+            locale: localeFile.locale,
+            key: entry.key,
+            value: entry.value,
+            reason: localeFile.reason,
+          });
+        }
+      });
+    } catch (error) {
+      issues.push({
+        locale: localeFile.locale,
+        key: 'locale-file',
+        value: localeFile.path,
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'Locale file could not parse',
+      });
+    }
+  }
+
+  return res.status(200).json({
+    checkedAt: new Date().toISOString(),
+    issues,
+  });
+});
+
 dashboardRoutes.post('/maintenance', isAuthenticated(), async (req, res) => {
   const settings = getSettings();
   const enabled = !!req.body?.enabled;
@@ -7117,8 +7236,11 @@ dashboardRoutes.get(
       const settings = getSettings();
       const limit = parseInt(req.query.limit as string) || 10;
       const offset = parseInt(req.query.offset as string) || 0;
-      const requestedMediaType = req.query.mediaType === 'tv' ? 'tv' : 'movie';
-      const tautulliMediaType = requestedMediaType === 'tv' ? 'show' : 'movie';
+      const requestedMediaType = getRequestedTautulliMediaType(
+        req.query.mediaType
+      );
+      const tautulliMediaType =
+        requestedMediaType === 'movie' ? 'movie' : 'show';
 
       if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
         return res.status(200).json({
@@ -7140,11 +7262,7 @@ dashboardRoutes.get(
         )
       )
         .filter((item) =>
-          requestedMediaType === 'movie'
-            ? item.media_type === 'movie'
-            : item.media_type === 'show' ||
-              item.media_type === 'season' ||
-              item.media_type === 'episode'
+          matchesRequestedTautulliMediaType(requestedMediaType, item.media_type)
         )
         .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0));
       const items = allItems.slice(offset, offset + limit);
@@ -7156,10 +7274,13 @@ dashboardRoutes.get(
           : new Date().toISOString();
         const imagePath =
           item.media_type === 'episode'
-            ? item.grandparent_thumb || item.parent_thumb || item.thumb
+            ? item.grandparent_thumb ||
+              item.parent_thumb ||
+              item.thumb ||
+              item.art
             : item.media_type === 'season'
-            ? item.parent_thumb || item.thumb
-            : item.thumb;
+            ? item.parent_thumb || item.thumb || item.art
+            : item.thumb || item.art;
 
         return {
           id: Number(item.rating_key) || index,

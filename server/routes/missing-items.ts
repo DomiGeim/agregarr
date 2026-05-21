@@ -23,6 +23,31 @@ const toIsoDate = (value?: number | string): string => {
     : parsedDate.toISOString();
 };
 
+type TautulliDashboardMediaType = 'movie' | 'tv' | 'season' | 'episode';
+
+const getRequestedMediaType = (value: unknown): TautulliDashboardMediaType => {
+  if (value === 'tv' || value === 'season' || value === 'episode') {
+    return value;
+  }
+
+  return 'movie';
+};
+
+const matchesRequestedMediaType = (
+  requestedMediaType: TautulliDashboardMediaType,
+  tautulliMediaType?: string
+): boolean => {
+  if (requestedMediaType === 'movie') {
+    return tautulliMediaType === 'movie';
+  }
+
+  if (requestedMediaType === 'tv') {
+    return tautulliMediaType === 'show';
+  }
+
+  return tautulliMediaType === requestedMediaType;
+};
+
 /**
  * @api {get} /api/v1/missing-items/tautulli-recently-added Get Tautulli recently added items
  * @apiName GetTautulliRecentlyAdded
@@ -34,8 +59,8 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
     const settings = getSettings();
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = parseInt(req.query.offset as string) || 0;
-    const mediaType = req.query.mediaType === 'tv' ? 'tv' : 'movie';
-    const tautulliMediaType = mediaType === 'tv' ? 'show' : 'movie';
+    const mediaType = getRequestedMediaType(req.query.mediaType);
+    const tautulliMediaType = mediaType === 'movie' ? 'movie' : 'show';
 
     if (!settings.tautulli.hostname || !settings.tautulli.apiKey) {
       return res.status(200).json({
@@ -56,13 +81,7 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
         tautulliMediaType
       )
     )
-      .filter((item) =>
-        mediaType === 'movie'
-          ? item.media_type === 'movie'
-          : item.media_type === 'show' ||
-            item.media_type === 'season' ||
-            item.media_type === 'episode'
-      )
+      .filter((item) => matchesRequestedMediaType(mediaType, item.media_type))
       .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0));
     const recentlyAdded = allItems.slice(offset, offset + limit);
 

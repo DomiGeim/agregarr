@@ -16,6 +16,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import type { StatusResponse } from '@server/interfaces/api/settingsInterfaces';
+import axios from 'axios';
 import Link from 'next/link';
 import type React from 'react';
 import { useEffect, useState } from 'react';
@@ -62,6 +63,16 @@ const messages = defineMessages({
   hideTile: 'Hide tile',
   showAllTiles: 'Show all tiles',
   hiddenTiles: '{count} dashboard tile(s) hidden',
+  backupHealth: 'Backup Health',
+  backupCount: '{count} backup(s)',
+  noBackups: 'No backups yet',
+  recheck: 'Re-check',
+  checking: 'Checking...',
+  lastChecked: 'Last checked: {time}',
+  translationAudit: 'Translation audit',
+  runTranslationAudit: 'Check translations',
+  translationAuditOk: 'No language leaks found',
+  translationAuditIssues: '{count} language issue(s)',
   mediaServerCapabilities: 'Media Server Capabilities',
   plexOnly: 'Plex-only',
   capabilityCollectionSync: 'Collection sync',
@@ -176,6 +187,28 @@ interface DashboardData {
   timestamp: string;
 }
 
+interface BackupHealth {
+  backupCount: number;
+  latestBackup?: {
+    filename: string;
+    createdAt: string;
+    sizeBytes: number;
+  };
+  restorePreview?: {
+    valid: boolean;
+  };
+}
+
+interface TranslationAuditResponse {
+  checkedAt: string;
+  issues: {
+    locale: string;
+    key: string;
+    value: string;
+    reason: string;
+  }[];
+}
+
 const StatCard = ({
   tileId,
   title,
@@ -243,14 +276,25 @@ const DashboardStats: React.FC = () => {
   const intl = useIntl();
   const [collapsedTiles, setCollapsedTiles] = useState<string[]>([]);
   const [hiddenTiles, setHiddenTiles] = useState<string[]>([]);
-  const { data: dashboardData, error } = useSWR<DashboardData>(
-    '/api/v1/dashboard/stats'
-  );
+  const [collapsedSections, setCollapsedSections] = useState<string[]>([]);
+  const [isCheckingSources, setIsCheckingSources] = useState(false);
+  const [isCheckingTranslations, setIsCheckingTranslations] = useState(false);
+  const [translationAudit, setTranslationAudit] =
+    useState<TranslationAuditResponse | null>(null);
+  const {
+    data: dashboardData,
+    error,
+    mutate,
+  } = useSWR<DashboardData>('/api/v1/dashboard/stats');
   const { data: statusData } = useSWR<StatusResponse>('/api/v1/status', {
     refreshInterval: 60 * 1000,
   });
+  const { data: backupHealth } = useSWR<BackupHealth>(
+    '/api/v1/dashboard/backup-health'
+  );
   const collapsedStorageKey = 'agregarr-dashboard-stat-collapsed';
   const hiddenStorageKey = 'agregarr-dashboard-stat-hidden';
+  const collapsedSectionStorageKey = 'agregarr-dashboard-section-collapsed';
 
   useEffect(() => {
     try {
@@ -260,9 +304,13 @@ const DashboardStats: React.FC = () => {
       setHiddenTiles(
         JSON.parse(localStorage.getItem(hiddenStorageKey) || '[]')
       );
+      setCollapsedSections(
+        JSON.parse(localStorage.getItem(collapsedSectionStorageKey) || '[]')
+      );
     } catch {
       setCollapsedTiles([]);
       setHiddenTiles([]);
+      setCollapsedSections([]);
     }
   }, []);
 
@@ -287,6 +335,59 @@ const DashboardStats: React.FC = () => {
   const showAllTiles = () => {
     setHiddenTiles([]);
     localStorage.removeItem(hiddenStorageKey);
+  };
+
+  const toggleCollapsedSection = (sectionId: string) => {
+    setCollapsedSections((current) => {
+      const next = current.includes(sectionId)
+        ? current.filter((id) => id !== sectionId)
+        : [...current, sectionId];
+      localStorage.setItem(collapsedSectionStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const runSourceChecks = async () => {
+    setIsCheckingSources(true);
+    try {
+      await axios.post('/api/v1/dashboard/source-test-all');
+      await mutate();
+    } finally {
+      setIsCheckingSources(false);
+    }
+  };
+
+  const runTranslationAudit = async () => {
+    setIsCheckingTranslations(true);
+    try {
+      const response = await axios.get<TranslationAuditResponse>(
+        '/api/v1/dashboard/i18n-audit'
+      );
+      setTranslationAudit(response.data);
+    } finally {
+      setIsCheckingTranslations(false);
+    }
+  };
+
+  const renderSectionToggle = (sectionId: string) => {
+    const collapsed = collapsedSections.includes(sectionId);
+
+    return (
+      <button
+        type="button"
+        aria-label={intl.formatMessage(
+          collapsed ? messages.expandTile : messages.collapseTile
+        )}
+        className="text-gray-500 transition hover:text-gray-200"
+        onClick={() => toggleCollapsedSection(sectionId)}
+      >
+        {collapsed ? (
+          <ChevronDownIcon className="h-5 w-5" />
+        ) : (
+          <ChevronUpIcon className="h-5 w-5" />
+        )}
+      </button>
+    );
   };
 
   const renderStatCard = (
@@ -552,6 +653,18 @@ const DashboardStats: React.FC = () => {
           dashboardData.collections.preExisting
         } ${intl.formatMessage(messages.preExistingCollections)}`,
       })}
+      {renderStatCard('backup-health', {
+        title: intl.formatMessage(messages.backupHealth),
+        value: backupHealth?.latestBackup
+          ? new Date(backupHealth.latestBackup.createdAt).toLocaleDateString()
+          : '-',
+        icon: CheckCircleIcon,
+        subtitle: backupHealth
+          ? intl.formatMessage(messages.backupCount, {
+              count: backupHealth.backupCount,
+            })
+          : intl.formatMessage(messages.noBackups),
+      })}
       {renderStatCard('collection-plays', {
         title: intl.formatMessage(messages.collectionPlays),
         value: hasTautulliStats ? collectionPlays : '-',
@@ -633,38 +746,42 @@ const DashboardStats: React.FC = () => {
                     })}
               </p>
             </div>
-            {healthIssueCount > 0 && (
-              <div className="text-sm text-gray-400">
-                {dashboardData.health.totals.errors}{' '}
-                {intl.formatMessage(messages.errors)} /{' '}
-                {dashboardData.health.totals.warnings}{' '}
-                {intl.formatMessage(messages.warnings)}
+            <div className="flex items-center gap-3">
+              {healthIssueCount > 0 && (
+                <div className="text-sm text-gray-400">
+                  {dashboardData.health.totals.errors}{' '}
+                  {intl.formatMessage(messages.errors)} /{' '}
+                  {dashboardData.health.totals.warnings}{' '}
+                  {intl.formatMessage(messages.warnings)}
+                </div>
+              )}
+              {renderSectionToggle('collection-health')}
+            </div>
+          </div>
+          {!collapsedSections.includes('collection-health') &&
+            dashboardData.health.issues.length > 0 && (
+              <div className="space-y-2">
+                {dashboardData.health.issues.slice(0, 5).map((issue, index) => (
+                  <div
+                    key={`${issue.area}-${index}`}
+                    className="rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300"
+                  >
+                    <span
+                      className={
+                        issue.severity === 'error'
+                          ? 'font-medium text-red-300'
+                          : issue.severity === 'warning'
+                          ? 'font-medium text-orange-300'
+                          : 'font-medium text-gray-400'
+                      }
+                    >
+                      {issue.area}
+                    </span>
+                    <span className="ml-2">{issue.message}</span>
+                  </div>
+                ))}
               </div>
             )}
-          </div>
-          {dashboardData.health.issues.length > 0 && (
-            <div className="space-y-2">
-              {dashboardData.health.issues.slice(0, 5).map((issue, index) => (
-                <div
-                  key={`${issue.area}-${index}`}
-                  className="rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-300"
-                >
-                  <span
-                    className={
-                      issue.severity === 'error'
-                        ? 'font-medium text-red-300'
-                        : issue.severity === 'warning'
-                        ? 'font-medium text-orange-300'
-                        : 'font-medium text-gray-400'
-                    }
-                  >
-                    {issue.area}
-                  </span>
-                  <span className="ml-2">{issue.message}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
       {dashboardData.sourceStatus && (
@@ -681,31 +798,53 @@ const DashboardStats: React.FC = () => {
                 })}
               </p>
             </div>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {dashboardData.sourceStatus.sources.map((source) => (
-              <div
-                key={source.id}
-                className="flex items-center justify-between rounded-md border border-gray-700 px-3 py-2 text-sm"
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-gray-500">
+                {intl.formatMessage(messages.lastChecked, {
+                  time: new Date(dashboardData.timestamp).toLocaleTimeString(),
+                })}
+              </p>
+              <Button
+                buttonSize="sm"
+                buttonType="ghost"
+                onClick={runSourceChecks}
+                disabled={isCheckingSources}
               >
-                <span className="font-medium text-gray-200">{source.name}</span>
-                <span
-                  className={`flex items-center ${
-                    source.configured ? 'text-green-300' : 'text-gray-500'
-                  }`}
-                >
-                  {source.configured ? (
-                    <CheckCircleIcon className="mr-1 h-4 w-4" />
-                  ) : (
-                    <XCircleIcon className="mr-1 h-4 w-4" />
-                  )}
-                  {source.configured
-                    ? intl.formatMessage(messages.configured)
-                    : intl.formatMessage(messages.missing)}
-                </span>
-              </div>
-            ))}
+                {isCheckingSources
+                  ? intl.formatMessage(messages.checking)
+                  : intl.formatMessage(messages.recheck)}
+              </Button>
+              {renderSectionToggle('source-status')}
+            </div>
           </div>
+          {!collapsedSections.includes('source-status') && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {dashboardData.sourceStatus.sources.map((source) => (
+                <div
+                  key={source.id}
+                  className="flex items-center justify-between rounded-md border border-gray-700 px-3 py-2 text-sm"
+                >
+                  <span className="font-medium text-gray-200">
+                    {source.name}
+                  </span>
+                  <span
+                    className={`flex items-center ${
+                      source.configured ? 'text-green-300' : 'text-gray-500'
+                    }`}
+                  >
+                    {source.configured ? (
+                      <CheckCircleIcon className="mr-1 h-4 w-4" />
+                    ) : (
+                      <XCircleIcon className="mr-1 h-4 w-4" />
+                    )}
+                    {source.configured
+                      ? intl.formatMessage(messages.configured)
+                      : intl.formatMessage(messages.missing)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {dashboardData.mediaServer?.capabilities && (
@@ -714,40 +853,64 @@ const DashboardStats: React.FC = () => {
             <p className="text-sm font-medium text-gray-400">
               {intl.formatMessage(messages.mediaServerCapabilities)}
             </p>
-            <span className="text-sm text-gray-500">{mediaServerName}</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm text-gray-500">{mediaServerName}</span>
+              {translationAudit && (
+                <span className="text-xs text-gray-400">
+                  {translationAudit.issues.length === 0
+                    ? intl.formatMessage(messages.translationAuditOk)
+                    : intl.formatMessage(messages.translationAuditIssues, {
+                        count: translationAudit.issues.length,
+                      })}
+                </span>
+              )}
+              <Button
+                buttonSize="sm"
+                buttonType="ghost"
+                onClick={runTranslationAudit}
+                disabled={isCheckingTranslations}
+              >
+                {isCheckingTranslations
+                  ? intl.formatMessage(messages.checking)
+                  : intl.formatMessage(messages.runTranslationAudit)}
+              </Button>
+              {renderSectionToggle('media-server-capabilities')}
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            {dashboardData.mediaServer.capabilities.map((capability) => {
-              const capabilityText = getCapabilityText(capability);
+          {!collapsedSections.includes('media-server-capabilities') && (
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {dashboardData.mediaServer.capabilities.map((capability) => {
+                const capabilityText = getCapabilityText(capability);
 
-              return (
-                <div
-                  key={capability.id}
-                  className="rounded-md border border-gray-700 px-3 py-2 text-sm"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-medium text-gray-200">
-                      {capabilityText.label}
-                    </span>
-                    <span
-                      className={
-                        capability.available
-                          ? 'text-green-300'
-                          : 'text-gray-500'
-                      }
-                    >
-                      {capability.available
-                        ? intl.formatMessage(messages.configured)
-                        : intl.formatMessage(messages.plexOnly)}
-                    </span>
+                return (
+                  <div
+                    key={capability.id}
+                    className="rounded-md border border-gray-700 px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium text-gray-200">
+                        {capabilityText.label}
+                      </span>
+                      <span
+                        className={
+                          capability.available
+                            ? 'text-green-300'
+                            : 'text-gray-500'
+                        }
+                      >
+                        {capability.available
+                          ? intl.formatMessage(messages.configured)
+                          : intl.formatMessage(messages.plexOnly)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {capabilityText.note}
+                    </p>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {capabilityText.note}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

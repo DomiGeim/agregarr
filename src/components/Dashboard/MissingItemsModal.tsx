@@ -31,6 +31,8 @@ const messages = defineMessages({
   allMediaTypes: 'All Media Types',
   movies: 'Movies',
   tvShows: 'TV Shows',
+  seasons: 'Seasons',
+  episodes: 'Episodes',
   allStatuses: 'All Statuses',
   pending: 'Pending',
   approved: 'Approved',
@@ -68,7 +70,7 @@ const messages = defineMessages({
 interface MissingItem {
   id: number;
   tmdbId: number;
-  mediaType: 'movie' | 'tv';
+  mediaType: 'movie' | 'tv' | 'season' | 'episode';
   title: string;
   posterPath?: string;
   posterUrl?: string;
@@ -109,7 +111,7 @@ interface MissingItemsModalProps {
   title?: string;
   showFilters?: boolean;
   showSyncButton?: boolean;
-  initialMediaType?: 'movie' | 'tv';
+  initialMediaType?: 'movie' | 'tv' | 'season' | 'episode';
 }
 
 const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
@@ -360,6 +362,12 @@ const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
                     </option>
                     <option value="tv">
                       {intl.formatMessage(messages.tvShows)}
+                    </option>
+                    <option value="season">
+                      {intl.formatMessage(messages.seasons)}
+                    </option>
+                    <option value="episode">
+                      {intl.formatMessage(messages.episodes)}
                     </option>
                   </select>
                 </div>

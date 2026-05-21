@@ -49,7 +49,7 @@ const messages = defineMessages({
   overlaySyncError: 'Failed to start overlay sync',
   testItem: 'Test Item',
   allTags: 'All',
-  showDefaultTemplates: 'Standard-Templates anzeigen',
+  showDefaultTemplates: 'Show default templates',
 });
 
 interface OverlayTemplate {
