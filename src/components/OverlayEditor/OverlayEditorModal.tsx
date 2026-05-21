@@ -9,7 +9,14 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/solid';
 import type React from 'react';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import useSWR from 'swr';
 import { ConditionDisplay } from './ConditionDisplay';
@@ -50,6 +57,8 @@ const messages = defineMessages({
   // Tags
   tags: 'Tags',
   tagsPlaceholder: 'Add tags...',
+  metacriticUnavailable:
+    'Metacritic score is not available for this preview item.',
 });
 
 export type OverlayEditorMode = 'create' | 'edit';
@@ -166,6 +175,19 @@ export const OverlayEditorModal: React.FC<OverlayEditorModalProps> = ({
   const selectedPreviewOverlays = selectedPreviewIds
     .map((id) => availableTemplates.find((t) => t.id === id)?.templateData)
     .filter((data): data is OverlayTemplateData => data !== undefined);
+  const usesMetacriticScore = useMemo(
+    () =>
+      overlayData.elements.some(
+        (element) =>
+          element.type === 'variable' &&
+          'segments' in element.properties &&
+          element.properties.segments.some(
+            (segment) =>
+              segment.type === 'variable' && segment.field === 'metacriticScore'
+          )
+      ),
+    [overlayData.elements]
+  );
 
   // History state for undo/redo
   const [history, setHistory] = useState<OverlayTemplateData[]>([initialData]);
@@ -528,8 +550,15 @@ export const OverlayEditorModal: React.FC<OverlayEditorModalProps> = ({
                     </div>
 
                     {/* Center - Canvas */}
-                    <div className="col-span-6 flex items-center justify-center overflow-hidden rounded-lg bg-stone-800">
+                    <div className="relative col-span-6 flex items-center justify-center overflow-hidden rounded-lg bg-stone-800">
                       {/* Canvas Area */}
+                      {usesMetacriticScore &&
+                        metadataResponse &&
+                        metadataResponse.metacriticScore === undefined && (
+                          <div className="bg-stone-950/90 absolute top-6 z-10 rounded-md border border-orange-500/50 px-3 py-2 text-xs text-orange-200">
+                            {intl.formatMessage(messages.metacriticUnavailable)}
+                          </div>
+                        )}
                       <OverlayCanvas
                         ref={canvasRef}
                         overlayData={overlayData}

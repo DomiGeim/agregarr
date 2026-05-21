@@ -64,6 +64,7 @@ const messages = defineMessages({
   sortType: 'Type',
   sortLibrary: 'Library',
   titleWillUpdate: 'Title will be updated on Collection Sync',
+  healthScore: 'Health {score}%',
 });
 
 // Interfaces for clean collection data display - no conversion needed
@@ -131,6 +132,15 @@ const AllCollectionsView: React.FC = () => {
     error: preExistingError,
     mutate: revalidatePreExisting,
   } = useSWR('/api/v1/preexisting');
+  const { data: healthScoreData } = useSWR<{
+    scores: {
+      id: string;
+      name: string;
+      score: number;
+      status: 'healthy' | 'warning' | 'critical';
+      reasons: string[];
+    }[];
+  }>('/api/v1/dashboard/collection-health-scores');
 
   // Local state for linking operations
   const [localCollectionConfigs, setLocalCollectionConfigs] = useState<
@@ -291,6 +301,23 @@ const AllCollectionsView: React.FC = () => {
         return filtered.sort((a, b) => a.name.localeCompare(b.name));
     }
   }, [allCollections, filterType, filterLibrary, sortType]);
+  const healthScoreMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        score: number;
+        status: 'healthy' | 'warning' | 'critical';
+        reasons: string[];
+      }
+    >();
+
+    (healthScoreData?.scores || []).forEach((item) => {
+      map.set(String(item.id), item);
+      map.set(item.name.toLowerCase(), item);
+    });
+
+    return map;
+  }, [healthScoreData?.scores]);
 
   if (hasError) {
     return (
@@ -634,6 +661,9 @@ const AllCollectionsView: React.FC = () => {
             const isHub = collection.type === 'hub';
             const isCollection = collection.type === 'collection';
             const isPreExisting = collection.type === 'preExisting';
+            const healthScore =
+              healthScoreMap.get(String(collection.originalConfig.id)) ||
+              healthScoreMap.get(collection.name.toLowerCase());
 
             // Handle different config types - work with native types directly
             let visibilityConfig:
@@ -737,6 +767,22 @@ const AllCollectionsView: React.FC = () => {
                             }
                           />
                         )}
+                      {healthScore && (
+                        <span
+                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs ${
+                            healthScore.status === 'healthy'
+                              ? 'border-green-500/40 text-green-300'
+                              : healthScore.status === 'warning'
+                              ? 'border-orange-500/40 text-orange-300'
+                              : 'border-red-500/40 text-red-300'
+                          }`}
+                          title={(healthScore.reasons || []).join(', ')}
+                        >
+                          {intl.formatMessage(messages.healthScore, {
+                            score: healthScore.score,
+                          })}
+                        </span>
+                      )}
 
                       {/* Missing Items Badge - Shows when grab missing is enabled for collections */}
                       {isCollection && collection.originalConfig && (

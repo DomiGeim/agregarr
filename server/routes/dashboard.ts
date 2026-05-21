@@ -4,7 +4,10 @@ import TautulliAPI from '@server/api/tautulli';
 import { getRepository } from '@server/datasource';
 import { CollectionMetadata } from '@server/entity/CollectionMetadata';
 import { MissingItemRequest } from '@server/entity/MissingItemRequest';
+import { OverlayLibraryConfig } from '@server/entity/OverlayLibraryConfig';
+import { OverlayTemplate } from '@server/entity/OverlayTemplate';
 import { PlaceholderItem } from '@server/entity/PlaceholderItem';
+import { SavedPoster } from '@server/entity/SavedPoster';
 import collectionsSync from '@server/lib/collectionsSync';
 import type {
   CollectionConfig,
@@ -536,6 +539,206 @@ const writeAutomaticSettingsBackup = async (
   return {
     path: backupPath,
     createdAt,
+  };
+};
+
+const getPosterOrphanPreview = async () => {
+  const posterRepository = getRepository(SavedPoster);
+  const activePosters = await posterRepository.find({
+    where: { isActive: true },
+  });
+  const referencedFiles = new Set(
+    activePosters
+      .flatMap((poster) => [poster.filename, poster.thumbnailFilename])
+      .filter((filename): filename is string => !!filename)
+  );
+  const { getAllPosterFiles, getPosterUsage } = await import(
+    '@server/lib/posterStorage'
+  );
+  const allFiles = await getAllPosterFiles();
+  const orphaned: { filename: string; reason: string }[] = [];
+  const skipped: { filename: string; reason: string }[] = [];
+
+  for (const filename of allFiles) {
+    if (referencedFiles.has(filename)) {
+      continue;
+    }
+
+    const usedBy = await getPosterUsage(filename);
+
+    if (usedBy.length > 0) {
+      skipped.push({
+        filename,
+        reason: `Still referenced by ${usedBy.length} collection(s).`,
+      });
+      continue;
+    }
+
+    orphaned.push({
+      filename,
+      reason: 'No active saved poster or collection references this file.',
+    });
+  }
+
+  return {
+    dryRun: true,
+    orphaned,
+    skipped,
+    counts: {
+      scanned: allFiles.length,
+      orphaned: orphaned.length,
+      skipped: skipped.length,
+    },
+  };
+};
+
+const getOverlayOrphanSummary = async () => {
+  const [templates, libraryConfigs] = await Promise.all([
+    getRepository(OverlayTemplate).find({ where: { isActive: true } }),
+    getRepository(OverlayLibraryConfig).find(),
+  ]);
+  const activeTemplateIds = new Set(templates.map((template) => template.id));
+  const referencedTemplateIds = new Set<number>();
+  const missingReferences: {
+    libraryId: string;
+    libraryName: string;
+    templateId: number;
+  }[] = [];
+
+  libraryConfigs.forEach((config) => {
+    (config.enabledOverlays || [])
+      .filter((overlay) => overlay.enabled)
+      .forEach((overlay) => {
+        referencedTemplateIds.add(overlay.templateId);
+
+        if (!activeTemplateIds.has(overlay.templateId)) {
+          missingReferences.push({
+            libraryId: config.libraryId,
+            libraryName: config.libraryName,
+            templateId: overlay.templateId,
+          });
+        }
+      });
+  });
+
+  const unusedTemplates = templates
+    .filter(
+      (template) =>
+        !template.isDefault && !referencedTemplateIds.has(template.id)
+    )
+    .map((template) => ({
+      id: template.id,
+      name: template.name,
+      type: template.type,
+    }));
+
+  return {
+    checkedAt: new Date().toISOString(),
+    activeTemplates: templates.length,
+    configuredLibraries: libraryConfigs.length,
+    missingReferenceCount: missingReferences.length,
+    unusedTemplateCount: unusedTemplates.length,
+    missingReferences: missingReferences.slice(0, 25),
+    unusedTemplates: unusedTemplates.slice(0, 25),
+    healthy: missingReferences.length === 0,
+  };
+};
+
+const getReleaseReadiness = async () => {
+  const version = getAppVersion();
+  const checks: {
+    id: string;
+    title: string;
+    ok: boolean;
+    message: string;
+  }[] = [];
+
+  try {
+    const changelog = await fs.readFile(
+      path.join(process.cwd(), 'CHANGELOG.md'),
+      'utf-8'
+    );
+
+    checks.push({
+      id: 'changelog',
+      title: 'Changelog',
+      ok: changelog.includes(version),
+      message: changelog.includes(version)
+        ? `CHANGELOG.md contains ${version}.`
+        : `CHANGELOG.md does not mention ${version}.`,
+    });
+  } catch (error) {
+    checks.push({
+      id: 'changelog',
+      title: 'Changelog',
+      ok: false,
+      message: 'CHANGELOG.md could not be read.',
+    });
+  }
+
+  try {
+    const packageJson = JSON.parse(
+      await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf-8')
+    ) as { version?: string };
+
+    checks.push({
+      id: 'package-version',
+      title: 'Package version',
+      ok: packageJson.version === version,
+      message: `package.json reports ${packageJson.version || 'unknown'}.`,
+    });
+  } catch (error) {
+    checks.push({
+      id: 'package-version',
+      title: 'Package version',
+      ok: false,
+      message: 'package.json could not be read.',
+    });
+  }
+
+  const [enLocale, deLocale, ghcr] = await Promise.all([
+    fs
+      .readFile(path.join(process.cwd(), 'src/i18n/locale/en.json'), 'utf-8')
+      .then((content) => JSON.parse(content))
+      .then(() => true)
+      .catch(() => false),
+    fs
+      .readFile(path.join(process.cwd(), 'src/i18n/locale/de.json'), 'utf-8')
+      .then((content) => JSON.parse(content))
+      .then(() => true)
+      .catch(() => false),
+    getGhcrImageStatus(version),
+  ]);
+
+  checks.push({
+    id: 'i18n',
+    title: 'i18n',
+    ok: enLocale && deLocale,
+    message:
+      enLocale && deLocale
+        ? 'English and German locale files parse correctly.'
+        : 'One or more locale files could not be parsed.',
+  });
+  checks.push({
+    id: 'ghcr',
+    title: 'GHCR image',
+    ok: ghcr.ready,
+    message: ghcr.ready
+      ? `GHCR tags are available for ${version}.`
+      : `GHCR tags are not available for ${version} yet.`,
+  });
+  checks.push({
+    id: 'build',
+    title: 'Build',
+    ok: true,
+    message: 'Local release workflow should run yarn lint and yarn build.',
+  });
+
+  return {
+    version,
+    ready: checks.every((check) => check.ok),
+    checks,
+    generatedAt: new Date().toISOString(),
   };
 };
 
@@ -3181,6 +3384,7 @@ const getAdvancedIntelligence = async (
     recentMetadata,
     storedEvents,
     latestRelease,
+    overlayOrphans,
   ] = await Promise.all([
     placeholderRepository
       .find({ order: { updatedAt: 'DESC' }, take: 8 })
@@ -3193,6 +3397,16 @@ const getAdvancedIntelligence = async (
       .catch(() => [] as CollectionMetadata[]),
     readDashboardEvents(25),
     getLatestReleaseInfo(),
+    getOverlayOrphanSummary().catch(() => ({
+      checkedAt: new Date().toISOString(),
+      activeTemplates: 0,
+      configuredLibraries: 0,
+      missingReferenceCount: 0,
+      unusedTemplateCount: 0,
+      missingReferences: [],
+      unusedTemplates: [],
+      healthy: false,
+    })),
   ]);
 
   const staleCollections = collectionScores.filter((score) =>
@@ -4771,6 +4985,7 @@ const getAdvancedIntelligence = async (
     templateLibrary,
     experimentCandidates,
     syncCostEstimate,
+    overlayOrphans,
     placeholderLifecycle,
     explainers,
     availableActions: [
@@ -5260,14 +5475,68 @@ dashboardRoutes.get('/repair-candidates', isAuthenticated(), (_req, res) => {
   );
 });
 
+dashboardRoutes.get(
+  '/collection-health-scores',
+  isAuthenticated(),
+  (_req, res) => {
+    return res.status(200).json({
+      scores: getCollectionHealthScores(getSettings()),
+      generatedAt: new Date().toISOString(),
+    });
+  }
+);
+
+dashboardRoutes.get(
+  '/overlay-orphans',
+  isAuthenticated(),
+  async (_req, res) => {
+    return res.status(200).json(await getOverlayOrphanSummary());
+  }
+);
+
+dashboardRoutes.get(
+  '/release-readiness',
+  isAuthenticated(),
+  async (_req, res) => {
+    return res.status(200).json(await getReleaseReadiness());
+  }
+);
+
 dashboardRoutes.get('/first-aid', isAuthenticated(), async (_req, res) => {
   const settings = getSettings();
   const collectionHealthScores = getCollectionHealthScores(settings);
   const sourceStatus = getSourceStatus(settings);
-  const [tautulli, radarr, sonarr] = await Promise.all([
+  const clearedEntries = dashboardCache.size;
+  dashboardCache.clear();
+  const [
+    tautulli,
+    radarr,
+    sonarr,
+    posterOrphans,
+    overlayOrphans,
+    safetyBackup,
+  ] = await Promise.all([
     runSourceTest('tautulli', settings),
     runSourceTest('radarr', settings),
     runSourceTest('sonarr', settings),
+    getPosterOrphanPreview().catch((error) => ({
+      error: error instanceof Error ? error.message : String(error),
+      counts: { scanned: 0, orphaned: 0, skipped: 0 },
+      orphaned: [],
+      skipped: [],
+      dryRun: true,
+    })),
+    getOverlayOrphanSummary().catch((error) => ({
+      error: error instanceof Error ? error.message : String(error),
+      missingReferenceCount: 0,
+      unusedTemplateCount: 0,
+      missingReferences: [],
+      unusedTemplates: [],
+      healthy: false,
+    })),
+    writeAutomaticSettingsBackup(settings, 'first-aid').catch((error) => ({
+      error: error instanceof Error ? error.message : String(error),
+    })),
   ]);
   const consistency = getSettingsConsistency(settings, collectionHealthScores);
   const problems = getProblemDetails(
@@ -5312,9 +5581,30 @@ dashboardRoutes.get('/first-aid', isAuthenticated(), async (_req, res) => {
     },
     {
       id: 'backup',
-      ok: true,
+      ok: !('error' in safetyBackup),
       title: 'Backup',
-      message: 'Backup-Export und Restore-Preview Endpunkte sind verfuegbar.',
+      message:
+        'error' in safetyBackup
+          ? `Safety backup failed: ${safetyBackup.error}`
+          : 'Safety backup created before running First Aid.',
+    },
+    {
+      id: 'cache',
+      ok: true,
+      title: 'Dashboard Cache',
+      message: `${clearedEntries} cached dashboard entries cleared.`,
+    },
+    {
+      id: 'poster-orphans',
+      ok: !posterOrphans.counts.orphaned,
+      title: 'Poster Orphans',
+      message: `${posterOrphans.counts.orphaned} orphan poster files found in dry-run.`,
+    },
+    {
+      id: 'overlay-orphans',
+      ok: !overlayOrphans.missingReferenceCount,
+      title: 'Overlay Templates',
+      message: `${overlayOrphans.missingReferenceCount} missing overlay references and ${overlayOrphans.unusedTemplateCount} unused templates found.`,
     },
   ];
   const failedChecks = checks.filter((check) => !check.ok);
@@ -5343,8 +5633,31 @@ dashboardRoutes.get('/first-aid', isAuthenticated(), async (_req, res) => {
         problems[0]?.message ||
         'Keine offensichtliche Ursache gefunden.',
       checks,
+      actions: [
+        { id: 'cache', title: 'Dashboard cache cleared', clearedEntries },
+        {
+          id: 'backup',
+          title: 'Safety backup created',
+          result: safetyBackup,
+        },
+        {
+          id: 'poster-orphan-dry-run',
+          title: 'Poster orphan dry-run completed',
+          result: posterOrphans.counts,
+        },
+        {
+          id: 'overlay-orphan-check',
+          title: 'Overlay orphan check completed',
+          result: {
+            missingReferenceCount: overlayOrphans.missingReferenceCount,
+            unusedTemplateCount: overlayOrphans.unusedTemplateCount,
+          },
+        },
+      ],
       consistency,
       problems,
+      posterOrphans,
+      overlayOrphans,
     })
   );
 });
@@ -6084,9 +6397,13 @@ dashboardRoutes.get('/ghcr-status', isAuthenticated(), async (_req, res) => {
   return res.status(200).json(await getGhcrImageStatus(getAppVersion()));
 });
 
-dashboardRoutes.get('/ghcr-status/:version', isAuthenticated(), async (req, res) => {
-  return res.status(200).json(await getGhcrTagStatus(req.params.version));
-});
+dashboardRoutes.get(
+  '/ghcr-status/:version',
+  isAuthenticated(),
+  async (req, res) => {
+    return res.status(200).json(await getGhcrTagStatus(req.params.version));
+  }
+);
 
 dashboardRoutes.get(
   '/support-package',
@@ -6097,6 +6414,9 @@ dashboardRoutes.get(
     const archive = archiver('zip', { zlib: { level: 9 } });
     const healthScores = getCollectionHealthScores(settings);
     const sourceStatus = getSourceStatus(settings);
+    const overlayOrphans = await getOverlayOrphanSummary().catch(() => null);
+    const posterOrphans = await getPosterOrphanPreview().catch(() => null);
+    const dashboardLayout = await readDashboardLayout().catch(() => null);
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(
@@ -6109,6 +6429,33 @@ dashboardRoutes.get(
       JSON.stringify(sanitizeSettings(settings.getAll()), undefined, ' '),
       { name: 'settings-redacted.json' }
     );
+    archive.append(JSON.stringify(settings.getAll(), undefined, ' '), {
+      name: 'settings-backup.json',
+    });
+    archive.append(
+      JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          version: getAppVersion(),
+          health: getCollectionHealth(settings),
+          collectionHealthScores: healthScores,
+          sourceStatus,
+          previews: await getDashboardPreviews(settings),
+          sourceTestResults: Array.from(sourceTestResults.values()),
+          maintenanceMode: !!settings.main.maintenanceMode,
+          syncStatus: collectionsSync.status,
+          settings: sanitizeSettings(settings.getAll()),
+          overlayOrphans,
+          posterOrphans,
+        },
+        undefined,
+        ' '
+      ),
+      { name: 'diagnostics.json' }
+    );
+    archive.append(JSON.stringify(dashboardLayout, undefined, ' '), {
+      name: 'dashboard-layout.json',
+    });
     archive.append(JSON.stringify(healthScores, undefined, ' '), {
       name: 'collection-health.json',
     });
@@ -6119,6 +6466,12 @@ dashboardRoutes.get(
       JSON.stringify(await readDashboardEvents(250), undefined, ' '),
       { name: 'audit-log.json' }
     );
+    archive.append(JSON.stringify(overlayOrphans, undefined, ' '), {
+      name: 'overlay-orphans.json',
+    });
+    archive.append(JSON.stringify(posterOrphans, undefined, ' '), {
+      name: 'poster-orphans-dry-run.json',
+    });
     archive.append(healthSnapshotsToCsv(await readHealthSnapshots(365)), {
       name: 'health-snapshots.csv',
     });

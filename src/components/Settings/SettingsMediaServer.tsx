@@ -41,6 +41,12 @@ const messages = defineMessages({
   activeMediaServer: 'Active media server',
   inactiveMediaServer: 'Saved profile',
   libraries: 'Libraries',
+  featureHints: '{serverName} feature coverage',
+  featureCollections: 'Library discovery and collection sync',
+  featureOverlays: 'Poster overlays and localized status banners',
+  featureDashboard: 'Dashboard health, diagnostics, and release checks',
+  featureTautulliNote:
+    'Tautulli statistics are Plex-only; {serverName} uses native library and item data.',
   activate: 'Activate',
   validationHostnameRequired: 'You must provide a valid hostname or IP address',
   validationPortRequired: 'You must provide a valid port number',
@@ -156,6 +162,12 @@ const SettingsMediaServer = ({
   }
 
   const hasSettings = !!data?.ip;
+  const featureHints = [
+    messages.featureCollections,
+    messages.featureOverlays,
+    messages.featureDashboard,
+    messages.featureTautulliNote,
+  ];
 
   return (
     <>
@@ -178,6 +190,21 @@ const SettingsMediaServer = ({
             {intl.formatMessage(messages.libraries)}:{' '}
             {data?.libraries?.length || 0}
           </span>
+        </div>
+        <div className="mt-4 rounded-md border border-gray-700 bg-stone-900/60 p-3">
+          <p className="text-sm font-semibold text-white">
+            {format(messages.featureHints)}
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-gray-300 sm:grid-cols-2">
+            {featureHints.map((message) => (
+              <span
+                key={message.id}
+                className="rounded border border-gray-800 px-3 py-2"
+              >
+                {format(message)}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
       <Formik
@@ -358,9 +385,7 @@ const SettingsMediaServer = ({
                               ? ` (${check.durationMs} ms)`
                               : ''}
                           </span>
-                          <span className="text-gray-400">
-                            {check.message}
-                          </span>
+                          <span className="text-gray-400">{check.message}</span>
                         </div>
                       ))}
                     </div>

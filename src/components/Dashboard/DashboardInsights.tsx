@@ -154,6 +154,16 @@ const messages = defineMessages({
   saveLayoutServer: 'Save layout',
   loadLayoutServer: 'Load layout',
   clearDashboardCache: 'Clear cache',
+  moveSectionUp: 'Up',
+  moveSectionDown: 'Down',
+  posterCleanup: 'Poster cleanup',
+  previewPosterCleanup: 'Preview poster cleanup',
+  deletePosterOrphans: 'Delete orphaned posters',
+  releaseReadiness: 'Release readiness',
+  checkReleaseReadiness: 'Check release readiness',
+  overlayOrphans: 'Overlay Template Orphans',
+  missingOverlayReferences: '{count} missing references',
+  unusedOverlayTemplates: '{count} unused templates',
   previewRepair: 'Preview',
   repairPreview: 'Repair Preview',
   sourceAutoTested: 'Source tests run automatically.',
@@ -609,6 +619,23 @@ interface DashboardInsightData {
       risk: 'ready' | 'watch' | 'attention';
       recommendation: string;
     };
+    overlayOrphans?: {
+      healthy: boolean;
+      activeTemplates: number;
+      configuredLibraries: number;
+      missingReferenceCount: number;
+      unusedTemplateCount: number;
+      missingReferences: {
+        libraryId: string;
+        libraryName: string;
+        templateId: number;
+      }[];
+      unusedTemplates: {
+        id: number;
+        name: string;
+        type: string;
+      }[];
+    };
     backupHealth?: {
       latestBackupAt?: string;
       daysSinceBackup: number | null;
@@ -845,6 +872,28 @@ const DashboardInsights: React.FC = () => {
     changes: string[];
     currentHealth?: { score?: number; status?: string; reasons: string[] };
   } | null>(null);
+  const [posterCleanupPreview, setPosterCleanupPreview] = useState<{
+    dryRun: boolean;
+    counts: {
+      scanned: number;
+      orphaned: number;
+      deleted: number;
+      skipped: number;
+    };
+    orphaned: { filename: string; reason: string }[];
+    skipped: { filename: string; reason: string }[];
+  } | null>(null);
+  const [releaseReadiness, setReleaseReadiness] = useState<{
+    version: string;
+    ready: boolean;
+    generatedAt: string;
+    checks: {
+      id: string;
+      title: string;
+      ok: boolean;
+      message: string;
+    }[];
+  } | null>(null);
   const dashboardSearchKey = dashboardSearchQuery.trim()
     ? `/api/v1/dashboard/search?q=${encodeURIComponent(
         dashboardSearchQuery.trim()
@@ -924,6 +973,47 @@ const DashboardInsights: React.FC = () => {
     try {
       const response = await axios.get('/api/v1/dashboard/first-aid');
       setActionMessage(`${response.data.status}: ${response.data.likelyCause}`);
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const runPosterCleanup = async (dryRun: boolean) => {
+    setRunningAction(dryRun ? 'poster-cleanup-preview' : 'poster-cleanup');
+    setActionMessage(null);
+
+    try {
+      const response = await axios.post('/api/v1/posters/cleanup-orphans', {
+        dryRun,
+      });
+      setPosterCleanupPreview(response.data);
+      setActionMessage(
+        `${intl.formatMessage(messages.actionSucceeded)} ${
+          response.data?.counts?.orphaned || 0
+        } ${intl.formatMessage(messages.noItems).toLowerCase()}`
+      );
+      await mutate();
+    } catch (err) {
+      setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  const checkReleaseReadiness = async () => {
+    setRunningAction('release-readiness');
+    setActionMessage(null);
+
+    try {
+      const response = await axios.get('/api/v1/dashboard/release-readiness');
+      setReleaseReadiness(response.data);
+      setActionMessage(
+        `${response.data.version}: ${
+          response.data.ready
+            ? intl.formatMessage(messages.moduleReady)
+            : intl.formatMessage(messages.moduleWatch)
+        }`
+      );
     } catch (err) {
       setActionMessage(intl.formatMessage(messages.actionFailed));
     } finally {
@@ -1488,8 +1578,8 @@ const DashboardInsights: React.FC = () => {
           applyOrder();
         }
       });
-      upButton.textContent = 'Up';
-      downButton.textContent = 'Down';
+      upButton.textContent = intl.formatMessage(messages.moveSectionUp);
+      downButton.textContent = intl.formatMessage(messages.moveSectionDown);
       heading.classList.add('gap-2');
       heading.appendChild(upButton);
       heading.appendChild(downButton);
@@ -2483,6 +2573,30 @@ const DashboardInsights: React.FC = () => {
               </a>
               <button
                 type="button"
+                onClick={() => runPosterCleanup(true)}
+                disabled={runningAction === 'poster-cleanup-preview'}
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {intl.formatMessage(messages.previewPosterCleanup)}
+              </button>
+              <button
+                type="button"
+                onClick={() => runPosterCleanup(false)}
+                disabled={runningAction === 'poster-cleanup'}
+                className="rounded border border-orange-500/60 px-3 py-2 text-xs font-semibold text-orange-200 transition-colors hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {intl.formatMessage(messages.deletePosterOrphans)}
+              </button>
+              <button
+                type="button"
+                onClick={checkReleaseReadiness}
+                disabled={runningAction === 'release-readiness'}
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {intl.formatMessage(messages.checkReleaseReadiness)}
+              </button>
+              <button
+                type="button"
                 onClick={rotateBackups}
                 disabled={runningAction === 'rotate-backups'}
                 className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2518,6 +2632,49 @@ const DashboardInsights: React.FC = () => {
                 onChange={previewSettingsBackup}
               />
             </div>
+            {posterCleanupPreview && (
+              <div className="mb-3 rounded bg-stone-900 px-3 py-2 text-xs text-gray-300">
+                <p className="font-semibold text-white">
+                  {intl.formatMessage(messages.posterCleanup)}
+                </p>
+                <p className="mt-1">
+                  {posterCleanupPreview.counts.scanned} scanned /{' '}
+                  {posterCleanupPreview.counts.orphaned} orphaned /{' '}
+                  {posterCleanupPreview.counts.deleted || 0} deleted
+                </p>
+                <p className="mt-1 truncate text-gray-500">
+                  {posterCleanupPreview.orphaned
+                    .slice(0, 5)
+                    .map((item) => item.filename)
+                    .join(', ') || intl.formatMessage(messages.noItems)}
+                </p>
+              </div>
+            )}
+            {releaseReadiness && (
+              <div className="mb-3 rounded bg-stone-900 px-3 py-2 text-xs text-gray-300">
+                <p className="font-semibold text-white">
+                  {intl.formatMessage(messages.releaseReadiness)}:{' '}
+                  {releaseReadiness.version}
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {releaseReadiness.checks.map((check) => (
+                    <div
+                      key={check.id}
+                      className="rounded border border-gray-800 px-2 py-1"
+                    >
+                      <span
+                        className={
+                          check.ok ? 'text-green-300' : 'text-orange-300'
+                        }
+                      >
+                        {check.title}
+                      </span>
+                      <p className="mt-1 text-gray-500">{check.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {backupPreview && (
               <div className="mb-3 rounded bg-stone-900 px-3 py-2 text-xs text-gray-300">
                 <p className="font-semibold text-white">
@@ -3654,6 +3811,47 @@ const DashboardInsights: React.FC = () => {
           >
             {intl.formatMessage(messages.runMappingAutofix)}
           </button>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <RectangleStackIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.overlayOrphans)}
+          </h4>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.missingOverlayReferences, {
+                count: intelligence?.overlayOrphans?.missingReferenceCount || 0,
+              })}
+            </p>
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.unusedOverlayTemplates, {
+                count: intelligence?.overlayOrphans?.unusedTemplateCount || 0,
+              })}
+            </p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {(intelligence?.overlayOrphans?.missingReferences || [])
+              .slice(0, 4)
+              .map((item) => (
+                <p
+                  key={`${item.libraryId}-${item.templateId}`}
+                  className="rounded bg-stone-900 px-3 py-2 text-xs text-orange-200"
+                >
+                  {item.libraryName}: #{item.templateId}
+                </p>
+              ))}
+            {(intelligence?.overlayOrphans?.unusedTemplates || [])
+              .slice(0, 4)
+              .map((item) => (
+                <p
+                  key={item.id}
+                  className="rounded bg-stone-900 px-3 py-2 text-xs text-gray-400"
+                >
+                  {item.name} ({item.type})
+                </p>
+              ))}
+          </div>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">

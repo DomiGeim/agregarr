@@ -1,3 +1,38 @@
+# 2.5.16 (2026-05-21)
+
+## Highlights
+
+### Features
+
+- Added dashboard First Aid actions that clear the dashboard cache, create a safety backup, dry-run poster orphan cleanup, and check overlay template references.
+- Added poster orphan cleanup controls to Operational Intelligence with dry-run and delete actions.
+- Added a release-readiness endpoint and dashboard action covering version, changelog, locale parsing, GHCR tag status, and build expectations.
+- Added collection health score badges to the All Collections list.
+- Added dashboard visibility for orphaned overlay template references and unused custom overlay templates.
+- Expanded the support package ZIP with raw settings backup, dashboard layout, diagnostics, poster orphan dry-run, and overlay orphan summaries.
+- Added Jellyfin/Emby feature coverage hints directly in their settings tabs.
+- Added a Metacritic availability warning in the overlay editor preview when a template uses the Metacritic score variable but no score is available.
+
+### Localization
+
+- Added English and German GUI text for the new dashboard, collection, overlay editor, and media-server settings controls.
+- Fixed an English locale leak where the default-template toggle still used German text.
+
+### Maintenance
+
+- Verified English locale language audit, server/client typechecks, ESLint, and full production build for this release.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.16
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.15...v2.5.16
+
 # 2.5.15 (2026-05-21)
 
 ## Highlights
