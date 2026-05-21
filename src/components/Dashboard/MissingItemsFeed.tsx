@@ -43,6 +43,7 @@ const messages = defineMessages({
   recentlyAddedCount: '{total} {mediaType}',
   showingRecent: 'Showing recently added items from Tautulli',
   lastUpdatedNow: 'Last updated: {time}',
+  syncing: 'Syncing...',
 });
 
 interface MissingItem {
@@ -124,15 +125,14 @@ const MissingItemsFeed: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const limit = 5;
+  const activeMediaType = activeTab === 'movies' ? 'movie' : 'tv';
 
   const {
     data: missingItemsData,
     error,
     mutate,
   } = useSWR<MissingItemsResponse>(
-    `/api/v1/dashboard/tautulli-recently-added?limit=${limit}&mediaType=${
-      activeTab === 'movies' ? 'movie' : 'tv'
-    }&offset=0`,
+    `/api/v1/dashboard/tautulli-recently-added?limit=${limit}&mediaType=${activeMediaType}&offset=0`,
     fetchTautulliRecentlyAdded
   );
 
@@ -392,7 +392,7 @@ const MissingItemsFeed: React.FC = () => {
                     disabled={!missingItemsData || isRefreshing}
                   >
                     {isRefreshing
-                      ? 'Syncing...'
+                      ? intl.formatMessage(messages.syncing)
                       : intl.formatMessage(messages.refresh)}
                   </Button>
                   <Button
@@ -412,6 +412,11 @@ const MissingItemsFeed: React.FC = () => {
       <MissingItemsModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
+        endpoint="/api/v1/dashboard/tautulli-recently-added"
+        title={intl.formatMessage(messages.recentlyAddedMissing)}
+        showFilters={false}
+        showSyncButton={false}
+        initialMediaType={activeMediaType}
       />
     </div>
   );

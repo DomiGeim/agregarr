@@ -7,8 +7,8 @@ import {
   ChevronUpIcon,
   CogIcon,
   ExclamationCircleIcon,
-  FilmIcon,
   EyeSlashIcon,
+  FilmIcon,
   PlayIcon,
   RectangleStackIcon as CollectionIcon,
   ServerStackIcon,
@@ -63,6 +63,29 @@ const messages = defineMessages({
   showAllTiles: 'Show all tiles',
   hiddenTiles: '{count} dashboard tile(s) hidden',
   mediaServerCapabilities: 'Media Server Capabilities',
+  plexOnly: 'Plex-only',
+  capabilityCollectionSync: 'Collection sync',
+  capabilityCollectionSyncNote:
+    'Supported by Plex, Jellyfin, and Emby profiles.',
+  capabilityLibrarySync: 'Library discovery',
+  capabilityLibrarySyncNote: 'Uses the active media server profile.',
+  capabilityTautulliStats: 'Tautulli play statistics',
+  capabilityTautulliStatsAvailable: 'Available for Plex through Tautulli.',
+  capabilityTautulliStatsPlexOnly:
+    'Tautulli only tracks Plex playback statistics.',
+  capabilityPosterOverlays: 'Poster overlays',
+  capabilityPosterOverlaysAvailable:
+    'Overlay jobs can apply posters directly to Plex.',
+  capabilityPosterOverlaysPlexOnly:
+    'Overlay jobs are skipped because direct poster application is Plex-only.',
+  capabilityPlexHubs: 'Home and Recommended hubs',
+  capabilityPlexHubsAvailable: 'Plex hub visibility and ordering is available.',
+  capabilityPlexHubsPlexOnly:
+    'Jellyfin and Emby do not expose Plex hub controls.',
+  capabilityWatchlistSync: 'Plex watchlist sync',
+  capabilityWatchlistSyncAvailable: 'Plex watchlist sync can use Plex users.',
+  capabilityWatchlistSyncPlexOnly:
+    'Watchlist sync depends on Plex account/watchlist APIs.',
 });
 
 interface DashboardData {
@@ -231,8 +254,12 @@ const DashboardStats: React.FC = () => {
 
   useEffect(() => {
     try {
-      setCollapsedTiles(JSON.parse(localStorage.getItem(collapsedStorageKey) || '[]'));
-      setHiddenTiles(JSON.parse(localStorage.getItem(hiddenStorageKey) || '[]'));
+      setCollapsedTiles(
+        JSON.parse(localStorage.getItem(collapsedStorageKey) || '[]')
+      );
+      setHiddenTiles(
+        JSON.parse(localStorage.getItem(hiddenStorageKey) || '[]')
+      );
     } catch {
       setCollapsedTiles([]);
       setHiddenTiles([]);
@@ -313,6 +340,66 @@ const DashboardStats: React.FC = () => {
       : dashboardData.mediaServer?.activeType === 'emby'
       ? 'Emby'
       : 'Plex';
+  const getCapabilityText = (capability: {
+    id: string;
+    available: boolean;
+    label: string;
+    note: string;
+  }) => {
+    switch (capability.id) {
+      case 'collection-sync':
+        return {
+          label: intl.formatMessage(messages.capabilityCollectionSync),
+          note: intl.formatMessage(messages.capabilityCollectionSyncNote),
+        };
+      case 'library-sync':
+        return {
+          label: intl.formatMessage(messages.capabilityLibrarySync),
+          note: intl.formatMessage(messages.capabilityLibrarySyncNote),
+        };
+      case 'tautulli-stats':
+        return {
+          label: intl.formatMessage(messages.capabilityTautulliStats),
+          note: intl.formatMessage(
+            capability.available
+              ? messages.capabilityTautulliStatsAvailable
+              : messages.capabilityTautulliStatsPlexOnly
+          ),
+        };
+      case 'poster-overlays':
+        return {
+          label: intl.formatMessage(messages.capabilityPosterOverlays),
+          note: intl.formatMessage(
+            capability.available
+              ? messages.capabilityPosterOverlaysAvailable
+              : messages.capabilityPosterOverlaysPlexOnly
+          ),
+        };
+      case 'plex-hubs':
+        return {
+          label: intl.formatMessage(messages.capabilityPlexHubs),
+          note: intl.formatMessage(
+            capability.available
+              ? messages.capabilityPlexHubsAvailable
+              : messages.capabilityPlexHubsPlexOnly
+          ),
+        };
+      case 'watchlist-sync':
+        return {
+          label: intl.formatMessage(messages.capabilityWatchlistSync),
+          note: intl.formatMessage(
+            capability.available
+              ? messages.capabilityWatchlistSyncAvailable
+              : messages.capabilityWatchlistSyncPlexOnly
+          ),
+        };
+      default:
+        return {
+          label: capability.label,
+          note: capability.note,
+        };
+    }
+  };
 
   // Check if Tautulli is not configured
   const isTautulliConfigured =
@@ -346,9 +433,7 @@ const DashboardStats: React.FC = () => {
         <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
           <div className="flex flex-col items-center py-8 text-center">
             <ServerStackIcon className="mb-4 h-12 w-12 text-orange-400" />
-            <h4 className="mb-2 text-lg font-semibold text-white">
-              Tautulli
-            </h4>
+            <h4 className="mb-2 text-lg font-semibold text-white">Tautulli</h4>
             <p className="max-w-md text-gray-400">
               {intl.formatMessage(messages.tautulliPlexOnly, {
                 mediaServer: mediaServerName,
@@ -632,30 +717,36 @@ const DashboardStats: React.FC = () => {
             <span className="text-sm text-gray-500">{mediaServerName}</span>
           </div>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            {dashboardData.mediaServer.capabilities.map((capability) => (
-              <div
-                key={capability.id}
-                className="rounded-md border border-gray-700 px-3 py-2 text-sm"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium text-gray-200">
-                    {capability.label}
-                  </span>
-                  <span
-                    className={
-                      capability.available ? 'text-green-300' : 'text-gray-500'
-                    }
-                  >
-                    {capability.available
-                      ? intl.formatMessage(messages.configured)
-                      : 'Plex-only'}
-                  </span>
+            {dashboardData.mediaServer.capabilities.map((capability) => {
+              const capabilityText = getCapabilityText(capability);
+
+              return (
+                <div
+                  key={capability.id}
+                  className="rounded-md border border-gray-700 px-3 py-2 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-gray-200">
+                      {capabilityText.label}
+                    </span>
+                    <span
+                      className={
+                        capability.available
+                          ? 'text-green-300'
+                          : 'text-gray-500'
+                      }
+                    >
+                      {capability.available
+                        ? intl.formatMessage(messages.configured)
+                        : intl.formatMessage(messages.plexOnly)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {capabilityText.note}
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  {capability.note}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

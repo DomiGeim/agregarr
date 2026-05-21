@@ -48,9 +48,9 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
     }
 
     const tautulli = new TautulliAPI(settings.tautulli);
-    const recentlyAdded = (
+    const allItems = (
       await tautulli.getRecentlyAdded(
-        limit + offset,
+        Math.max(limit + offset, 100),
         0,
         undefined,
         tautulliMediaType
@@ -63,7 +63,8 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
             item.media_type === 'season' ||
             item.media_type === 'episode'
       )
-      .slice(offset, offset + limit);
+      .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0));
+    const recentlyAdded = allItems.slice(offset, offset + limit);
 
     const results = recentlyAdded.map((item, index) => {
       const createdAt = toIsoDate(item.added_at);
@@ -91,7 +92,7 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
 
     return res.status(200).json({
       results,
-      total: results.length,
+      total: allItems.length,
       limit,
       offset,
       configured: true,

@@ -7131,9 +7131,9 @@ dashboardRoutes.get(
       }
 
       const tautulli = new TautulliAPI(settings.tautulli);
-      const items = (
+      const allItems = (
         await tautulli.getRecentlyAdded(
-          limit + offset,
+          Math.max(limit + offset, 100),
           0,
           undefined,
           tautulliMediaType
@@ -7146,8 +7146,8 @@ dashboardRoutes.get(
               item.media_type === 'season' ||
               item.media_type === 'episode'
         )
-        .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0))
-        .slice(offset, offset + limit);
+        .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0));
+      const items = allItems.slice(offset, offset + limit);
 
       const results = items.map((item, index) => {
         const numericAddedAt = Number(item.added_at);
@@ -7185,7 +7185,7 @@ dashboardRoutes.get(
 
       return res.status(200).json({
         results,
-        total: results.length,
+        total: allItems.length,
         limit,
         offset,
         configured: true,

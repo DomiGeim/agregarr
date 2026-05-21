@@ -62,6 +62,7 @@ const messages = defineMessages({
   syncing: 'Syncing...',
   failedToLoadMissingItems: 'Failed to load missing items',
   requestedBy: 'by {name}',
+  recentlyAddedFromTautulli: 'Recently Added from Tautulli',
 });
 
 interface MissingItem {
@@ -70,6 +71,7 @@ interface MissingItem {
   mediaType: 'movie' | 'tv';
   title: string;
   posterPath?: string;
+  posterUrl?: string;
   year?: number;
   collectionName: string;
   collectionSource: string;
@@ -103,11 +105,21 @@ interface MissingItemsResponse {
 interface MissingItemsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  endpoint?: string;
+  title?: string;
+  showFilters?: boolean;
+  showSyncButton?: boolean;
+  initialMediaType?: 'movie' | 'tv';
 }
 
 const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
   isOpen,
   onClose,
+  endpoint = '/api/v1/missing-items',
+  title,
+  showFilters: allowFilters = true,
+  showSyncButton = true,
+  initialMediaType,
 }) => {
   const intl = useIntl();
   const [filters, setFilters] = useState({
@@ -127,6 +139,9 @@ const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
   const queryParams = new URLSearchParams();
   queryParams.set('limit', pagination.limit.toString());
   queryParams.set('offset', pagination.offset.toString());
+  if (initialMediaType) {
+    queryParams.set('mediaType', initialMediaType);
+  }
 
   Object.entries(filters).forEach(([key, value]) => {
     if (value) {
@@ -140,7 +155,7 @@ const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
     mutate,
     isValidating,
   } = useSWR<MissingItemsResponse>(
-    isOpen ? `/api/v1/missing-items?${queryParams.toString()}` : null
+    isOpen ? `${endpoint}?${queryParams.toString()}` : null
   );
 
   // Reset pagination when filters change
@@ -266,7 +281,7 @@ const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
       <Modal
         onCancel={onClose}
         onOk={onClose}
-        title={intl.formatMessage(messages.allMissingItems)}
+        title={title || intl.formatMessage(messages.allMissingItems)}
         cancelText={intl.formatMessage(messages.close)}
         okText=""
       >
@@ -274,22 +289,30 @@ const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
           {/* Filter Section */}
           <div className="border-b border-gray-700 pb-4">
             <div className="mb-4 flex items-center justify-between">
-              <Button
-                buttonType="ghost"
-                buttonSize="sm"
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                <FunnelIcon className="mr-2 h-4 w-4" />
-                {intl.formatMessage(messages.filter)}
-              </Button>
-              <div className="flex space-x-2">
+              {allowFilters ? (
                 <Button
                   buttonType="ghost"
                   buttonSize="sm"
-                  onClick={clearFilters}
+                  onClick={() => setShowFilters(!showFilters)}
                 >
-                  {intl.formatMessage(messages.clearFilters)}
+                  <FunnelIcon className="mr-2 h-4 w-4" />
+                  {intl.formatMessage(messages.filter)}
                 </Button>
+              ) : (
+                <span className="text-sm text-gray-400">
+                  {intl.formatMessage(messages.recentlyAddedFromTautulli)}
+                </span>
+              )}
+              <div className="flex space-x-2">
+                {allowFilters && (
+                  <Button
+                    buttonType="ghost"
+                    buttonSize="sm"
+                    onClick={clearFilters}
+                  >
+                    {intl.formatMessage(messages.clearFilters)}
+                  </Button>
+                )}
                 <Button
                   buttonType="ghost"
                   buttonSize="sm"
@@ -300,20 +323,22 @@ const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
                     ? intl.formatMessage(messages.refreshing)
                     : 'Refresh'}
                 </Button>
-                <Button
-                  buttonType="primary"
-                  buttonSize="sm"
-                  onClick={handleSyncStatus}
-                  disabled={isSyncing || isValidating}
-                >
-                  {isSyncing
-                    ? intl.formatMessage(messages.syncing)
-                    : intl.formatMessage(messages.syncStatus)}
-                </Button>
+                {showSyncButton && (
+                  <Button
+                    buttonType="primary"
+                    buttonSize="sm"
+                    onClick={handleSyncStatus}
+                    disabled={isSyncing || isValidating}
+                  >
+                    {isSyncing
+                      ? intl.formatMessage(messages.syncing)
+                      : intl.formatMessage(messages.syncStatus)}
+                  </Button>
+                )}
               </div>
             </div>
 
-            {showFilters && (
+            {allowFilters && showFilters && (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 {/* Media Type Filter */}
                 <div>
@@ -471,10 +496,12 @@ const MissingItemsModal: React.FC<MissingItemsModalProps> = ({
                     className="flex items-center space-x-3 rounded-lg border border-gray-700 p-4 transition-colors hover:border-gray-600"
                   >
                     <div className="flex-shrink-0">
-                      {item.posterPath ? (
+                      {item.posterUrl || item.posterPath ? (
                         <div className="relative">
                           <img
-                            src={getTmdbImageUrl(item.posterPath)}
+                            src={
+                              item.posterUrl || getTmdbImageUrl(item.posterPath)
+                            }
                             alt={item.title}
                             className="h-24 w-16 rounded border border-gray-600 object-cover"
                             onError={(e) => {
