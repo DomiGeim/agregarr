@@ -63,4 +63,11 @@ export interface StatusResponse {
   latestUrl?: string;
   dockerImage?: string;
   dockerPullCommand?: string;
+  ghcr?: {
+    versionTag: string;
+    latestTag: string;
+    versionTagAvailable: boolean;
+    latestTagAvailable: boolean;
+    checkedAt: string;
+  };
 }

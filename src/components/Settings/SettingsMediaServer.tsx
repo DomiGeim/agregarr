@@ -35,6 +35,9 @@ const messages = defineMessages({
   toastSyncSuccess: '{serverName} libraries synced successfully!',
   toastActivated: '{serverName} is now the active media server.',
   testAndSync: 'Test & Sync Libraries',
+  runDiagnostics: 'Run Diagnostics',
+  diagnosticsPassed: 'Diagnostics passed',
+  diagnosticsFailed: 'Diagnostics found issues',
   activeMediaServer: 'Active media server',
   inactiveMediaServer: 'Saved profile',
   libraries: 'Libraries',
@@ -61,6 +64,19 @@ const SettingsMediaServer = ({
   defaultPort = 8096,
 }: SettingsMediaServerProps) => {
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<{
+    ok: boolean;
+    baseUrl: string;
+    durationMs: number;
+    checks: {
+      id: string;
+      label: string;
+      ok: boolean;
+      message: string;
+      durationMs?: number;
+    }[];
+  } | null>(null);
   const {
     data,
     error,
@@ -307,6 +323,51 @@ const SettingsMediaServer = ({
                   )}
               </div>
             </div>
+            {diagnostics && (
+              <div className="form-row">
+                <span className="text-label">
+                  {intl.formatMessage(messages.runDiagnostics)}
+                </span>
+                <div className="form-input-area">
+                  <div className="rounded-md border border-gray-700 bg-stone-900 p-3 text-sm">
+                    <p
+                      className={
+                        diagnostics.ok ? 'text-green-300' : 'text-orange-300'
+                      }
+                    >
+                      {intl.formatMessage(
+                        diagnostics.ok
+                          ? messages.diagnosticsPassed
+                          : messages.diagnosticsFailed
+                      )}{' '}
+                      ({diagnostics.durationMs} ms)
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {diagnostics.checks.map((check) => (
+                        <div
+                          key={check.id}
+                          className="flex flex-col gap-1 rounded border border-gray-800 px-3 py-2"
+                        >
+                          <span
+                            className={
+                              check.ok ? 'text-green-300' : 'text-orange-300'
+                            }
+                          >
+                            {check.label}
+                            {check.durationMs
+                              ? ` (${check.durationMs} ms)`
+                              : ''}
+                          </span>
+                          <span className="text-gray-400">
+                            {check.message}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="actions">
               <div className="flex justify-end">
                 <span className="ml-3 inline-flex rounded-md shadow-sm">
@@ -323,6 +384,45 @@ const SettingsMediaServer = ({
                       {intl.formatMessage(messages.activate)}
                     </Button>
                   )}
+                </span>
+                <span className="ml-3 inline-flex rounded-md shadow-sm">
+                  <Button
+                    buttonType="default"
+                    type="button"
+                    disabled={
+                      isDiagnosing ||
+                      !values.hostname ||
+                      !values.mediaServerApiKey
+                    }
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      setIsDiagnosing(true);
+                      try {
+                        const response = await axios.post(
+                          '/api/v1/settings/media-server/diagnostics',
+                          {
+                            mediaServerType: serverType,
+                            ip: values.hostname,
+                            port: Number(values.port),
+                            useSsl: values.useSsl,
+                            mediaServerApiKey: values.mediaServerApiKey,
+                          }
+                        );
+                        setDiagnostics(response.data);
+                      } catch (error) {
+                        addToast(getConnectionErrorMessage(error), {
+                          autoDismiss: true,
+                          appearance: 'error',
+                        });
+                      } finally {
+                        setIsDiagnosing(false);
+                      }
+                    }}
+                  >
+                    {isDiagnosing
+                      ? intl.formatMessage(globalMessages.saving)
+                      : intl.formatMessage(messages.runDiagnostics)}
+                  </Button>
                 </span>
                 <span className="ml-3 inline-flex rounded-md shadow-sm">
                   <Button

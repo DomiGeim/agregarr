@@ -15,6 +15,7 @@ import { appDataPath, appDataStatus } from '@server/utils/appDataVolume';
 import { getAppVersion, getCommitTag } from '@server/utils/appVersion';
 import restartFlag from '@server/utils/restartFlag';
 import { isPerson } from '@server/utils/typeHelpers';
+import axios from 'axios';
 import { Router } from 'express';
 import anilistRoutes from './anilist';
 import authRoutes from './auth';
@@ -56,6 +57,25 @@ import user from './user';
 const router = Router();
 
 router.use(checkUser);
+
+const checkGhcrTag = async (tag: string): Promise<boolean> => {
+  try {
+    const response = await axios.get(
+      `https://ghcr.io/v2/domigeim/agregarr/manifests/${tag}`,
+      {
+        timeout: 5000,
+        headers: {
+          Accept: 'application/vnd.oci.image.index.v1+json',
+        },
+        validateStatus: () => true,
+      }
+    );
+
+    return response.status >= 200 && response.status < 400;
+  } catch {
+    return false;
+  }
+};
 
 router.get('/status', async (_req, res) => {
   const githubApi = new GithubAPI();
@@ -101,6 +121,11 @@ router.get('/status', async (_req, res) => {
   }
 
   const dockerImage = 'ghcr.io/domigeim/agregarr:latest';
+  const versionTag = `v${currentVersion}`;
+  const [versionTagAvailable, latestTagAvailable] = await Promise.all([
+    checkGhcrTag(versionTag),
+    checkGhcrTag('latest'),
+  ]);
 
   return res.status(200).json({
     version: getAppVersion(),
@@ -112,6 +137,13 @@ router.get('/status', async (_req, res) => {
     latestUrl,
     dockerImage,
     dockerPullCommand: `docker pull ${dockerImage}`,
+    ghcr: {
+      versionTag,
+      latestTag: 'latest',
+      versionTagAvailable,
+      latestTagAvailable,
+      checkedAt: new Date().toISOString(),
+    },
   });
 });
 
