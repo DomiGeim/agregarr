@@ -26,8 +26,6 @@ const messages = defineMessages({
   recentlyAddedMissing: 'Recently Added from Tautulli',
   movies: 'Movies',
   tvShows: 'TV Shows',
-  seasons: 'Seasons',
-  episodes: 'Episodes',
   noRecentlyAddedItems: 'No recently added items',
   noRecentActivity: 'No recently added movies or TV shows found in Tautulli',
   refresh: 'Refresh',
@@ -59,7 +57,7 @@ const messages = defineMessages({
 interface MissingItem {
   id: number;
   tmdbId: number;
-  mediaType: 'movie' | 'tv' | 'season' | 'episode';
+  mediaType: 'movie' | 'tv';
   title: string;
   posterPath?: string;
   year?: number;
@@ -131,9 +129,7 @@ const fetchTautulliRecentlyAdded = async (
 
 const MissingItemsFeed: React.FC = () => {
   const intl = useIntl();
-  const [activeTab, setActiveTab] = useState<
-    'movie' | 'tv' | 'season' | 'episode'
-  >('movie');
+  const [activeTab, setActiveTab] = useState<'movie' | 'tv'>('movie');
   const [showModal, setShowModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isTestingTautulli, setIsTestingTautulli] = useState(false);
@@ -210,9 +206,6 @@ const MissingItemsFeed: React.FC = () => {
         return <FilmIcon className={`${size} text-orange-400`} />;
       case 'tv':
         return <TvIcon className={`${size} text-orange-400`} />;
-      case 'season':
-      case 'episode':
-        return <TvIcon className={`${size} text-orange-300`} />;
       default:
         return <PlayIcon className={`${size} text-gray-400`} />;
     }
@@ -224,10 +217,6 @@ const MissingItemsFeed: React.FC = () => {
         return intl.formatMessage(messages.movies);
       case 'tv':
         return intl.formatMessage(messages.tvShows);
-      case 'season':
-        return intl.formatMessage(messages.seasons);
-      case 'episode':
-        return intl.formatMessage(messages.episodes);
       default:
         return tab;
     }
@@ -351,7 +340,7 @@ const MissingItemsFeed: React.FC = () => {
 
         {missingItemsData && !collapsed && (
           <div className="mt-3 flex flex-wrap gap-1">
-            {(['movie', 'tv', 'season', 'episode'] as const).map((tab) => (
+            {(['movie', 'tv'] as const).map((tab) => (
               <Button
                 key={tab}
                 buttonSize="sm"

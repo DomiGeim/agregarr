@@ -23,11 +23,16 @@ const toIsoDate = (value?: number | string): string => {
     : parsedDate.toISOString();
 };
 
-type TautulliDashboardMediaType = 'movie' | 'tv' | 'season' | 'episode';
+type TautulliDashboardMediaType = 'movie' | 'tv';
 
 const getRequestedMediaType = (value: unknown): TautulliDashboardMediaType => {
-  if (value === 'tv' || value === 'season' || value === 'episode') {
-    return value;
+  if (
+    value === 'tv' ||
+    value === 'show' ||
+    value === 'season' ||
+    value === 'episode'
+  ) {
+    return 'tv';
   }
 
   return 'movie';
@@ -45,7 +50,7 @@ const matchesRequestedMediaType = (
     return tautulliMediaType === 'show';
   }
 
-  return tautulliMediaType === requestedMediaType;
+  return false;
 };
 
 /**
@@ -92,10 +97,7 @@ missingItemsRoutes.get('/tautulli-recently-added', async (req, res) => {
         id: Number(item.rating_key) || index,
         tmdbId: 0,
         mediaType,
-        title:
-          item.media_type === 'episode'
-            ? item.grandparent_title || item.full_title || item.title
-            : item.title,
+        title: item.title,
         posterPath: undefined,
         posterUrl: undefined,
         year: item.year ? Number(item.year) : undefined,

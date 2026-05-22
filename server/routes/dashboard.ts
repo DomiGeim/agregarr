@@ -39,7 +39,7 @@ let latestReleaseCache:
   | undefined;
 
 type HealthSeverity = 'error' | 'warning' | 'info';
-type TautulliDashboardMediaType = 'movie' | 'tv' | 'season' | 'episode';
+type TautulliDashboardMediaType = 'movie' | 'tv';
 
 interface HealthIssue {
   severity: HealthSeverity;
@@ -50,8 +50,13 @@ interface HealthIssue {
 const getRequestedTautulliMediaType = (
   value: unknown
 ): TautulliDashboardMediaType => {
-  if (value === 'tv' || value === 'season' || value === 'episode') {
-    return value;
+  if (
+    value === 'tv' ||
+    value === 'show' ||
+    value === 'season' ||
+    value === 'episode'
+  ) {
+    return 'tv';
   }
 
   return 'movie';
@@ -69,7 +74,7 @@ const matchesRequestedTautulliMediaType = (
     return tautulliMediaType === 'show';
   }
 
-  return tautulliMediaType === requestedMediaType;
+  return false;
 };
 
 interface CollectionHealthScore {
@@ -7272,24 +7277,13 @@ dashboardRoutes.get(
         const createdAt = !Number.isNaN(numericAddedAt)
           ? new Date(numericAddedAt * 1000).toISOString()
           : new Date().toISOString();
-        const imagePath =
-          item.media_type === 'episode'
-            ? item.grandparent_thumb ||
-              item.parent_thumb ||
-              item.thumb ||
-              item.art
-            : item.media_type === 'season'
-            ? item.parent_thumb || item.thumb || item.art
-            : item.thumb || item.art;
+        const imagePath = item.thumb || item.art;
 
         return {
           id: Number(item.rating_key) || index,
           tmdbId: 0,
           mediaType: requestedMediaType,
-          title:
-            item.media_type === 'episode'
-              ? item.grandparent_title || item.full_title || item.title
-              : item.title,
+          title: item.title,
           posterPath: undefined,
           posterUrl: getPlexImageProxyUrl(imagePath),
           thumb: imagePath,
