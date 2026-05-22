@@ -274,8 +274,18 @@ export async function discoverPlaceholdersFromMarkers(
 
         const plexItem = plexMatches.get(`${dbRecord.tmdbId}-tv`);
 
+        const isDownloadedInArr = dbRecord.tvdbId
+          ? (
+              await placeholderContextService.checkMonitoringStatus(
+                dbRecord.tmdbId,
+                dbRecord.tvdbId,
+                'tv'
+              )
+            ).downloaded
+          : false;
+
         let needsTitleFix = false;
-        if (plexItem) {
+        if (plexItem && !isDownloadedInArr) {
           let isStillPlaceholder = true;
           try {
             const plexMetadata = await plexClient.getMetadata(
@@ -305,6 +315,16 @@ export async function discoverPlaceholdersFromMarkers(
           } else {
             needsTitleFix = true;
           }
+        } else if (plexItem && isDownloadedInArr) {
+          logger.info(
+            'Tier 2: Content downloaded in Sonarr - triggering cleanup',
+            {
+              label: 'PlaceholderService',
+              title: marker.title,
+              ratingKey: plexItem.ratingKey,
+              tvdbId: dbRecord.tvdbId,
+            }
+          );
         }
 
         discovered.push({

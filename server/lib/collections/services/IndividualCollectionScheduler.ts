@@ -1,6 +1,7 @@
 import EmbyAPI from '@server/api/emby';
 import JellyfinAPI from '@server/api/jellyfin';
 import PlexAPI from '@server/api/plexapi';
+import type { SyncResult } from '@server/lib/collections/core/types';
 import type {
   CustomSyncSchedule,
   MultiSourceCombineMode,
@@ -857,7 +858,7 @@ export class IndividualCollectionScheduler {
       const { libraryCacheService } = await import('./LibraryCacheService');
       const libraryCache = await libraryCacheService.getCache(plexClient);
 
-      let result;
+      let result: SyncResult;
       if (isMultiSource) {
         // Use multi-source orchestrator
         const { MultiSourceOrchestrator } = await import(
@@ -917,9 +918,13 @@ export class IndividualCollectionScheduler {
         );
       }
 
-      // Mark collection as synced (update needsSync status)
-      settings.markCollectionSynced(collectionId, 'collection');
-      settings.save();
+      if (result.error) {
+        settings.setCollectionSyncError(collectionId, result.error);
+      } else if (result.warning) {
+        settings.setCollectionSyncWarning(collectionId, result.warning);
+      } else {
+        settings.markCollectionSynced(collectionId, 'collection');
+      }
 
       if (!isJellyfin && !isEmby) {
         // Sync Plex collection ordering after collection sync

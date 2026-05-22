@@ -1,7 +1,10 @@
 import PlexAPI from '@server/api/plexapi';
 import { getRepository } from '@server/datasource';
 import { User } from '@server/entity/User';
-import type { PlexCollection } from '@server/lib/collections/core/types';
+import type {
+  PlexCollection,
+  SyncResult,
+} from '@server/lib/collections/core/types';
 import { libraryCacheService } from '@server/lib/collections/services/LibraryCacheService';
 import { PreExistingCollectionConfigService } from '@server/lib/collections/services/PreExistingCollectionConfigService';
 import { OriginalsCollectionSync } from '@server/lib/collections/sources/originals';
@@ -701,6 +704,8 @@ collectionsRoutes.put('/:id/settings', isAuthenticated(), async (req, res) => {
         lastSyncedAt: configToUpdate.lastSyncedAt, // Last sync timestamp is per-library
         lastSyncError: configToUpdate.lastSyncError, // Sync errors are per-library
         lastSyncErrorAt: configToUpdate.lastSyncErrorAt, // Sync error timestamp is per-library
+        lastSyncWarning: configToUpdate.lastSyncWarning, // Sync warnings are per-library
+        lastSyncWarningAt: configToUpdate.lastSyncWarningAt, // Sync warning timestamp is per-library
         missing: configToUpdate.missing, // Missing status is per-library (can exist in one library but not another)
       };
 
@@ -1876,7 +1881,7 @@ collectionsRoutes.post('/:id/sync', isAuthenticated(), async (req, res) => {
         // Use global library cache for content matching (with proper pagination)
         const libraryCache = await libraryCacheService.getCache(plexClient);
 
-        let result;
+        let result: SyncResult;
         if (isMultiSource) {
           // Use multi-source orchestrator
           const { MultiSourceOrchestrator } = await import(
@@ -1937,7 +1942,7 @@ collectionsRoutes.post('/:id/sync', isAuthenticated(), async (req, res) => {
           );
         }
 
-        // Check if the sync returned an error (e.g., from multi-source orchestrator)
+        // Check if the sync returned an error or warning
         if (result.error) {
           logger.warn(
             `Individual collection sync returned error for ${collectionConfig.name}: ${result.error}`,
@@ -1946,13 +1951,20 @@ collectionsRoutes.post('/:id/sync', isAuthenticated(), async (req, res) => {
               collectionId: id,
             }
           );
-          // Persist error for UI display
+          // Persist error for UI display - keeps needsSync=true
           settings.setCollectionSyncError(id, result.error);
-          settings.save();
+        } else if (result.warning) {
+          logger.info(
+            `Individual collection sync completed with warning for ${collectionConfig.name}: ${result.warning}`,
+            {
+              label: 'Individual Collection Sync',
+              collectionId: id,
+            }
+          );
+          settings.setCollectionSyncWarning(id, result.warning);
         } else {
-          // Mark collection as synced (update needsSync status, clears any previous error)
+          // Mark collection as synced (update needsSync status, clears any previous error/warning)
           settings.markCollectionSynced(id, 'collection');
-          settings.save();
         }
 
         // Sync Plex collection ordering after collection sync

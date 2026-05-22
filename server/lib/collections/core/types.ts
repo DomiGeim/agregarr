@@ -105,8 +105,10 @@ export interface SyncResult {
   created: number;
   /** Number of collections updated */
   updated: number;
-  /** Optional error information */
+  /** Optional error information (hard failure - collection did not sync) */
   error?: string;
+  /** Optional warning (soft failure - collection synced but ancillary operation failed) */
+  warning?: string;
   /** Optional additional details */
   details?: Record<string, unknown>;
 }

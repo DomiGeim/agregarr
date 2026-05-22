@@ -18,6 +18,8 @@ import {
   extractTmdbIdFromGuids,
   extractTvdbIdFromGuids,
   getCollectionMediaType,
+  parseConfigIdFromLabel,
+  updateConfigWithRatingKey,
   type LibraryItemsCache,
 } from '@server/lib/collections/core/CollectionUtilities';
 import type {
@@ -210,21 +212,57 @@ export class FilteredHubCollectionSync extends BaseCollectionSync<'filtered_hub'
           (collectionConfig) => collectionConfig.id === excludedCollectionId
         );
 
-        if (!excludedConfig?.collectionRatingKey) {
-          logger.debug(
-            `Skipping exclusion for config ${excludedCollectionId}: no collection rating key`,
-            { label: 'Filtered Hub Collections' }
-          );
+        if (!excludedConfig) {
+          logger.warn(`Exclusion config ${excludedCollectionId} not found`, {
+            label: 'Filtered Hub Collections',
+          });
           continue;
         }
 
-        const plexCollection = libraryCollections.find(
-          (collection) =>
-            collection.ratingKey === excludedConfig.collectionRatingKey
-        );
+        let plexCollection: PlexCollection | undefined;
+
+        if (excludedConfig.collectionRatingKey) {
+          plexCollection = libraryCollections.find(
+            (collection) =>
+              collection.ratingKey === excludedConfig.collectionRatingKey
+          );
+        }
+
+        if (!plexCollection && excludedConfig.libraryId === config.libraryId) {
+          plexCollection = libraryCollections.find((collection) =>
+            collection.labels?.some((label) => {
+              const labelText = typeof label === 'string' ? label : label.tag;
+              return parseConfigIdFromLabel(labelText) === excludedCollectionId;
+            })
+          );
+
+          if (plexCollection) {
+            logger.info(
+              `Resolved exclusion ${excludedConfig.name} via Agregarr label to ratingKey ${plexCollection.ratingKey}`,
+              { label: 'Filtered Hub Collections' }
+            );
+            updateConfigWithRatingKey(
+              excludedCollectionId,
+              plexCollection.ratingKey,
+              excludedConfig.libraryId
+            );
+          }
+        }
 
         if (plexCollection?.title) {
-          excludeCollectionTitles.push(plexCollection.title);
+          const resolvedTitle = plexCollection.title.trim();
+          if (plexCollection.title !== resolvedTitle) {
+            logger.warn(
+              `Plex collection "${plexCollection.title}" (ratingKey ${plexCollection.ratingKey}) has leading/trailing whitespace; fixing title to prevent exclusion mismatch`,
+              { label: 'Filtered Hub Collections' }
+            );
+            await plexClient.updateCollectionTitle(
+              plexCollection.ratingKey,
+              resolvedTitle,
+              excludedConfig.libraryId
+            );
+          }
+          excludeCollectionTitles.push(resolvedTitle);
         } else {
           logger.debug(
             `Skipping exclusion for config ${excludedCollectionId}: Plex collection not found`,

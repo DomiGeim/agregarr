@@ -844,7 +844,7 @@ export class LetterboxdCollectionSync extends BaseCollectionSync<'letterboxd'> {
           .replace(/&gt;/g, '>');
 
       const targetLinkRegex =
-        /data-target-link="([^"]+)"|data-film-slug="([^"]+)"/;
+        /data-(?:target-link|item-link)="([^"]+)"|data-film-slug="([^"]+)"/;
       const fullDisplayNameRegex =
         /data-item-full-display-name="([^"]+)"|data-film-name="([^"]+)"/;
       const titleRegex =

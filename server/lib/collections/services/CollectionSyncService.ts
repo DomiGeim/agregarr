@@ -549,8 +549,14 @@ export class CollectionSyncService {
     const processedCollectionKeys = new Set<string>();
     let processedCount = 0;
 
-    // Process each collection config directly
-    for (const config of collectionConfigs) {
+    // Process filtered hubs last so exclusion filters can resolve the final
+    // Plex titles/rating keys of the collections they exclude.
+    const orderedCollectionConfigs = [
+      ...collectionConfigs.filter((config) => config.type !== 'filtered_hub'),
+      ...collectionConfigs.filter((config) => config.type === 'filtered_hub'),
+    ];
+
+    for (const config of orderedCollectionConfigs) {
       if (this.cancelled) break;
 
       try {
@@ -718,7 +724,7 @@ export class CollectionSyncService {
           created += result.created || 0;
           updated += result.updated || 0;
 
-          // Check if the sync returned an error (e.g., from multi-source orchestrator)
+          // Check if the sync returned an error or warning
           if (result.error) {
             logger.warn(
               `Collection sync returned error for ${config.name}: ${result.error}`,
@@ -727,10 +733,19 @@ export class CollectionSyncService {
                 configId: config.id,
               }
             );
-            // Persist error for UI display
+            // Persist error for UI display - keeps needsSync=true
             settings.setCollectionSyncError(config.id, result.error);
+          } else if (result.warning) {
+            logger.info(
+              `Collection sync completed with warning for ${config.name}: ${result.warning}`,
+              {
+                label: 'Collection Sync Service',
+                configId: config.id,
+              }
+            );
+            settings.setCollectionSyncWarning(config.id, result.warning);
           } else {
-            // Mark collection as successfully synced (clears any previous error)
+            // Mark collection as successfully synced (clears any previous error/warning)
             settings.markCollectionSynced(config.id, 'collection');
           }
         }
