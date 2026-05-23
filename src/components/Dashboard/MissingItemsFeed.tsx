@@ -50,6 +50,10 @@ const messages = defineMessages({
   configureTautulli: 'Configure Tautulli',
   testTautulli: 'Test Tautulli',
   clearTautulliDashboardCache: 'Clear dashboard cache',
+  tautulliDebug:
+    'Tautulli debug: {rawCount} raw / {filteredCount} filtered / {returnedCount} shown',
+  tautulliEmptyHint:
+    'If Tautulli shows items, run the Tautulli test and clear the dashboard cache.',
   collapseTile: 'Collapse tile',
   expandTile: 'Expand tile',
 });
@@ -90,6 +94,14 @@ interface MissingItemsResponse {
   total: number;
   limit: number;
   offset: number;
+  debug?: {
+    requestedMediaType?: string;
+    tautulliMediaType?: string;
+    rawCount?: number;
+    filteredCount?: number;
+    returnedCount?: number;
+    endpoint?: string;
+  };
 }
 
 const fetchTautulliRecentlyAdded = async (
@@ -376,6 +388,18 @@ const MissingItemsFeed: React.FC = () => {
               <p className="text-sm text-gray-500">
                 {intl.formatMessage(messages.noRecentActivity)}
               </p>
+              {missingItemsData.debug && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {intl.formatMessage(messages.tautulliDebug, {
+                    rawCount: missingItemsData.debug.rawCount ?? 0,
+                    filteredCount: missingItemsData.debug.filteredCount ?? 0,
+                    returnedCount: missingItemsData.debug.returnedCount ?? 0,
+                  })}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                {intl.formatMessage(messages.tautulliEmptyHint)}
+              </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <Link href="/settings/sources" passHref>
                   <Button as="a" buttonSize="sm" buttonType="default">
@@ -503,6 +527,17 @@ const MissingItemsFeed: React.FC = () => {
                         time: new Date().toLocaleString(),
                       })}
                     </div>
+                    {missingItemsData.debug && (
+                      <div>
+                        {intl.formatMessage(messages.tautulliDebug, {
+                          rawCount: missingItemsData.debug.rawCount ?? 0,
+                          filteredCount:
+                            missingItemsData.debug.filteredCount ?? 0,
+                          returnedCount:
+                            missingItemsData.debug.returnedCount ?? 0,
+                        })}
+                      </div>
+                    )}
                   </div>
                   <div className="flex space-x-2">
                     <Button

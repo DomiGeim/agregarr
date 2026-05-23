@@ -55,7 +55,7 @@ class OverlayApplication {
     });
   }
 
-  public async run(): Promise<void> {
+  public async run(options?: { force?: boolean }): Promise<void> {
     if (this.running) {
       logger.warn('Overlay application is already running', {
         label: 'Overlay Application',
@@ -147,6 +147,7 @@ class OverlayApplication {
     try {
       logger.info('Starting overlay application job', {
         label: 'Overlay Application',
+        force: !!options?.force,
       });
 
       this.setStage('Loading library configurations...');
@@ -193,7 +194,8 @@ class OverlayApplication {
 
           await overlayLibraryService.applyOverlaysToLibrary(
             config.libraryId,
-            () => this.cancelled
+            () => this.cancelled,
+            options
           );
 
           processed++;

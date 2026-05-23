@@ -166,6 +166,12 @@ const messages = defineMessages({
   releaseReadiness: 'Release readiness',
   checkReleaseReadiness: 'Check release readiness',
   overlayOrphans: 'Overlay Template Orphans',
+  overlayStatusAudit: 'Overlay Status Audit',
+  forceOverlayRerender: 'Force Overlay Re-render',
+  plexPosterCacheHint:
+    'Plex and browsers may cache posters briefly after a re-render.',
+  statusTemplateCount: '{count} status templates',
+  staticStatusLabels: '{count} static status labels',
   missingOverlayReferences: '{count} missing references',
   unusedOverlayTemplates: '{count} unused templates',
   previewRepair: 'Preview',
@@ -638,6 +644,26 @@ interface DashboardInsightData {
         id: number;
         name: string;
         type: string;
+      }[];
+    };
+    overlayStatusAudit?: {
+      checkedAt: string;
+      locale: string;
+      enabledOverlayTemplates: number;
+      trackedPosterMetadata: number;
+      needsAttention: boolean;
+      recommendation: string;
+      plexCacheHint: string;
+      statusVariableTemplates: {
+        id: number;
+        name: string;
+        type: string;
+      }[];
+      staticEnglishStatusLabels: {
+        templateId: number;
+        templateName: string;
+        elementId: string;
+        text: string;
       }[];
     };
     backupHealth?: {
@@ -3195,6 +3221,53 @@ const DashboardInsights: React.FC = () => {
               ))
             )}
           </div>
+        </section>
+
+        <section className="rounded-md border border-gray-700 p-4">
+          <h4 className="mb-3 flex items-center text-sm font-semibold text-white">
+            <SparklesIcon className="mr-2 h-4 w-4 text-orange-400" />
+            {intl.formatMessage(messages.overlayStatusAudit)}
+          </h4>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <p className="rounded bg-stone-900 px-3 py-2 text-sm text-gray-300">
+              {intl.formatMessage(messages.statusTemplateCount, {
+                count:
+                  intelligence?.overlayStatusAudit?.statusVariableTemplates
+                    ?.length || 0,
+              })}
+            </p>
+            <p
+              className={`rounded bg-stone-900 px-3 py-2 text-sm font-semibold ${
+                intelligence?.overlayStatusAudit?.needsAttention
+                  ? 'text-orange-300'
+                  : 'text-green-300'
+              }`}
+            >
+              {intl.formatMessage(messages.staticStatusLabels, {
+                count:
+                  intelligence?.overlayStatusAudit?.staticEnglishStatusLabels
+                    ?.length || 0,
+              })}
+            </p>
+          </div>
+          <p className="mt-2 rounded bg-stone-900 px-3 py-2 text-xs text-gray-400">
+            {intelligence?.overlayStatusAudit?.recommendation ||
+              intl.formatMessage(messages.moduleReady)}
+          </p>
+          <p className="mt-2 text-xs text-gray-500">
+            {intelligence?.overlayStatusAudit?.plexCacheHint ||
+              intl.formatMessage(messages.plexPosterCacheHint)}
+          </p>
+          <button
+            type="button"
+            onClick={() => runDashboardAction('force-overlay-rerender')}
+            disabled={runningAction === 'force-overlay-rerender'}
+            className="mt-3 rounded border border-orange-500/60 px-3 py-2 text-xs font-semibold text-orange-200 transition-colors hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {runningAction === 'force-overlay-rerender'
+              ? intl.formatMessage(messages.loading)
+              : intl.formatMessage(messages.forceOverlayRerender)}
+          </button>
         </section>
 
         <section className="rounded-md border border-gray-700 p-4">

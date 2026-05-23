@@ -56,6 +56,8 @@ const messages = defineMessages({
   configured: 'Configured',
   missing: 'Missing',
   updateAvailable: 'Update Available',
+  releaseStatus: 'Release Status',
+  upToDate: 'Up to date',
   updateDockerImage:
     'A newer version is available for your Docker image. Installed: {installedVersion}. Latest: {latestVersion}.',
   collapseTile: 'Collapse tile',
@@ -664,6 +666,14 @@ const DashboardStats: React.FC = () => {
               count: backupHealth.backupCount,
             })
           : intl.formatMessage(messages.noBackups),
+      })}
+      {renderStatCard('release-status', {
+        title: intl.formatMessage(messages.releaseStatus),
+        value: statusData?.version || '-',
+        icon: ArrowUpCircleIcon,
+        subtitle: statusData?.updateAvailable
+          ? intl.formatMessage(messages.updateAvailable)
+          : intl.formatMessage(messages.upToDate),
       })}
       {renderStatCard('collection-plays', {
         title: intl.formatMessage(messages.collectionPlays),

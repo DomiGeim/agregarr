@@ -9,6 +9,7 @@ import { OverlayTemplate } from '@server/entity/OverlayTemplate';
 import { PlaceholderItem } from '@server/entity/PlaceholderItem';
 import { SavedPoster } from '@server/entity/SavedPoster';
 import collectionsSync from '@server/lib/collectionsSync';
+import overlayApplication from '@server/lib/overlayApplication';
 import type {
   CollectionConfig,
   PreExistingCollectionConfig,
@@ -672,6 +673,102 @@ const getOverlayOrphanSummary = async () => {
     missingReferences: missingReferences.slice(0, 25),
     unusedTemplates: unusedTemplates.slice(0, 25),
     healthy: missingReferences.length === 0,
+  };
+};
+
+const getOverlayStatusAudit = async () => {
+  const settings = getSettings();
+  const isGerman = settings.main.locale?.startsWith('de');
+  const [templates, libraryConfigs, trackedMetadata] = await Promise.all([
+    getRepository(OverlayTemplate).find({ where: { isActive: true } }),
+    getRepository(OverlayLibraryConfig).find(),
+    getRepository(CollectionMetadata).count(),
+  ]);
+  const enabledTemplateIds = new Set<number>();
+
+  libraryConfigs.forEach((config) => {
+    (config.enabledOverlays || [])
+      .filter((overlay) => overlay.enabled)
+      .forEach((overlay) => enabledTemplateIds.add(overlay.templateId));
+  });
+
+  const englishStatusPattern =
+    /\b(airing|ended|returning|returning series|cancelled|canceled|coming soon)\b/i;
+  const staticEnglishStatusLabels = templates
+    .filter((template) => enabledTemplateIds.has(template.id))
+    .flatMap((template) => {
+      const data = template.getTemplateData();
+
+      return data.elements
+        .flatMap((element) => {
+          const props = element.properties as {
+            text?: string;
+            segments?: { type: string; value?: string; field?: string }[];
+          };
+          const hits: string[] = [];
+
+          if (props.text && englishStatusPattern.test(props.text)) {
+            hits.push(props.text);
+          }
+
+          (props.segments || []).forEach((segment) => {
+            if (
+              segment.type === 'text' &&
+              segment.value &&
+              englishStatusPattern.test(segment.value)
+            ) {
+              hits.push(segment.value);
+            }
+          });
+
+          return hits.map((text) => ({
+            templateId: template.id,
+            templateName: template.name,
+            elementId: element.id,
+            text,
+          }));
+        })
+        .slice(0, 25);
+    });
+
+  const statusVariableTemplates = templates
+    .filter((template) => enabledTemplateIds.has(template.id))
+    .filter((template) =>
+      template.getTemplateData().elements.some((element) => {
+        const props = element.properties as {
+          segments?: { field?: string }[];
+        };
+
+        return (props.segments || []).some((segment) =>
+          ['tmdbStatus', 'tvdbStatus'].includes(segment.field || '')
+        );
+      })
+    )
+    .map((template) => ({
+      id: template.id,
+      name: template.name,
+      type: template.type,
+    }));
+
+  return {
+    checkedAt: new Date().toISOString(),
+    locale: settings.main.locale || 'en',
+    enabledOverlayTemplates: enabledTemplateIds.size,
+    trackedPosterMetadata: trackedMetadata,
+    statusVariableTemplates,
+    staticEnglishStatusLabels,
+    needsAttention: isGerman && staticEnglishStatusLabels.length > 0,
+    recommendation:
+      isGerman && staticEnglishStatusLabels.length > 0
+        ? 'Einige aktive Overlay-Templates enthalten statischen englischen Statustext. Nutze Variablen wie tmdbStatus/tvdbStatus oder rendere Overlays neu.'
+        : isGerman
+        ? 'Status-Overlays verwenden die aktive Sprache. Bei alten Plex-Postern kann ein erzwungenes Neu-Rendern helfen.'
+        : staticEnglishStatusLabels.length > 0
+        ? 'Some active overlay templates contain static English status text. Use variables like tmdbStatus/tvdbStatus or force a re-render.'
+        : 'Status overlays use the active language. For old Plex posters, a forced re-render can help.',
+    plexCacheHint: isGerman
+      ? 'Plex und Browser koennen Poster kurz zwischenspeichern. Nach einem Force Re-render kann ein Bibliotheks-Refresh oder Cache-Leeren noetig sein.'
+      : 'Plex and browsers can cache posters briefly. After a force re-render, a library refresh or cache clear may be needed.',
   };
 };
 
@@ -3416,6 +3513,7 @@ const getAdvancedIntelligence = async (
     storedEvents,
     latestRelease,
     overlayOrphans,
+    overlayStatusAudit,
   ] = await Promise.all([
     placeholderRepository
       .find({ order: { updatedAt: 'DESC' }, take: 8 })
@@ -3437,6 +3535,21 @@ const getAdvancedIntelligence = async (
       missingReferences: [],
       unusedTemplates: [],
       healthy: false,
+    })),
+    getOverlayStatusAudit().catch(() => ({
+      checkedAt: new Date().toISOString(),
+      locale: settings.main.locale || 'en',
+      enabledOverlayTemplates: 0,
+      trackedPosterMetadata: 0,
+      statusVariableTemplates: [],
+      staticEnglishStatusLabels: [],
+      needsAttention: false,
+      recommendation: settings.main.locale?.startsWith('de')
+        ? 'Overlay-Status-Audit nicht verfuegbar.'
+        : 'Overlay status audit unavailable.',
+      plexCacheHint: settings.main.locale?.startsWith('de')
+        ? 'Plex und Browser koennen Poster nach einem Neu-Rendern kurz zwischenspeichern.'
+        : 'Plex and browsers can cache posters briefly after a re-render.',
     })),
   ]);
 
@@ -5017,6 +5130,7 @@ const getAdvancedIntelligence = async (
     experimentCandidates,
     syncCostEstimate,
     overlayOrphans,
+    overlayStatusAudit,
     placeholderLifecycle,
     explainers,
     availableActions: [
@@ -5028,6 +5142,16 @@ const getAdvancedIntelligence = async (
       {
         id: 'test-tautulli',
         title: isGerman ? 'Tautulli testen' : 'Test Tautulli',
+        danger: false,
+      },
+      {
+        id: 'force-overlay-rerender',
+        title: isGerman ? 'Overlays neu rendern' : 'Force Overlay Re-render',
+        danger: true,
+      },
+      {
+        id: 'test-backup',
+        title: isGerman ? 'Backup testen' : 'Test Backup',
         danger: false,
       },
       {
@@ -7037,6 +7161,76 @@ dashboardRoutes.post(
       return res.status(200).json(result);
     }
 
+    if (actionId === 'force-overlay-rerender') {
+      if (overlayApplication.running) {
+        return res.status(409).json({
+          success: false,
+          message: 'Overlay application is already running',
+          status: overlayApplication.status,
+        });
+      }
+
+      overlayApplication.run({ force: true }).catch((error) => {
+        logger.error('Dashboard-triggered forced overlay re-render failed', {
+          label: 'Dashboard API',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+      await appendDashboardEvent({
+        type: 'action',
+        title: 'Overlay Force Re-render gestartet',
+        message:
+          'Alle aktiven Overlay-Bibliotheken werden neu gerendert. Plex kann Poster danach kurz zwischenspeichern.',
+        metadata: {
+          actionId,
+          status: overlayApplication.status,
+        },
+      });
+      dashboardCache.clear();
+
+      return res.status(202).json({
+        success: true,
+        message:
+          'Overlay force re-render started. Plex and browsers may cache old posters briefly.',
+        status: overlayApplication.status,
+      });
+    }
+
+    if (actionId === 'test-backup') {
+      const backup = await writeAutomaticSettingsBackup(
+        settings,
+        'backup-test'
+      );
+      const content = await fs.readFile(backup.path, 'utf-8');
+      const parsed = JSON.parse(content);
+      const validation = validateSettingsBackup(parsed);
+      const ok = validation.valid;
+
+      await appendDashboardEvent({
+        type: 'backup',
+        title: ok ? 'Backup test passed' : 'Backup test failed',
+        message: ok
+          ? 'Settings backup was written, read, parsed and validated.'
+          : [...validation.missingKeys, ...validation.schemaWarnings].join(
+              ', '
+            ),
+        metadata: {
+          actionId,
+          filename: path.basename(backup.path),
+          validation,
+        },
+      });
+      dashboardCache.clear();
+
+      return res.status(ok ? 200 : 500).json({
+        success: ok,
+        createdAt: backup.createdAt,
+        filename: path.basename(backup.path),
+        validation,
+      });
+    }
+
     if (actionId === 'clear-dashboard-cache') {
       dashboardCache.clear();
 
@@ -7254,18 +7448,25 @@ dashboardRoutes.get(
           limit,
           offset,
           configured: false,
+          debug: {
+            requestedMediaType,
+            tautulliMediaType,
+            rawCount: 0,
+            filteredCount: 0,
+            returnedCount: 0,
+            endpoint: 'get_recently_added',
+          },
         });
       }
 
       const tautulli = new TautulliAPI(settings.tautulli);
-      const allItems = (
-        await tautulli.getRecentlyAdded(
-          Math.max(limit + offset, 100),
-          0,
-          undefined,
-          tautulliMediaType
-        )
-      )
+      const rawItems = await tautulli.getRecentlyAdded(
+        Math.max(limit + offset, 100),
+        0,
+        undefined,
+        tautulliMediaType
+      );
+      const allItems = rawItems
         .filter((item) =>
           matchesRequestedTautulliMediaType(requestedMediaType, item.media_type)
         )
@@ -7304,6 +7505,14 @@ dashboardRoutes.get(
         limit,
         offset,
         configured: true,
+        debug: {
+          requestedMediaType,
+          tautulliMediaType,
+          rawCount: rawItems.length,
+          filteredCount: allItems.length,
+          returnedCount: results.length,
+          endpoint: 'get_recently_added',
+        },
       });
     } catch (error) {
       logger.error('Failed to retrieve Tautulli recently added items', {
@@ -7318,8 +7527,22 @@ dashboardRoutes.get(
         offset: parseInt(req.query.offset as string) || 0,
         configured: true,
         error: error instanceof Error ? error.message : 'Unknown error',
+        debug: {
+          requestedMediaType: getRequestedTautulliMediaType(
+            req.query.mediaType
+          ),
+          endpoint: 'get_recently_added',
+        },
       });
     }
+  }
+);
+
+dashboardRoutes.get(
+  '/overlay-status-audit',
+  isAuthenticated(),
+  async (_req, res) => {
+    return res.status(200).json(await getOverlayStatusAudit());
   }
 );
 

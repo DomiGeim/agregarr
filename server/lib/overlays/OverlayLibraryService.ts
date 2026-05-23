@@ -167,7 +167,8 @@ class OverlayLibraryService {
    */
   async applyOverlaysToLibrary(
     libraryId: string,
-    checkCancelled?: () => boolean
+    checkCancelled?: () => boolean,
+    options?: { force?: boolean }
   ): Promise<void> {
     // Check if library is already being processed (mutex check)
     // Reject duplicate requests to prevent corruption and match API layer behavior
@@ -224,7 +225,12 @@ class OverlayLibraryService {
       }
 
       // Process the library
-      await this.processLibraryOverlays(libraryId, config, checkCancelled);
+      await this.processLibraryOverlays(
+        libraryId,
+        config,
+        checkCancelled,
+        options
+      );
       resolveDeferred();
     } catch (error) {
       rejectDeferred(error instanceof Error ? error : new Error(String(error)));
@@ -241,7 +247,8 @@ class OverlayLibraryService {
   private async processLibraryOverlays(
     libraryId: string,
     config: OverlayLibraryConfig | null,
-    checkCancelled?: () => boolean
+    checkCancelled?: () => boolean,
+    options?: { force?: boolean }
   ): Promise<void> {
     try {
       // Clear library caches at start of job
@@ -301,6 +308,7 @@ class OverlayLibraryService {
         libraryId,
         templateCount: sortedTemplates.length,
         templates: sortedTemplates.map((t) => t.name),
+        force: !!options?.force,
       });
 
       // Fetch Maintainerr collections once for the entire job
@@ -420,7 +428,9 @@ class OverlayLibraryService {
             sortedTemplates,
             config.mediaType,
             libraryId,
-            config.libraryName
+            config.libraryName,
+            undefined,
+            options
           );
           successCount++;
         } catch (error) {
@@ -640,7 +650,8 @@ class OverlayLibraryService {
     configuredLibraryType: 'movie' | 'show',
     libraryId: string,
     libraryName: string,
-    contextOverrides?: Partial<OverlayRenderContext>
+    contextOverrides?: Partial<OverlayRenderContext>,
+    options?: { force?: boolean }
   ): Promise<void> {
     try {
       // CRITICAL: Derive actual media type from item.type, not library config
@@ -931,6 +942,7 @@ class OverlayLibraryService {
           metadata?.basePosterSource !== posterSource;
 
         if (
+          !options?.force &&
           !overlayInputsChanged &&
           !plexPosterMissing &&
           !basePosterSourceChanged
@@ -952,6 +964,7 @@ class OverlayLibraryService {
           overlayInputsChanged,
           plexPosterMissing,
           basePosterSourceChanged,
+          force: !!options?.force,
         });
       } catch (metaError) {
         logger.warn('Metadata check failed, proceeding with overlay', {

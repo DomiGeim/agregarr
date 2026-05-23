@@ -1,3 +1,36 @@
+# 2.5.19 (2026-05-23)
+
+## Highlights
+
+### Dashboard
+
+- Added a forced overlay re-render action to Operational Intelligence so language/status overlay changes can be pushed to existing Plex posters.
+- Added an Overlay Status Audit with status-template counts, static-status-label warnings, and Plex poster cache guidance.
+- Added a Backup Test dashboard action that writes, reads, parses, and validates a settings backup.
+- Added Tautulli Recently Added debug counters for raw, filtered, and displayed items, plus clearer empty-state recovery guidance.
+- Added an always-visible Release Status tile to the dashboard summary.
+
+### Overlays
+
+- Extended the overlay application pipeline with a safe `force` mode that bypasses the overlay input-hash skip without disabling normal cancellation or per-library locking.
+- Localized overlay preview status values with the active GUI language so preview posters match the real Plex render behavior.
+
+### Maintenance
+
+- Updated English and German dashboard strings for the new actions and diagnostics.
+- Verified ESLint, server/client typechecks, i18n duplicate checks, English locale language audit, locale JSON parsing, and full production build for this release.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.19
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.18...v2.5.19
+
 # 2.5.18 (2026-05-23)
 
 ## Highlights

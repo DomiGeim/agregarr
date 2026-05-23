@@ -9,7 +9,10 @@ import type {
   OverlayVariableElementProps,
 } from '@server/entity/OverlayTemplate';
 import { OverlayTemplate } from '@server/entity/OverlayTemplate';
-import { getOverlayLabel } from '@server/lib/overlays/OverlayLocalization';
+import {
+  getOverlayLabel,
+  localizeOverlayStatus,
+} from '@server/lib/overlays/OverlayLocalization';
 import { overlayTemplateRenderer } from '@server/lib/overlays/OverlayTemplateRenderer';
 import { presetTemplateService } from '@server/lib/overlays/PresetTemplates';
 import { getTmdbLanguage } from '@server/lib/settings';
@@ -809,8 +812,8 @@ router.get('/:id/preview', async (req, res, next) => {
       network: 'HBO', // Always populate for previews
       genre: 'Action',
       runtime: 148,
-      tmdbStatus: 'RETURNING', // Always populate for previews
-      tvdbStatus: 'RETURNING', // Always populate for previews
+      tmdbStatus: localizeOverlayStatus('RETURNING'), // Always populate for previews
+      tvdbStatus: localizeOverlayStatus('RETURNING'), // Always populate for previews
 
       // Plex Media Info
       resolution: '4K',
@@ -1022,8 +1025,8 @@ router.post('/combined-preview', async (req, res, next) => {
       network: 'HBO', // Always populate for previews
       genre: 'Action',
       runtime: 148,
-      tmdbStatus: 'RETURNING', // Always populate for previews
-      tvdbStatus: 'RETURNING', // Always populate for previews
+      tmdbStatus: localizeOverlayStatus('RETURNING'), // Always populate for previews
+      tvdbStatus: localizeOverlayStatus('RETURNING'), // Always populate for previews
 
       // Plex Media Info
       resolution: '4K',
