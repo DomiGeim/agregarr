@@ -1,7 +1,7 @@
 import ImdbAPI from '@server/api/imdb';
 import ImdbRatingsAPI from '@server/api/imdbRatings';
-import MetacriticAPI from '@server/api/metacritic';
 import type { MaintainerrCollection } from '@server/api/maintainerr';
+import MetacriticAPI from '@server/api/metacritic';
 import type { PlexLibraryItem } from '@server/api/plexapi';
 import RottenTomatoes from '@server/api/rottentomatoes';
 import type { RadarrMovie } from '@server/api/servarr/radarr';
@@ -452,7 +452,7 @@ export async function buildRenderContext(
             mappedStatus = 'PILOT';
             break;
           default:
-            mappedStatus = rawStatus.toUpperCase();
+            mappedStatus = rawStatus;
         }
 
         // Check if an episode aired in last 15 days to determine "AIRING" status
@@ -521,7 +521,7 @@ export async function buildRenderContext(
                 mappedTvdbStatus = 'PLANNED';
                 break;
               default:
-                mappedTvdbStatus = rawTvdbStatus.toUpperCase();
+                mappedTvdbStatus = rawTvdbStatus;
             }
 
             // Override to AIRING if an episode aired within the last 15 days

@@ -6,6 +6,7 @@ import type { SonarrSeries } from '@server/api/servarr/sonarr';
 import { getRepository } from '@server/datasource';
 import { OverlayLibraryConfig } from '@server/entity/OverlayLibraryConfig';
 import { OverlayTemplate } from '@server/entity/OverlayTemplate';
+import { getOverlayLocale } from '@server/lib/overlays/OverlayLocalization';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import fs from 'fs/promises';
@@ -867,6 +868,7 @@ class OverlayLibraryService {
         templateData: templateDataArray,
         usedFields: usedFields,
         context: context as Record<string, unknown>,
+        overlayLocale: getOverlayLocale(),
       });
 
       // Debug logging for hash comparison
@@ -886,6 +888,7 @@ class OverlayLibraryService {
           inSonarr: context.inSonarr,
           daysAgo: context.daysAgo,
           isPlaceholder: context.isPlaceholder,
+          overlayLocale: getOverlayLocale(),
         },
       });
 

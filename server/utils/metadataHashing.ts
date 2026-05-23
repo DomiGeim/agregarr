@@ -179,6 +179,7 @@ export function calculateOverlayInputHash(config: {
   templateData: OverlayTemplateData[];
   usedFields: Set<string>;
   context: Record<string, unknown>;
+  overlayLocale?: string;
 }): string {
   // Extract only the context fields that are actually used
   const relevantContext: Record<string, unknown> = {};
@@ -190,5 +191,6 @@ export function calculateOverlayInputHash(config: {
     templateIds: [...config.templateIds].sort(), // Ensure sorted for consistency
     templateData: config.templateData, // Include template design (positions, colors, icon paths)
     context: relevantContext, // Only include fields actually used by templates
+    overlayLocale: config.overlayLocale, // Force re-render when rendered overlay language changes
   });
 }
