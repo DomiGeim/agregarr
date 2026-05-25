@@ -3,7 +3,11 @@ FROM node:20.19.5-alpine AS build_image
 WORKDIR /app
 
 ARG TARGETPLATFORM
+ARG TARGETARCH
 ENV TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+ENV TARGETARCH=${TARGETARCH:-amd64}
+
+RUN echo "Building Agregarr for ${TARGETPLATFORM} (${TARGETARCH})"
 
 RUN apk add --no-cache \
   python3 make g++ gcc libc6-compat bash \

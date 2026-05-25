@@ -47,6 +47,8 @@ jobs:
         include:
           - platform: linux/amd64
             runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -122,6 +124,8 @@ jobs:
       - name: Inspect images
         run: |
           docker buildx imagetools inspect ghcr.io/domigeim/agregarr:develop
+          docker buildx imagetools inspect ghcr.io/domigeim/agregarr:develop | grep -q 'linux/amd64'
+          docker buildx imagetools inspect ghcr.io/domigeim/agregarr:develop | grep -q 'linux/arm64'
 
   discord:
     name: Send Discord Notification

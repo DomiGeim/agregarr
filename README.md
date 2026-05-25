@@ -28,7 +28,7 @@ Agregarr keeps your Plex Home and Recommended fresh by frequently updating it wi
 ```yaml
 services:
   agregarr:
-    image: agregarr/agregarr:latest
+    image: ghcr.io/domigeim/agregarr:latest
     container_name: agregarr
     volumes:
       - /path/to/config:/app/config # Change /path/to/config to your actual config path
@@ -52,6 +52,8 @@ services:
       - 7171:7171
     restart: unless-stopped
 ```
+
+The Docker image is published as a multi-platform image for `linux/amd64` and `linux/arm64`. Docker automatically pulls the right variant on x86_64 servers, Apple Silicon, Raspberry Pi 4/5, and other ARM64 hosts.
 
 Further instructions for basic setup available [**here**](https://agregarr.org/docs/installation) and Placeholder media volumes [**here**](https://agregarr.org/docs/placeholder-volumes)
 

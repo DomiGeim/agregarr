@@ -1,3 +1,26 @@
+# 2.5.20 (2026-05-25)
+
+## Highlights
+
+### Maintenance
+
+- Added full Docker `linux/arm64` builds for release images, alongside the existing `linux/amd64` images.
+- Added ARM64 builds to the develop image workflow so multi-platform support is checked before releases.
+- Added native GitHub-hosted ARM64 runners for ARM Docker builds instead of slow emulation.
+- Added manifest validation that fails the workflow if either `linux/amd64` or `linux/arm64` is missing from the published image.
+- Documented the fork image `ghcr.io/domigeim/agregarr:latest` and its automatic AMD64/ARM64 platform selection.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.20
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.19...v2.5.20
+
 # 2.5.19 (2026-05-23)
 
 ## Highlights
