@@ -284,6 +284,32 @@ jobs:
             fi
           } > release-notes.md
 
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.VERSION;
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const headingRegex = /^#\s+([0-9][^\s]*)\s+\(([^)]+)\)\s*$/gm;
+          const matches = [...changelog.matchAll(headingRegex)];
+
+          for (let index = 0; index < matches.length; index++) {
+            const match = matches[index];
+            if (match[1] !== version) {
+              continue;
+            }
+
+            const next = matches[index + 1];
+            const bodyStart = match.index + match[0].length;
+            const bodyEnd = next ? next.index : changelog.length;
+            const body = changelog.slice(bodyStart, bodyEnd).trim();
+
+            if (body) {
+              fs.writeFileSync('release-notes.md', body);
+              console.log(`Using CHANGELOG.md notes for v${version}`);
+            }
+            break;
+          }
+          NODE
+
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             gh release edit "v${VERSION}" \
               --target "${GITHUB_SHA}" \

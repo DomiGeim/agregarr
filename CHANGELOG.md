@@ -302,6 +302,761 @@ docker pull ghcr.io/domigeim/agregarr:latest
 
 https://github.com/DomiGeim/agregarr/compare/v2.5.12...v2.5.13
 
+# 2.5.12 (2026-05-18)
+
+## Highlights
+
+### Features
+
+- Localize overlay status banners.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.12
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.11...v2.5.12
+
+# 2.5.11 (2026-05-18)
+
+## Highlights
+
+### Fixes
+
+- Fixed upstream collection issue candidates.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.11
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.10...v2.5.11
+
+# 2.5.10 (2026-05-18)
+
+## Highlights
+
+### Maintenance
+
+- Improved dashboard release caching and admin audit.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.10
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.9...v2.5.10
+
+# 2.5.9 (2026-05-17)
+
+## Highlights
+
+### Dashboard
+
+- Added second 50 dashboard admin features.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.9
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.8...v2.5.9
+
+# 2.5.8 (2026-05-17)
+
+## Highlights
+
+### Dashboard
+
+- Added first 50 dashboard feature coverage.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.8
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.7...v2.5.8
+
+# 2.5.7 (2026-05-17)
+
+## Highlights
+
+### Dashboard
+
+- Improved dashboard responsiveness.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.7
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.6...v2.5.7
+
+# 2.5.6 (2026-05-16)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard diagnostics and support tools.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.6
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.5...v2.5.6
+
+# 2.5.5 (2026-05-16)
+
+## Highlights
+
+### Maintenance
+
+- Added dashboard intelligence and release safeguards.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.5
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.4...v2.5.5
+
+# 2.5.4 (2026-05-15)
+
+## Highlights
+
+### Fixes
+
+- Fixed English collection form text.
+
+### Maintenance
+
+- Used latest Ubuntu runners for releases.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.4
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.2...v2.5.4
+
+# 2.5.2 (2026-05-15)
+
+## Highlights
+
+### Dashboard
+
+- Added advanced dashboard intelligence tools.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.2
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.1...v2.5.2
+
+# 2.5.1 (2026-05-15)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard management and health exports.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.1
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.0...v2.5.1
+
+# 2.5.0 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard operations safety suite.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.0
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.9...v2.5.0
+
+# 2.4.9 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard layout and guided recovery tools.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.9
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.8...v2.4.9
+
+# 2.4.8 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard first aid and collapsible tiles.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.8
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.7...v2.4.8
+
+# 2.4.7 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard repair and audit tools.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.7
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.6...v2.4.7
+
+# 2.4.6 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard operations toolkit.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.6
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.5...v2.4.6
+
+# 2.4.5 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard: add operations suite.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.5
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.9...v2.4.5
+
+# 2.4.4.9 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard: expand intelligence center.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.9
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.8...v2.4.4.9
+
+# 2.4.4.8 (2026-05-14)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard: add operational intelligence.
+- Added dashboard: show tautulli artwork.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.8
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.7...v2.4.4.8
+
+# 2.4.4.7 (2026-05-14)
+
+## Highlights
+
+### Fixes
+
+- Fixed collections: import upstream placeholder and hub fixes.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.7
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.6...v2.4.4.7
+
+# 2.4.4.6 (2026-05-14)
+
+## Highlights
+
+### Fixes
+
+- Fixed i18n: remove German text from English UI.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.6
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.5...v2.4.4.6
+
+# 2.4.4.5 (2026-05-09)
+
+## Highlights
+
+### Fixes
+
+- Fixed api: expose tautulli recently added routes.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.5
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.4...v2.4.4.5
+
+# 2.4.4.4 (2026-05-09)
+
+## Highlights
+
+### Fixes
+
+- Fixed api: document settings backup routes.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.4
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.3...v2.4.4.4
+
+# 2.4.4.3 (2026-05-09)
+
+## Highlights
+
+### Fixes
+
+- Fixed tautulli: load recently added and export backups reliably.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.3
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.2...v2.4.4.3
+
+# 2.4.4.2 (2026-05-09)
+
+## Highlights
+
+### Fixes
+
+- Fixed dashboard: harden tautulli and backup feedback.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.2
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4.1...v2.4.4.2
+
+# 2.4.4.1 (2026-05-09)
+
+## Highlights
+
+### Fixes
+
+- Fixed dashboard: stabilize tautulli recently added.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4.1
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.4...v2.4.4.1
+
+# 2.4.4 (2026-05-09)
+
+## Highlights
+
+### Fixes
+
+- Fixed dashboard: load recently added from tautulli.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.4
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.9...v2.4.4
+
+# 2.4.3.9 (2026-05-09)
+
+## Highlights
+
+### Fixes
+
+- Fixed dashboard: improve tautulli stats loading.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.9
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.8...v2.4.3.9
+
+# 2.4.3.8 (2026-05-09)
+
+## Highlights
+
+### Dashboard
+
+- Added dashboard: add health and job history.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.8
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.7...v2.4.3.8
+
+# 2.4.3.7 (2026-05-09)
+
+## Highlights
+
+### Maintenance
+
+- Added settings: improve release and backup tooling.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.7
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.6...v2.4.3.7
+
+# 2.4.3.6 (2026-05-09)
+
+## Highlights
+
+### Sources and Media Servers
+
+- Added settings: split jellyfin into own tab.
+
+### Features
+
+- Added settings: improve media server profiles.
+
+### Fixes
+
+- Fixed remove trailer-placeholder label from TV shows across all cleanup paths.
+- Fixed defer placeholder cleanup when label removal fails.
+- Fixed remove trailer-placeholder label when real content detected.
+- Fixed letterboxd: remove data-film-id dependency from custom list parsing.
+- Fixed align poster filename sanitization with validation allowlist.
+
+### Maintenance
+
+- Added docker: add puid pgid entrypoint support.
+- Updated CI: publish latest image for manual releases.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.6
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.5...v2.4.3.6
+
+# 2.4.3.5 (2026-05-08)
+
+## Highlights
+
+### Sources and Media Servers
+
+- Added jellyfin: add media server support.
+
+### Fixes
+
+- Fixed address small upstream issue regressions.
+- Fixed tmdb: retry advanced discover requests.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.5
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.4...v2.4.3.5
+
+# 2.4.3.4 (2026-05-07)
+
+## Highlights
+
+### Sources and Media Servers
+
+- Added collections: add plex watchlist source.
+
+### Fixes
+
+- Fixed dashboard: speed up tautulli stats loading.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.4
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.3...v2.4.3.4
+
+# 2.4.3.3 (2026-05-07)
+
+## Highlights
+
+### Sources and Media Servers
+
+- Formatted collections: run prettier on target user sync.
+- Formatted collections: format target user sync logs.
+- Added collections: add target user visibility.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.3
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.2...v2.4.3.3
+
+# 2.4.3.2 (2026-05-07)
+
+## Highlights
+
+### Sources and Media Servers
+
+- Added collections: add more newly added streaming services.
+
+### Fixes
+
+- Fixed ci: publish develop image to fork ghcr.
+
+### Localization
+
+- Updated i18n: format german locale.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.2
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3.1...v2.4.3.2
+
+# 2.4.3.1 (2026-05-07)
+
+## Highlights
+
+### Sources and Media Servers
+
+- Added collections: add more newly added streaming options.
+
+### Features
+
+- Updated de.json.
+- Updated de.json.
+- Updated de.json.
+
+### Fixes
+
+- Fixed release: support four-part version.
+- Fixed settings: point github links to fork.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3.1
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.4.3...v2.4.3.1
+
+# 2.4.3 (2026-05-07)
+
+## Highlights
+
+### Sources and Media Servers
+
+- Added collections: add netflix newly added option.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.4.3
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v1.0.0...v2.4.3
+
 # 1.0.0 (2026-05-07)
 
 ### Bug Fixes

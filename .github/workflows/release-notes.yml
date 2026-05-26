@@ -1,0 +1,26 @@
+name: Sync Release Notes
+
+on:
+  push:
+    branches:
+      - develop
+      - latest
+    paths:
+      - CHANGELOG.md
+      - scripts/sync-release-notes.js
+      - .github/workflows/release-notes.yml
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Sync GitHub release notes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Sync releases from changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/sync-release-notes.js
