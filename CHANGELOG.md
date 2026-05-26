@@ -1,3 +1,28 @@
+# 2.5.21 (2026-05-26)
+
+## Highlights
+
+### Dashboard
+
+- Added runtime diagnostics to `/api/v1/status`, including `process.arch`, Node version, Docker detection, config write access, font path checks, and native module checks for `sharp` and `canvas`.
+- Added a dashboard Runtime tile so the active architecture and runtime health are visible at a glance.
+
+### Maintenance
+
+- Added release smoke tests that start the published Docker image for both `linux/amd64` and `linux/arm64`, load native modules, call `/api/v1/status`, and fail the release if the runtime architecture or health checks do not match.
+- Added the same multi-platform smoke checks to the develop image workflow before Discord success notifications.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.21
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.20...v2.5.21
+
 # 2.5.20 (2026-05-25)
 
 ## Highlights

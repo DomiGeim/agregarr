@@ -127,9 +127,81 @@ jobs:
           docker buildx imagetools inspect ghcr.io/domigeim/agregarr:develop | grep -q 'linux/amd64'
           docker buildx imagetools inspect ghcr.io/domigeim/agregarr:develop | grep -q 'linux/arm64'
 
+  smoke:
+    name: Smoke ${{ matrix.platform }}
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.runner }}
+    needs: merge
+    permissions:
+      packages: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            expected_arch: x64
+            port: 17171
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            expected_arch: arm64
+            port: 17172
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start container and verify runtime
+        env:
+          IMAGE: ghcr.io/domigeim/agregarr:develop
+          CONTAINER_NAME: agregarr-develop-smoke-${{ matrix.expected_arch }}
+          EXPECTED_ARCH: ${{ matrix.expected_arch }}
+          PORT: ${{ matrix.port }}
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs --tail 120 "$CONTAINER_NAME" || true
+            docker rm -f "$CONTAINER_NAME" || true
+          }
+          trap cleanup EXIT
+
+          docker run -d \
+            --name "$CONTAINER_NAME" \
+            --platform "${{ matrix.platform }}" \
+            -e TZ=UTC \
+            -p "${PORT}:7171" \
+            "$IMAGE"
+
+          docker exec "$CONTAINER_NAME" node -e "require('sharp'); require('canvas'); console.log('native modules ok')"
+
+          for attempt in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:${PORT}/api/v1/status" -o status.json; then
+              break
+            fi
+            sleep 2
+          done
+
+          test -s status.json
+          node <<'NODE'
+          const fs = require('fs');
+          const status = JSON.parse(fs.readFileSync('status.json', 'utf8'));
+          const expectedArch = process.env.EXPECTED_ARCH;
+          if (!status.runtime || status.runtime.arch !== expectedArch) {
+            throw new Error(`Runtime arch mismatch: ${status.runtime?.arch} !== ${expectedArch}`);
+          }
+          if (!status.runtime.healthy) {
+            throw new Error(`Runtime checks failed: ${JSON.stringify(status.runtime.checks)}`);
+          }
+          console.log(`Smoke OK: ${status.version} ${status.runtime.platform}/${status.runtime.arch}`);
+          NODE
+
   discord:
     name: Send Discord Notification
-    needs: merge
+    needs: smoke
     if: always() && github.event_name != 'pull_request' && !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: ubuntu-latest
     steps:

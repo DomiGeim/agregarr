@@ -58,6 +58,9 @@ const messages = defineMessages({
   updateAvailable: 'Update Available',
   releaseStatus: 'Release Status',
   upToDate: 'Up to date',
+  runtimeStatus: 'Runtime',
+  runtimeHealthy: 'Runtime checks healthy',
+  runtimeAttention: 'Runtime checks need attention',
   updateDockerImage:
     'A newer version is available for your Docker image. Installed: {installedVersion}. Latest: {latestVersion}.',
   collapseTile: 'Collapse tile',
@@ -674,6 +677,14 @@ const DashboardStats: React.FC = () => {
         subtitle: statusData?.updateAvailable
           ? intl.formatMessage(messages.updateAvailable)
           : intl.formatMessage(messages.upToDate),
+      })}
+      {renderStatCard('runtime-status', {
+        title: intl.formatMessage(messages.runtimeStatus),
+        value: statusData?.runtime?.arch || '-',
+        icon: ServerStackIcon,
+        subtitle: statusData?.runtime?.healthy
+          ? intl.formatMessage(messages.runtimeHealthy)
+          : intl.formatMessage(messages.runtimeAttention),
       })}
       {renderStatCard('collection-plays', {
         title: intl.formatMessage(messages.collectionPlays),

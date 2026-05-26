@@ -17,6 +17,9 @@ import restartFlag from '@server/utils/restartFlag';
 import { isPerson } from '@server/utils/typeHelpers';
 import axios from 'axios';
 import { Router } from 'express';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import anilistRoutes from './anilist';
 import authRoutes from './auth';
 import collectionsRoutes from './collections';
@@ -75,6 +78,70 @@ const checkGhcrTag = async (tag: string): Promise<boolean> => {
   } catch {
     return false;
   }
+};
+
+const checkRuntimeItem = async (
+  name: string,
+  check: () => Promise<unknown>
+): Promise<{ name: string; ok: boolean; message?: string }> => {
+  try {
+    await check();
+    return { name, ok: true };
+  } catch (error) {
+    return {
+      name,
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
+const getRuntimeDiagnostics = async () => {
+  const configPath = appDataPath();
+  const checks = await Promise.all([
+    checkRuntimeItem('sharp', async () => import('sharp')),
+    checkRuntimeItem('canvas', async () => import('canvas')),
+    checkRuntimeItem('configWritable', async () => {
+      await fs.mkdir(configPath, { recursive: true });
+      const testPath = path.join(
+        configPath,
+        `.runtime-write-test-${process.pid}`
+      );
+      await fs.writeFile(testPath, 'ok', 'utf-8');
+      await fs.unlink(testPath);
+    }),
+    checkRuntimeItem('systemFonts', async () => {
+      await fs.access('/usr/share/fonts');
+    }),
+    checkRuntimeItem('customFontsPath', async () => {
+      await fs.mkdir(path.join(configPath, 'fonts'), { recursive: true });
+      await fs.access(path.join(configPath, 'fonts'));
+    }),
+  ]);
+
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    nodeVersion: process.version,
+    runtime: 'node',
+    docker: {
+      detected: await fs
+        .access(path.join(configPath, 'DOCKER'))
+        .then(() => true)
+        .catch(() => false),
+      expectedImage: 'ghcr.io/domigeim/agregarr:latest',
+    },
+    os: {
+      type: os.type(),
+      release: os.release(),
+    },
+    paths: {
+      appDataPath: configPath,
+    },
+    checks,
+    healthy: checks.every((check) => check.ok),
+    checkedAt: new Date().toISOString(),
+  };
 };
 
 router.get('/status', async (_req, res) => {
@@ -137,6 +204,7 @@ router.get('/status', async (_req, res) => {
     latestUrl,
     dockerImage,
     dockerPullCommand: `docker pull ${dockerImage}`,
+    runtime: await getRuntimeDiagnostics(),
     ghcr: {
       versionTag,
       latestTag: 'latest',

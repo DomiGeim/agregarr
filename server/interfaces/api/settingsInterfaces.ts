@@ -63,6 +63,30 @@ export interface StatusResponse {
   latestUrl?: string;
   dockerImage?: string;
   dockerPullCommand?: string;
+  runtime?: {
+    platform: string;
+    arch: string;
+    nodeVersion: string;
+    runtime: string;
+    docker: {
+      detected: boolean;
+      expectedImage: string;
+    };
+    os: {
+      type: string;
+      release: string;
+    };
+    paths: {
+      appDataPath: string;
+    };
+    checks: {
+      name: string;
+      ok: boolean;
+      message?: string;
+    }[];
+    healthy: boolean;
+    checkedAt: string;
+  };
   ghcr?: {
     versionTag: string;
     latestTag: string;
