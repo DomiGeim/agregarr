@@ -5,10 +5,13 @@ import { OverlayEditorModal } from '@app/components/OverlayEditor';
 import {
   ArrowUpTrayIcon,
   BeakerIcon,
+  CheckIcon,
   Cog6ToothIcon,
   ExclamationTriangleIcon,
+  FunnelIcon,
   PlayIcon,
   PlusIcon,
+  StopIcon,
 } from '@heroicons/react/24/solid';
 import type {
   ApplicationCondition,
@@ -47,6 +50,20 @@ const messages = defineMessages({
   overlaySyncQueued:
     'Per-library syncs are running. Full sync will start when they complete.',
   overlaySyncError: 'Failed to start overlay sync',
+  overlayJobs: 'Overlay Jobs',
+  libraryProgress: 'Library {current} of {total}',
+  inProgress: 'In Progress',
+  processing: 'Processing',
+  itemProgress: 'Item {current} of {total}',
+  progress: 'Progress',
+  success: 'Success',
+  errors: 'Errors',
+  unchanged: 'Unchanged',
+  filtered: 'Filtered',
+  processed: 'Processed {processed} / {total}',
+  eta: 'ETA: {time}',
+  stop: 'Stop',
+  noOverlayJobs: 'No overlay jobs running',
   testItem: 'Test Item',
   allTags: 'All',
   showDefaultTemplates: 'Show default templates',
@@ -65,6 +82,46 @@ interface OverlayTemplate {
 }
 
 type TabKey = 'templates' | 'libraries';
+
+interface OverlayApplicationStatus {
+  running: boolean;
+  cancelled: boolean;
+  currentStage: string;
+  totalLibraries: number;
+  processedLibraries: number;
+  currentLibraryIndex: number;
+  currentLibraryName: string;
+  progress: number;
+  currentLibraryProgress?: {
+    libraryId: string;
+    libraryName: string;
+    totalItems: number;
+    processedItems: number;
+    successCount: number;
+    errorCount: number;
+    unchangedCount: number;
+    filteredCount: number;
+    currentItemTitle?: string;
+    currentItemIndex?: number;
+    progress: number;
+    etaSeconds?: number;
+  };
+}
+
+const formatDuration = (seconds?: number): string => {
+  if (!seconds || seconds <= 0) {
+    return '0s';
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}m ${remainingSeconds}s`;
+};
 
 const OverlaysPageView: React.FC = () => {
   const intl = useIntl();
@@ -122,15 +179,41 @@ const OverlaysPageView: React.FC = () => {
 
   // Poll for running library overlays
   const { data: runningLibrariesData } = useSWR<{
-    runningLibraries: { libraryId: string; libraryName: string }[];
+    runningLibraries: {
+      libraryId: string;
+      libraryName: string;
+      progress?: OverlayApplicationStatus['currentLibraryProgress'];
+    }[];
   }>(isLibrariesTab ? '/api/v1/overlay-library-configs/status/all' : null, {
     refreshInterval: 3000,
   });
 
+  const { data: overlayApplicationStatus, mutate: mutateApplicationStatus } =
+    useSWR<OverlayApplicationStatus>(
+      isLibrariesTab ? '/api/v1/overlay-settings/application-status' : null,
+      {
+        refreshInterval: 2000,
+      }
+    );
+
   const isOverlaySyncRunning =
-    jobsData?.find((job) => job.id === 'overlay-application')?.running ?? false;
+    overlayApplicationStatus?.running ??
+    jobsData?.find((job) => job.id === 'overlay-application')?.running ??
+    false;
   const hasRunningLibraries =
     (runningLibrariesData?.runningLibraries.length ?? 0) > 0;
+
+  const handleStopOverlayApplication = async () => {
+    try {
+      await axios.post('/api/v1/overlay-settings/cancel-application');
+      mutateApplicationStatus();
+    } catch (error) {
+      addToast(intl.formatMessage(messages.overlaySyncError), {
+        appearance: 'error',
+        autoDismiss: true,
+      });
+    }
+  };
 
   // Clear confirmation timeout on unmount
   useEffect(() => {
@@ -359,6 +442,157 @@ const OverlaysPageView: React.FC = () => {
   ];
 
   const currentTabData = tabs.find((t) => t.key === activeTab) || tabs[0];
+  const currentJobProgress = overlayApplicationStatus?.currentLibraryProgress;
+  const libraryProgressCurrent =
+    overlayApplicationStatus?.currentLibraryIndex ||
+    overlayApplicationStatus?.processedLibraries ||
+    0;
+  const libraryProgressTotal = overlayApplicationStatus?.totalLibraries || 0;
+  const activeJobName =
+    currentJobProgress?.libraryName ||
+    overlayApplicationStatus?.currentLibraryName ||
+    overlayApplicationStatus?.currentStage?.replace(
+      'Applying overlays to library: ',
+      ''
+    ) ||
+    intl.formatMessage(messages.overlayJobs);
+  const showOverlayJobsPanel =
+    isLibrariesTab &&
+    (overlayApplicationStatus?.running ||
+      !!overlayApplicationStatus?.currentLibraryProgress);
+
+  const renderOverlayJobsPanel = () => {
+    if (!showOverlayJobsPanel) {
+      return null;
+    }
+
+    const progress = currentJobProgress?.progress ?? 0;
+    const processedItems = currentJobProgress?.processedItems ?? 0;
+    const totalItems = currentJobProgress?.totalItems ?? 0;
+
+    return (
+      <section className="rounded-lg border-2 border-orange-600 bg-stone-900/60 p-6 shadow-lg">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="text-xl font-bold text-white">
+                {intl.formatMessage(messages.overlayJobs)}
+              </h3>
+              {libraryProgressTotal > 0 && (
+                <span className="text-sm text-stone-400">
+                  {intl.formatMessage(messages.libraryProgress, {
+                    current: libraryProgressCurrent,
+                    total: libraryProgressTotal,
+                  })}
+                </span>
+              )}
+            </div>
+            <div className="mt-8">
+              <h4 className="text-2xl font-bold text-white">
+                {activeJobName.replace(/\.\.\.$/, '').trim()}
+              </h4>
+              <p className="mt-1 text-sm font-medium text-stone-400">
+                {intl.formatMessage(messages.inProgress)}
+              </p>
+            </div>
+          </div>
+          <Button
+            buttonType="danger"
+            onClick={handleStopOverlayApplication}
+            className="flex items-center gap-2"
+          >
+            <StopIcon className="h-4 w-4" />
+            <span>{intl.formatMessage(messages.stop)}</span>
+          </Button>
+        </div>
+
+        <div className="mb-5">
+          <div className="mb-2 flex items-center justify-between text-sm font-semibold">
+            <span className="text-stone-200">
+              {intl.formatMessage(messages.progress)}
+            </span>
+            <span className="text-stone-300">{progress}%</span>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-stone-700">
+            <div
+              className="h-full rounded-full bg-orange-500 transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="mb-5 rounded-md bg-black/30 px-4 py-4">
+          <p className="text-sm text-stone-500">
+            {intl.formatMessage(messages.processing)}
+          </p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {currentJobProgress?.currentItemTitle || '-'}
+          </p>
+          <p className="mt-1 text-sm text-stone-500">
+            {intl.formatMessage(messages.itemProgress, {
+              current: currentJobProgress?.currentItemIndex || processedItems,
+              total: totalItems,
+            })}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="rounded-md bg-black/30 p-4">
+            <p className="flex items-center gap-2 text-sm text-stone-300">
+              <CheckIcon className="h-5 w-5 text-green-400" />
+              {intl.formatMessage(messages.success)}
+            </p>
+            <p className="mt-3 text-2xl font-bold text-green-400">
+              {currentJobProgress?.successCount || 0}
+            </p>
+          </div>
+          <div className="rounded-md bg-black/30 p-4">
+            <p className="flex items-center gap-2 text-sm text-stone-300">
+              <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+              {intl.formatMessage(messages.errors)}
+            </p>
+            <p className="mt-3 text-2xl font-bold text-red-400">
+              {currentJobProgress?.errorCount || 0}
+            </p>
+          </div>
+          <div className="rounded-md bg-black/30 p-4">
+            <p className="flex items-center gap-2 text-sm text-stone-300">
+              <PlayIcon className="h-5 w-5 text-yellow-400" />
+              {intl.formatMessage(messages.unchanged)}
+            </p>
+            <p className="mt-3 text-2xl font-bold text-yellow-400">
+              {currentJobProgress?.unchangedCount || 0}
+            </p>
+          </div>
+          <div className="rounded-md bg-black/30 p-4">
+            <p className="flex items-center gap-2 text-sm text-stone-300">
+              <FunnelIcon className="h-5 w-5 text-blue-400" />
+              {intl.formatMessage(messages.filtered)}
+            </p>
+            <p className="mt-3 text-2xl font-bold text-blue-400">
+              {currentJobProgress?.filteredCount || 0}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm text-stone-400">
+          <span>
+            {intl.formatMessage(messages.processed, {
+              processed: processedItems,
+              total: totalItems,
+            })}
+          </span>
+          {currentJobProgress?.etaSeconds !== undefined && (
+            <span>
+              {intl.formatMessage(messages.eta, {
+                time: formatDuration(currentJobProgress.etaSeconds),
+              })}
+            </span>
+          )}
+        </div>
+      </section>
+    );
+  };
 
   if (templatesError) {
     return (
@@ -524,6 +758,8 @@ const OverlaysPageView: React.FC = () => {
       <div className="mt-2 text-sm text-stone-400">
         {currentTabData.description}
       </div>
+
+      {renderOverlayJobsPanel()}
 
       {/* Tab content */}
       {activeTab === 'templates' && (

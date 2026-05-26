@@ -1,3 +1,30 @@
+# 2.5.22 (2026-05-26)
+
+## Highlights
+
+### Poster Overlays
+
+- Added the missing Overlay Jobs panel to the Poster Overlays library tab.
+- Added live full-overlay job progress with current library, current item, percentage, processed count, ETA, success, errors, unchanged, and filtered counters.
+- Added a Stop action for the running full-overlay job directly from the Overlay Jobs panel.
+- Added backend item-level overlay outcomes so unchanged and condition-filtered items are counted separately from successful poster uploads.
+- Added `/api/v1/overlay-settings/application-status` and `/api/v1/overlay-settings/cancel-application` for UI polling and cancellation.
+
+### Localization
+
+- Added English and German labels for the Overlay Jobs panel.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.22
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.21...v2.5.22
+
 # 2.5.21 (2026-05-26)
 
 ## Highlights

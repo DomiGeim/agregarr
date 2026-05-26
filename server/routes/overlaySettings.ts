@@ -84,6 +84,31 @@ router.get('/download-status', isAuthenticated(), (_req, res) => {
 });
 
 /**
+ * GET /api/v1/overlay-settings/application-status
+ * Get full overlay application job status
+ */
+router.get('/application-status', isAuthenticated(), (_req, res) => {
+  return res.status(200).json(overlayApplication.status);
+});
+
+/**
+ * POST /api/v1/overlay-settings/cancel-application
+ * Cancel full overlay application job
+ */
+router.post('/cancel-application', isAuthenticated(), (_req, res) => {
+  if (!overlayApplication.running) {
+    return res.status(400).json({ error: 'No overlay application running' });
+  }
+
+  overlayApplication.cancel();
+
+  return res.status(200).json({
+    message: 'Overlay application cancellation requested',
+    status: overlayApplication.status,
+  });
+});
+
+/**
  * POST /api/v1/overlay-settings/cancel-download
  * Cancel download job
  */

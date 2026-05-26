@@ -1,5 +1,6 @@
 import { getRepository } from '@server/datasource';
 import { OverlayLibraryConfig } from '@server/entity/OverlayLibraryConfig';
+import type { OverlayLibraryProgress } from '@server/lib/overlays/OverlayLibraryService';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 
@@ -14,6 +15,9 @@ class OverlayApplication {
   private currentStage = '';
   private totalLibraries = 0;
   private processedLibraries = 0;
+  private currentLibraryIndex = 0;
+  private currentLibraryName = '';
+  private currentLibraryProgress?: OverlayLibraryProgress;
 
   public get status() {
     return {
@@ -22,6 +26,9 @@ class OverlayApplication {
       currentStage: this.currentStage,
       totalLibraries: this.totalLibraries,
       processedLibraries: this.processedLibraries,
+      currentLibraryIndex: this.currentLibraryIndex,
+      currentLibraryName: this.currentLibraryName,
+      currentLibraryProgress: this.currentLibraryProgress,
       progress:
         this.totalLibraries > 0
           ? Math.round((this.processedLibraries / this.totalLibraries) * 100)
@@ -143,6 +150,9 @@ class OverlayApplication {
     this.currentStage = '';
     this.totalLibraries = 0;
     this.processedLibraries = 0;
+    this.currentLibraryIndex = 0;
+    this.currentLibraryName = '';
+    this.currentLibraryProgress = undefined;
 
     try {
       logger.info('Starting overlay application job', {
@@ -188,6 +198,9 @@ class OverlayApplication {
         }
 
         try {
+          this.currentLibraryIndex = processed + 1;
+          this.currentLibraryName = config.libraryName;
+          this.currentLibraryProgress = undefined;
           this.setStage(
             `Applying overlays to library: ${config.libraryName}...`
           );
@@ -195,7 +208,12 @@ class OverlayApplication {
           await overlayLibraryService.applyOverlaysToLibrary(
             config.libraryId,
             () => this.cancelled,
-            options
+            {
+              ...options,
+              onProgress: (progress) => {
+                this.currentLibraryProgress = progress;
+              },
+            }
           );
 
           processed++;
@@ -236,6 +254,9 @@ class OverlayApplication {
       this.running = false;
       this.cancelled = false;
       this.currentStage = '';
+      this.currentLibraryIndex = 0;
+      this.currentLibraryName = '';
+      this.currentLibraryProgress = undefined;
     }
   }
 }

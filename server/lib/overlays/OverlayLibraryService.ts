@@ -32,6 +32,30 @@ export interface OverlayItemInput {
   contextOverrides?: Partial<OverlayRenderContext>;
 }
 
+export type OverlayItemOutcome = 'success' | 'unchanged' | 'filtered';
+
+export interface OverlayLibraryProgress {
+  libraryId: string;
+  libraryName: string;
+  startedAt: string;
+  updatedAt: string;
+  totalItems: number;
+  processedItems: number;
+  successCount: number;
+  errorCount: number;
+  unchangedCount: number;
+  filteredCount: number;
+  currentItemTitle?: string;
+  currentItemIndex?: number;
+  progress: number;
+  etaSeconds?: number;
+}
+
+export interface OverlayLibraryRunOptions {
+  force?: boolean;
+  onProgress?: (progress: OverlayLibraryProgress) => void;
+}
+
 /**
  * Service for applying overlay templates to Plex library items
  */
@@ -47,8 +71,66 @@ class OverlayLibraryService {
   // Prevents concurrent processing of the same library
   private runningLibraries = new Map<
     string,
-    { libraryName: string; startTime: number; promise: Promise<void> }
+    {
+      libraryName: string;
+      startTime: number;
+      promise: Promise<void>;
+      progress?: OverlayLibraryProgress;
+    }
   >();
+
+  private updateLibraryProgress(
+    libraryId: string,
+    patch: Partial<OverlayLibraryProgress>,
+    onProgress?: (progress: OverlayLibraryProgress) => void
+  ): void {
+    const entry = this.runningLibraries.get(libraryId);
+    if (!entry) {
+      return;
+    }
+
+    const previous = entry.progress;
+    const processedItems =
+      patch.processedItems ?? previous?.processedItems ?? 0;
+    const totalItems = patch.totalItems ?? previous?.totalItems ?? 0;
+    const runningForSeconds = Math.max(
+      1,
+      Math.round((Date.now() - entry.startTime) / 1000)
+    );
+    const etaSeconds =
+      processedItems > 0 && totalItems > processedItems
+        ? Math.round(
+            (runningForSeconds / processedItems) * (totalItems - processedItems)
+          )
+        : undefined;
+
+    entry.progress = {
+      libraryId,
+      libraryName:
+        patch.libraryName ?? previous?.libraryName ?? entry.libraryName,
+      startedAt:
+        patch.startedAt ??
+        previous?.startedAt ??
+        new Date(entry.startTime).toISOString(),
+      updatedAt: new Date().toISOString(),
+      totalItems,
+      processedItems,
+      successCount: patch.successCount ?? previous?.successCount ?? 0,
+      errorCount: patch.errorCount ?? previous?.errorCount ?? 0,
+      unchangedCount: patch.unchangedCount ?? previous?.unchangedCount ?? 0,
+      filteredCount: patch.filteredCount ?? previous?.filteredCount ?? 0,
+      currentItemTitle:
+        patch.currentItemTitle ?? previous?.currentItemTitle ?? undefined,
+      currentItemIndex:
+        patch.currentItemIndex ?? previous?.currentItemIndex ?? undefined,
+      progress:
+        totalItems > 0
+          ? Math.min(100, Math.round((processedItems / totalItems) * 100))
+          : 0,
+      etaSeconds,
+    };
+    onProgress?.(entry.progress);
+  }
 
   /**
    * Get status for a specific library
@@ -63,6 +145,7 @@ class OverlayLibraryService {
       libraryName: status.libraryName,
       startTime: status.startTime,
       runningFor: Math.round((Date.now() - status.startTime) / 1000),
+      progress: status.progress,
     };
   }
 
@@ -76,6 +159,7 @@ class OverlayLibraryService {
         libraryName: status.libraryName,
         startTime: status.startTime,
         runningFor: Math.round((Date.now() - status.startTime) / 1000),
+        progress: status.progress,
       })
     );
   }
@@ -168,7 +252,7 @@ class OverlayLibraryService {
   async applyOverlaysToLibrary(
     libraryId: string,
     checkCancelled?: () => boolean,
-    options?: { force?: boolean }
+    options?: OverlayLibraryRunOptions
   ): Promise<void> {
     // Check if library is already being processed (mutex check)
     // Reject duplicate requests to prevent corruption and match API layer behavior
@@ -223,6 +307,15 @@ class OverlayLibraryService {
       if (runningEntry) {
         runningEntry.libraryName = config?.libraryName || libraryId;
       }
+      this.updateLibraryProgress(
+        libraryId,
+        {
+          libraryName: config?.libraryName || libraryId,
+          totalItems: 0,
+          processedItems: 0,
+        },
+        options?.onProgress
+      );
 
       // Process the library
       await this.processLibraryOverlays(
@@ -248,7 +341,7 @@ class OverlayLibraryService {
     libraryId: string,
     config: OverlayLibraryConfig | null,
     checkCancelled?: () => boolean,
-    options?: { force?: boolean }
+    options?: OverlayLibraryRunOptions
   ): Promise<void> {
     try {
       // Clear library caches at start of job
@@ -387,16 +480,32 @@ class OverlayLibraryService {
         itemCount: allItems.length,
       });
 
+      const supportedItems = allItems.filter(
+        (item) => item.type !== 'episode' && item.type !== 'season'
+      );
+
       // Process each item
       let successCount = 0;
       let errorCount = 0;
+      let unchangedCount = 0;
+      let filteredCount = 0;
+      let processedItems = 0;
 
-      for (const item of allItems) {
-        // CRITICAL: Skip episodes and seasons - overlays only apply to movies and shows
-        if (item.type === 'episode' || item.type === 'season') {
-          continue;
-        }
+      this.updateLibraryProgress(
+        libraryId,
+        {
+          libraryName: config.libraryName,
+          totalItems: supportedItems.length,
+          processedItems: 0,
+          successCount,
+          errorCount,
+          unchangedCount,
+          filteredCount,
+        },
+        options?.onProgress
+      );
 
+      for (const item of supportedItems) {
         // Check for cancellation
         if (checkCancelled && checkCancelled()) {
           logger.info(
@@ -404,14 +513,23 @@ class OverlayLibraryService {
             {
               label: 'OverlayLibrary',
               libraryId,
-              processedItems: successCount + errorCount,
-              totalItems: allItems.length,
+              processedItems,
+              totalItems: supportedItems.length,
             }
           );
           break;
         }
 
         try {
+          this.updateLibraryProgress(
+            libraryId,
+            {
+              currentItemTitle: item.title,
+              currentItemIndex: processedItems + 1,
+            },
+            options?.onProgress
+          );
+
           // Fetch full metadata including Stream details (needed for HDR, bitDepth, etc.)
           const fullMetadata = await plexApi.getMetadata(item.ratingKey);
 
@@ -422,7 +540,7 @@ class OverlayLibraryService {
             Label: fullMetadata.Label,
           };
 
-          await this.applyOverlaysToItem(
+          const outcome = await this.applyOverlaysToItem(
             plexApi,
             itemWithFullMetadata,
             sortedTemplates,
@@ -432,7 +550,13 @@ class OverlayLibraryService {
             undefined,
             options
           );
-          successCount++;
+          if (outcome === 'success') {
+            successCount++;
+          } else if (outcome === 'unchanged') {
+            unchangedCount++;
+          } else {
+            filteredCount++;
+          }
         } catch (error) {
           errorCount++;
           logger.error('Failed to apply overlays to item', {
@@ -443,6 +567,19 @@ class OverlayLibraryService {
             errorDetails: error,
           });
           // Continue with next item
+        } finally {
+          processedItems++;
+          this.updateLibraryProgress(
+            libraryId,
+            {
+              processedItems,
+              successCount,
+              errorCount,
+              unchangedCount,
+              filteredCount,
+            },
+            options?.onProgress
+          );
         }
       }
 
@@ -451,6 +588,8 @@ class OverlayLibraryService {
         libraryId,
         successCount,
         errorCount,
+        unchangedCount,
+        filteredCount,
       });
     } catch (error) {
       logger.error('Failed to apply overlays to library', {
@@ -651,8 +790,8 @@ class OverlayLibraryService {
     libraryId: string,
     libraryName: string,
     contextOverrides?: Partial<OverlayRenderContext>,
-    options?: { force?: boolean }
-  ): Promise<void> {
+    options?: OverlayLibraryRunOptions
+  ): Promise<OverlayItemOutcome> {
     try {
       // CRITICAL: Derive actual media type from item.type, not library config
       // This prevents TMDB API namespace mismatches that cause wrong posters
@@ -955,7 +1094,7 @@ class OverlayLibraryService {
             plexPosterMissing: false,
             basePosterSourceChanged: false,
           });
-          return; // Skip this item - no need to download poster
+          return 'unchanged'; // Skip this item - no need to download poster
         }
 
         logger.info('Applying overlays - changes detected', {
@@ -1169,6 +1308,8 @@ class OverlayLibraryService {
           templateCount: templates.length,
           templatesApplied,
         });
+
+        return templatesApplied > 0 ? 'success' : 'filtered';
       } finally {
         // Clean up temp file
         await fs.unlink(tempFilePath).catch(() => {
