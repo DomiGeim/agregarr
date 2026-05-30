@@ -9,6 +9,7 @@ import type {
   OverlayTileElementProps,
   OverlayVariableElementProps,
 } from '@server/entity/OverlayTemplate';
+import { localizeOverlayText } from '@server/lib/overlays/OverlayLocalization';
 import logger from '@server/logger';
 import fs from 'fs';
 import path from 'path';
@@ -842,7 +843,7 @@ class OverlayTemplateRendererService {
           }"
           dominant-baseline="middle"
         >
-          ${this.escapeXml(props.text)}
+          ${this.escapeXml(localizeOverlayText(props.text))}
         </text>
       </svg>
     `;
@@ -998,8 +999,8 @@ class OverlayTemplateRendererService {
 
     for (const segment of props.segments) {
       if (segment.type === 'text') {
-        // Static text segment - use value as-is
-        displayText += segment.value || '';
+        // Static text segment - localize preset labels at render time.
+        displayText += localizeOverlayText(segment.value || '');
       } else if (segment.type === 'variable' && segment.field) {
         // Variable segment - look up value in context
         const variableValue = context[segment.field];

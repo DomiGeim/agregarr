@@ -19,6 +19,46 @@ export function getOverlayLabel(key: 'comingSoon'): string {
   return labels[getOverlayLocale()][key];
 }
 
+export function localizeOverlayText(text: string): string {
+  if (getOverlayLocale() !== 'de') {
+    return text;
+  }
+
+  const leadingWhitespace = text.match(/^\s*/)?.[0] ?? '';
+  const trailingWhitespace = text.match(/\s*$/)?.[0] ?? '';
+  const trimmed = text.trim();
+
+  const exactLabels: Record<string, string> = {
+    'REQUEST NEEDED': 'ANFRAGE NÖTIG',
+    'AWAITING DOWNLOAD': 'WARTET AUF DOWNLOAD',
+    'RELEASING TOMORROW': 'ERSCHEINT MORGEN',
+    'RELEASING TODAY': 'ERSCHEINT HEUTE',
+    'JUST RELEASED': 'GERADE ERSCHIENEN',
+    'RELEASED YESTERDAY': 'GESTERN ERSCHIENEN',
+  };
+
+  if (exactLabels[trimmed]) {
+    return `${leadingWhitespace}${exactLabels[trimmed]}${trailingWhitespace}`;
+  }
+
+  const segmentLabels: Record<string, string> = {
+    SEASON: 'STAFFEL',
+    IN: 'IN',
+    DAYS: 'TAGEN',
+    TOMORROW: 'MORGEN',
+    TODAY: 'HEUTE',
+    RELEASING: 'ERSCHEINT',
+    RELEASED: 'ERSCHIENEN VOR',
+    'DAYS AGO': 'TAGEN',
+    'DELETING IN': 'LÖSCHUNG IN',
+  };
+
+  return text.replace(
+    /\b(DELETING IN|DAYS AGO|REQUEST NEEDED|AWAITING DOWNLOAD|RELEASING TOMORROW|RELEASING TODAY|JUST RELEASED|RELEASED YESTERDAY|RELEASING|RELEASED|SEASON|TOMORROW|TODAY|DAYS|IN)\b/g,
+    (match) => segmentLabels[match] ?? match
+  );
+}
+
 export function normalizeOverlayStatus(status: string): string {
   const normalized = status
     .trim()
