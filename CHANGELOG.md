@@ -1,3 +1,28 @@
+# 2.5.25 (2026-05-30)
+
+## Highlights
+
+### Localization
+
+- Replaced remaining German GUI transliterations such as `fuer`, `koennen`, `zurueck`, and `Pruefung` with proper umlauts.
+- Added render-time localization for static poster overlay text when the GUI language is German.
+- Localized existing overlay labels such as Request Needed, Awaiting Download, Season countdowns, release banners, and deletion countdowns without requiring templates to be recreated.
+
+### Poster Overlays
+
+- Ensured saved overlay templates pick up German poster text automatically during the next overlay render.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.25
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.24...v2.5.25
+
 # 2.5.24 (2026-05-30)
 
 ## Highlights
