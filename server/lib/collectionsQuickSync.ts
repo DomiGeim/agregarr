@@ -593,6 +593,8 @@ class CollectionsQuickSync {
       matchesByCollection.get(collectionRatingKey)?.push(match);
     }
 
+    const excludedItemsCache = new Map<string, Set<string>>();
+
     // Process each collection
     for (const [
       collectionRatingKey,
@@ -601,9 +603,44 @@ class CollectionsQuickSync {
       if (this.cancelled) break;
 
       try {
+        const filteredMatches = await this.filterExcludedItems(
+          collectionMatches,
+          plexClient,
+          excludedItemsCache
+        );
+
+        if (filteredMatches.length < collectionMatches.length) {
+          const excludedMatches = collectionMatches.filter(
+            (match) => !filteredMatches.includes(match)
+          );
+
+          if (excludedMatches.length > 0) {
+            try {
+              const repository = getRepository(CollectionMissingItems);
+              const excludedIds = excludedMatches.map(
+                (match) => match.missingItem.id
+              );
+              await repository.delete(excludedIds);
+            } catch (cleanupError) {
+              logger.warn('Failed to clean up excluded missing item records', {
+                label: 'Collections Quick Sync',
+                collectionRatingKey,
+                error:
+                  cleanupError instanceof Error
+                    ? cleanupError.message
+                    : String(cleanupError),
+              });
+            }
+          }
+        }
+
+        if (filteredMatches.length === 0) {
+          continue;
+        }
+
         const added = await this.addItemsToCollection(
           collectionRatingKey,
-          collectionMatches,
+          filteredMatches,
           plexClient
         );
 
@@ -612,7 +649,7 @@ class CollectionsQuickSync {
           itemsAdded += added;
         }
       } catch (error) {
-        logger.error('Failed to add items to collection', {
+        logger.error('Failed to process collection in quick sync', {
           label: 'Collections Quick Sync',
           collectionRatingKey,
           error: error instanceof Error ? error.message : String(error),
@@ -690,6 +727,92 @@ class CollectionsQuickSync {
     }
 
     return matches;
+  }
+
+  /**
+   * Filter out items already present in configured excluded collections.
+   */
+  private async filterExcludedItems(
+    matches: MissingItemMatch[],
+    plexClient: PlexAPI,
+    cache: Map<string, Set<string>>
+  ): Promise<MissingItemMatch[]> {
+    if (matches.length === 0) {
+      return matches;
+    }
+
+    const firstMatch = matches[0]?.missingItem;
+    if (!firstMatch?.configId) {
+      return matches;
+    }
+
+    try {
+      const settings = getSettings();
+      const config = settings.plex.collectionConfigs?.find(
+        (collectionConfig) => collectionConfig.id === firstMatch.configId
+      );
+
+      if (!config?.excludeFromCollections?.length) {
+        return matches;
+      }
+
+      const excludedRatingKeys = new Set<string>();
+
+      for (const excludedCollectionId of config.excludeFromCollections) {
+        const excludedConfig = settings.plex.collectionConfigs?.find(
+          (collectionConfig) => collectionConfig.id === excludedCollectionId
+        );
+
+        if (!excludedConfig?.collectionRatingKey) {
+          continue;
+        }
+
+        const cacheKey = excludedConfig.collectionRatingKey;
+        const cachedItems = cache.get(cacheKey);
+
+        if (cachedItems) {
+          for (const ratingKey of cachedItems) {
+            excludedRatingKeys.add(ratingKey);
+          }
+          continue;
+        }
+
+        const itemKeys = await plexClient.getCollectionItems(cacheKey);
+        const keySet = new Set(itemKeys);
+        cache.set(cacheKey, keySet);
+
+        for (const ratingKey of keySet) {
+          excludedRatingKeys.add(ratingKey);
+        }
+      }
+
+      if (excludedRatingKeys.size === 0) {
+        return matches;
+      }
+
+      const filteredMatches = matches.filter(
+        (match) => !excludedRatingKeys.has(match.plexItem.ratingKey)
+      );
+      const excludedCount = matches.length - filteredMatches.length;
+
+      if (excludedCount > 0) {
+        logger.info('Applied quick sync collection exclusions', {
+          label: 'Collections Quick Sync',
+          configName: config.name,
+          excludedCount,
+          remainingCount: filteredMatches.length,
+        });
+      }
+
+      return filteredMatches;
+    } catch (error) {
+      logger.warn('Failed to apply collection exclusions in quick sync', {
+        label: 'Collections Quick Sync',
+        configId: firstMatch.configId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return matches;
+    }
   }
 
   /**

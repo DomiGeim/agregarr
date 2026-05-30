@@ -1665,6 +1665,7 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
       // First, try to find collection by stored ratingKey if available
       // This is more reliable than label matching for all single collections
       // Skip for multi-collection patterns (one config generates multiple collections)
+      let ratingKeyWasStale = false;
       const isMultiCollectionPattern =
         (config?.type === 'overseerr' && config?.subtype === 'users') ||
         (config?.type === 'tmdb' && config?.subtype === 'auto_franchise');
@@ -1673,7 +1674,9 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
           const existingByRatingKey = await plexClient.getCollectionMetadata(
             config.collectionRatingKey
           );
-          if (existingByRatingKey) {
+          if (!existingByRatingKey) {
+            ratingKeyWasStale = true;
+          } else {
             // CRITICAL: Validate that the found collection is in the correct library
             // This prevents linked configs from stealing each other's rating keys
             const collectionLibraryKey =
@@ -1692,6 +1695,7 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
                   configName: config.name,
                 }
               );
+              ratingKeyWasStale = true;
             } else {
               logger.debug(
                 `Found existing collection by stored ratingKey: ${existingByRatingKey.title}`,
@@ -1721,6 +1725,7 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
               error: error instanceof Error ? error.message : String(error),
             }
           );
+          ratingKeyWasStale = true;
         }
       }
 
@@ -1840,6 +1845,28 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
               labels: matchedCollection.labels,
             }
           );
+
+          // Self-heal stale stored rating keys when label fallback found the right collection.
+          if (ratingKeyWasStale && config?.id && config.libraryId) {
+            const libraryId = Array.isArray(config.libraryId)
+              ? config.libraryId[0]
+              : config.libraryId;
+
+            logger.info(
+              `Self-healing stale ratingKey for "${config.name}": ${config.collectionRatingKey} -> ${matchedCollection.collection.ratingKey}`,
+              {
+                label: 'Base Collection Sync',
+                configId: config.id,
+                libraryId,
+              }
+            );
+
+            updateConfigWithRatingKey(
+              config.id,
+              matchedCollection.collection.ratingKey,
+              libraryId
+            );
+          }
 
           return {
             ratingKey: matchedCollection.collection.ratingKey,

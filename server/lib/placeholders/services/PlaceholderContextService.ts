@@ -503,6 +503,126 @@ export class PlaceholderContextService {
   }
 
   /**
+   * Batch fetch download status from Radarr/Sonarr once per sync.
+   */
+  async batchCheckDownloadStatus(
+    items: {
+      tmdbId: number;
+      tvdbId?: number;
+      mediaType: 'movie' | 'tv';
+    }[]
+  ): Promise<{
+    moviesByTmdbId: Map<number, { downloaded: boolean; inRadarr: boolean }>;
+    showsByTvdbId: Map<
+      number,
+      { downloaded: boolean; inSonarr: boolean; folderName?: string }
+    >;
+  }> {
+    const settings = getSettings();
+    const moviesByTmdbId = new Map<
+      number,
+      { downloaded: boolean; inRadarr: boolean }
+    >();
+    const showsByTvdbId = new Map<
+      number,
+      { downloaded: boolean; inSonarr: boolean; folderName?: string }
+    >();
+
+    const hasMovies = items.some((item) => item.mediaType === 'movie');
+    const hasTvShows = items.some((item) => item.mediaType === 'tv');
+
+    if (hasMovies) {
+      for (const radarrInstance of settings.radarr ?? []) {
+        try {
+          const radarrClient = new RadarrAPI({
+            url: `${radarrInstance.useSsl ? 'https' : 'http'}://${
+              radarrInstance.hostname
+            }:${radarrInstance.port}${radarrInstance.baseUrl || ''}/api/v3`,
+            apiKey: radarrInstance.apiKey,
+          });
+
+          const movies = await radarrClient.getMovies();
+
+          for (const movie of movies) {
+            if (!movie.tmdbId) {
+              continue;
+            }
+
+            const existing = moviesByTmdbId.get(movie.tmdbId);
+            moviesByTmdbId.set(movie.tmdbId, {
+              downloaded: (existing?.downloaded ?? false) || movie.hasFile,
+              inRadarr: true,
+            });
+          }
+
+          logger.debug('Fetched Radarr library for batch download check', {
+            label: 'PlaceholderContextService',
+            instance: radarrInstance.hostname,
+            movieCount: movies.length,
+          });
+        } catch (error) {
+          logger.warn('Failed to fetch Radarr library for batch check', {
+            label: 'PlaceholderContextService',
+            instance: radarrInstance.hostname,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+
+    if (hasTvShows) {
+      for (const sonarrInstance of settings.sonarr ?? []) {
+        try {
+          const sonarrClient = new SonarrAPI({
+            url: `${sonarrInstance.useSsl ? 'https' : 'http'}://${
+              sonarrInstance.hostname
+            }:${sonarrInstance.port}${sonarrInstance.baseUrl || ''}/api/v3`,
+            apiKey: sonarrInstance.apiKey,
+          });
+
+          const shows = await sonarrClient.getSeries();
+
+          for (const show of shows) {
+            if (!show.tvdbId) {
+              continue;
+            }
+
+            const existing = showsByTvdbId.get(show.tvdbId);
+            const folderName = show.path
+              ? show.path
+                  .replace(/[\\/]+$/, '')
+                  .split(/[\\/]/)
+                  .pop() || undefined
+              : undefined;
+
+            showsByTvdbId.set(show.tvdbId, {
+              downloaded:
+                (existing?.downloaded ?? false) ||
+                (show.statistics?.episodeFileCount ?? 0) > 0,
+              inSonarr: true,
+              folderName: existing?.folderName || folderName,
+            });
+          }
+
+          logger.debug('Fetched Sonarr library for batch download check', {
+            label: 'PlaceholderContextService',
+            instance: sonarrInstance.hostname,
+            showCount: shows.length,
+          });
+        } catch (error) {
+          logger.warn('Failed to fetch Sonarr library for batch check', {
+            label: 'PlaceholderContextService',
+            instance: sonarrInstance.hostname,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+
+    return { moviesByTmdbId, showsByTvdbId };
+  }
+
+  /**
    * Check monitoring status in Radarr/Sonarr
    * Returns whether item is in *arr, monitored, and has files
    */

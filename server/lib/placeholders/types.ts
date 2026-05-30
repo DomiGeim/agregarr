@@ -20,6 +20,8 @@ export interface PlaceholderOptions {
   libraryPath: string;
   /** Path to downloaded trailer file */
   trailerPath: string;
+  /** Folder name from Sonarr, used for TV placeholders to avoid Plex merge conflicts */
+  sonarrFolderName?: string;
 }
 
 /**

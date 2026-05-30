@@ -1,3 +1,35 @@
+# 2.5.23 (2026-05-30)
+
+## Highlights
+
+### Collections
+
+- Added self-healing for stale Plex `collectionRatingKey` values when label fallback finds the recreated collection.
+- Applied `excludeFromCollections` during quick sync so recently added items are not re-added to collections they should be excluded from.
+- Cleaned up excluded quick-sync missing-item records so skipped items are not retried every hour.
+
+### Placeholders
+
+- Added batched Radarr/Sonarr download status checks before placeholder creation.
+- Skipped placeholder creation when Radarr or Sonarr already reports the item as downloaded but Plex has not scanned it yet.
+- Used Sonarr folder names for TV placeholders when available to reduce Plex merge conflicts.
+- Allowed placeholder cleanup to trigger from \*arr download status even when the real Plex item is not in the same library yet.
+
+### Sources
+
+- Hardened IMDb AWS WAF handling by clearing stale tokens after HTTP 202 responses, capping token cache lifetime, and adding exponential backoff after solver failures.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.23
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.22...v2.5.23
+
 # 2.5.22 (2026-05-26)
 
 ## Highlights

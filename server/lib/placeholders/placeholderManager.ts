@@ -89,17 +89,18 @@ async function createMoviePlaceholder(
 async function createTVPlaceholder(
   options: PlaceholderOptions
 ): Promise<PlaceholderResult> {
-  const { title, year, libraryPath, trailerPath } = options;
+  const { title, year, libraryPath, trailerPath, sonarrFolderName } = options;
 
   // Directory format: ShowName (Year)/Season 00/S00E00.Trailer.mp4
-  const sanitizedTitle = sanitizeFilename(title);
-  const yearStr = year ? ` (${year})` : '';
-  const showDir = path.join(libraryPath, `${sanitizedTitle}${yearStr}`);
+  const folderName =
+    sonarrFolderName || `${sanitizeFilename(title)}${year ? ` (${year})` : ''}`;
+  const showDir = path.join(libraryPath, folderName);
   const seasonDir = path.join(showDir, 'Season 00');
 
   logger.debug('Creating TV show placeholder', {
     label: 'PlaceholderService',
     title,
+    sonarrFolderName,
     showDir,
     seasonDir,
   });

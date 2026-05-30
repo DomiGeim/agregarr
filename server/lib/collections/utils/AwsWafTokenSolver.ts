@@ -10,11 +10,17 @@ import { chromium, type BrowserContext, type Cookie } from 'playwright';
  * The token is cached and reused until it expires (typically 5-10 minutes).
  */
 export class AwsWafTokenSolver {
+  private static readonly MAX_TOKEN_TTL = 5 * 60 * 1000; // 5 minutes
+  private static readonly BACKOFF_BASE_MS = 60 * 1000; // 1 minute
   private static tokenCache: Map<
     string,
     { token: string; expiresAt: number; sessionCookies: Cookie[] }
   > = new Map();
   private static solvingInProgress: Map<string, Promise<Cookie[]>> = new Map();
+  private static solveFailures: Map<
+    string,
+    { count: number; backoffUntil: number }
+  > = new Map();
   private static readonly DOMAIN_SOLVE_URLS: Record<string, string> = {
     'www.imdb.com': 'https://www.imdb.com/chart/top/',
     'imdb.com': 'https://www.imdb.com/chart/top/',
@@ -35,6 +41,20 @@ export class AwsWafTokenSolver {
         expiresIn: Math.round((cached.expiresAt - Date.now()) / 1000) + 's',
       });
       return cached.sessionCookies;
+    }
+
+    const failure = this.solveFailures.get(domain);
+    if (failure && failure.backoffUntil > Date.now()) {
+      const waitSeconds = Math.round(
+        (failure.backoffUntil - Date.now()) / 1000
+      );
+      logger.warn(
+        `WAF solver in backoff after ${failure.count} failures, ${waitSeconds}s remaining`,
+        { label: 'AWS WAF Solver', domain }
+      );
+      throw new Error(
+        `WAF solver backing off for ${domain} (${failure.count} consecutive failures)`
+      );
     }
 
     // Check if solving is already in progress for this domain
@@ -156,10 +176,11 @@ export class AwsWafTokenSolver {
         tokenLength: wafToken.value.length,
       });
 
-      // Cache the token (expires in 5 minutes or based on cookie expiry)
-      const expiresAt = wafToken.expires
+      // Cap cache TTL because AWS can invalidate WAF tokens before cookie expiry.
+      const cookieExpiry = wafToken.expires
         ? wafToken.expires * 1000
-        : Date.now() + 5 * 60 * 1000; // 5 minutes default
+        : Date.now() + this.MAX_TOKEN_TTL;
+      const expiresAt = Math.min(cookieExpiry, Date.now() + this.MAX_TOKEN_TTL);
 
       this.tokenCache.set(domain, {
         token: wafToken.value,
@@ -167,13 +188,26 @@ export class AwsWafTokenSolver {
         sessionCookies: cookies,
       });
 
+      this.solveFailures.delete(domain);
+
       await browser.close();
 
       return cookies;
     } catch (error) {
+      const previousFailure = this.solveFailures.get(domain);
+      const count = (previousFailure?.count ?? 0) + 1;
+      const backoffMs =
+        this.BACKOFF_BASE_MS * Math.pow(2, Math.min(count - 1, 4));
+      this.solveFailures.set(domain, {
+        count,
+        backoffUntil: Date.now() + backoffMs,
+      });
+
       logger.error('Failed to solve AWS WAF challenge', {
         label: 'AWS WAF Solver',
         domain,
+        consecutiveFailures: count,
+        backoffSeconds: Math.round(backoffMs / 1000),
         error: error instanceof Error ? error.message : String(error),
       });
 
@@ -190,7 +224,7 @@ export class AwsWafTokenSolver {
   }
 
   /**
-   * Clear cached token for a domain
+   * Clear cached token for a domain. Backoff state is preserved.
    */
   static clearCache(domain?: string): void {
     if (domain) {
@@ -204,6 +238,19 @@ export class AwsWafTokenSolver {
       logger.debug('Cleared all cached tokens', {
         label: 'AWS WAF Solver',
       });
+    }
+  }
+
+  /**
+   * Fully reset cached tokens and backoff state.
+   */
+  static resetAll(domain?: string): void {
+    this.clearCache(domain);
+
+    if (domain) {
+      this.solveFailures.delete(domain);
+    } else {
+      this.solveFailures.clear();
     }
   }
 }

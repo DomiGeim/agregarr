@@ -177,10 +177,6 @@ export class CollectionSyncService {
           let titleFixFailures = 0;
 
           for (const { plexItem, needsTitleFix, marker } of discovered) {
-            if (!plexItem) {
-              continue; // Not found in Plex
-            }
-
             if (!needsTitleFix && marker.tmdbId) {
               await cleanupPlaceholderForRealContent(
                 marker.tmdbId,
@@ -190,7 +186,7 @@ export class CollectionSyncService {
                 plexItem?.ratingKey
               );
               cleanedUp++;
-            } else if (needsTitleFix) {
+            } else if (needsTitleFix && plexItem) {
               // Still a placeholder - fix episode title
               const fixed = await ensurePlaceholderEpisodeTitle(
                 plexClient,
