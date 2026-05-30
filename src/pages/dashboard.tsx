@@ -1,3 +1,4 @@
+import SyncStatusPanel from '@app/components/Collections/SyncStatusPanel';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
 import { Permission, useUser } from '@app/hooks/useUser';
@@ -91,6 +92,8 @@ const DashboardPage: NextPage = () => {
       <div className={compactMode ? 'space-y-4 text-sm' : 'space-y-6'}>
         {/* Overview Stats */}
         <DashboardStats />
+
+        <SyncStatusPanel />
 
         <DashboardInsights />
 

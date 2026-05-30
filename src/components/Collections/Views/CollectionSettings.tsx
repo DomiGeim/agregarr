@@ -1,6 +1,7 @@
 import BulkEditModal from '@app/components/Collections/BulkEditModal';
 import CollectionConfigForm from '@app/components/Collections/Forms/CollectionConfigForm';
 import GlobalSyncStatus from '@app/components/Collections/GlobalSyncStatus';
+import SyncStatusPanel from '@app/components/Collections/SyncStatusPanel';
 import LibraryCollectionGroup from '@app/components/Collections/Views/Library/LibraryCollectionGroup';
 import Alert from '@app/components/Common/Alert';
 import Button from '@app/components/Common/Button';
@@ -1973,6 +1974,10 @@ const CollectionSettings = ({
           </div>
         )}
       </div>
+
+      {(localCollectionConfigs.length > 0 || localHubConfigs.length > 0) && (
+        <SyncStatusPanel compact onSyncComplete={revalidateAll} />
+      )}
 
       {/* Placeholder/Filtered Hub Warning Alert */}
       {shouldShowPlaceholderAlert && (

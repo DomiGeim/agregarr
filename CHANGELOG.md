@@ -1,3 +1,32 @@
+# 2.5.24 (2026-05-30)
+
+## Highlights
+
+### Dashboard
+
+- Added a prominent Collection Sync Status panel to the dashboard with running/idle state, current stage, progress, pending count, last sync, next sync, and error details.
+- Added direct Start Sync, Cancel Sync, and Jobs actions to the sync status panel.
+
+### Collections
+
+- Added the same visible sync status panel to the collections page so sync progress is no longer hidden beside the sync controls.
+- Added an explicit up-to-date state when no collections are waiting for sync.
+
+### Localization
+
+- Added English and German labels for the new sync status panel.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.24
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.23...v2.5.24
+
 # 2.5.23 (2026-05-30)
 
 ## Highlights
