@@ -21,7 +21,7 @@ import axios from 'axios';
 import { useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useToasts } from 'react-toast-notifications';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 
 const messages = defineMessages({
   about: 'About',
@@ -56,6 +56,7 @@ const messages = defineMessages({
 const SettingsAbout = () => {
   const intl = useIntl();
   const { addToast } = useToasts();
+  const { mutate } = useSWRConfig();
   const [showExportModal, setShowExportModal] = useState(false);
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const { data, error } = useSWR<SettingsAboutResponse>(
@@ -87,6 +88,8 @@ const SettingsAbout = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      mutate('/api/v1/dashboard/backup-health');
+      mutate('/api/v1/dashboard/backups');
     } catch (error) {
       addToast(intl.formatMessage(messages.toastSettingsBackupExportFailure), {
         autoDismiss: true,

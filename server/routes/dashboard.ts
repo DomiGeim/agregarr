@@ -437,24 +437,46 @@ const getSettingsFingerprint = (settings: ReturnType<typeof getSettings>) =>
 const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
   const backupsPath = path.join(appDataPath(), 'backups');
   let latestBackupAt: string | undefined;
+  let latestBackup:
+    | {
+        filename: string;
+        createdAt: string;
+        sizeBytes: number;
+      }
+    | undefined;
   let backupCount = 0;
 
   try {
     const files = await fs.readdir(backupsPath);
     const backupStats = await Promise.all(
       files
-        .filter((file) => file.endsWith('.json'))
+        .filter(isSafeBackupFilename)
         .map(async (file) => {
           const stat = await fs.stat(path.join(backupsPath, file));
 
-          return stat.mtime;
+          return {
+            filename: file,
+            createdAt: stat.mtime.toISOString(),
+            sizeBytes: stat.size,
+            modifiedAt: stat.mtime,
+          };
         })
     );
     backupCount = backupStats.length;
-    const latest = backupStats.sort((a, b) => b.getTime() - a.getTime())[0];
-    latestBackupAt = latest?.toISOString();
+    const latest = backupStats.sort(
+      (a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime()
+    )[0];
+    latestBackupAt = latest?.createdAt;
+    latestBackup = latest
+      ? {
+          filename: latest.filename,
+          createdAt: latest.createdAt,
+          sizeBytes: latest.sizeBytes,
+        }
+      : undefined;
   } catch (error) {
     latestBackupAt = undefined;
+    latestBackup = undefined;
   }
 
   const daysSinceBackup = latestBackupAt
@@ -463,6 +485,7 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
 
   return {
     latestBackupAt,
+    latestBackup,
     daysSinceBackup,
     recommended: daysSinceBackup === null || daysSinceBackup > 14,
     settingsFingerprint: getSettingsFingerprint(settings),

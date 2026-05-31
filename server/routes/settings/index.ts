@@ -2098,6 +2098,7 @@ settingsRoutes.post('/watchlistsync', (req, res) => {
 settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
   try {
     const settingsPath = path.join(appDataPath(), 'settings.json');
+    const backupsPath = path.join(appDataPath(), 'backups');
     let backupJson = '';
 
     if (fs.existsSync(settingsPath)) {
@@ -2130,10 +2131,29 @@ settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFilename = `manual-settings-export-${timestamp}.json`;
+    const backupPath = path.join(backupsPath, backupFilename);
+
+    try {
+      fs.mkdirSync(backupsPath, { recursive: true });
+      fs.writeFileSync(backupPath, backupJson, 'utf-8');
+      logger.info('Manual settings backup exported', {
+        label: 'Settings',
+        backupPath,
+      });
+    } catch (writeError) {
+      logger.warn('Manual settings backup could not be stored locally', {
+        label: 'Settings',
+        backupPath,
+        errorMessage:
+          writeError instanceof Error ? writeError.message : 'Unknown error',
+      });
+    }
+
     res.setHeader('Content-Type', 'application/json');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="agregarr-settings-${timestamp}.json"`
+      `attachment; filename="${backupFilename}"`
     );
 
     return res.status(200).send(backupJson);

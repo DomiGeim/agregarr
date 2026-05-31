@@ -194,6 +194,7 @@ interface DashboardData {
 
 interface BackupHealth {
   backupCount: number;
+  latestBackupAt?: string;
   latestBackup?: {
     filename: string;
     createdAt: string;
@@ -662,8 +663,10 @@ const DashboardStats: React.FC = () => {
       })}
       {renderStatCard('backup-health', {
         title: intl.formatMessage(messages.backupHealth),
-        value: backupHealth?.latestBackup
+        value: backupHealth?.latestBackup?.createdAt
           ? new Date(backupHealth.latestBackup.createdAt).toLocaleDateString()
+          : backupHealth?.latestBackupAt
+          ? new Date(backupHealth.latestBackupAt).toLocaleDateString()
           : '-',
         icon: CheckCircleIcon,
         subtitle: backupHealth
