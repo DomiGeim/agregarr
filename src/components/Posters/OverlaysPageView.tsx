@@ -67,6 +67,8 @@ const messages = defineMessages({
   testItem: 'Test Item',
   allTags: 'All',
   showDefaultTemplates: 'Show default templates',
+  recentItems: 'Recent items',
+  recentErrors: 'Recent errors',
 });
 
 interface OverlayTemplate {
@@ -103,6 +105,14 @@ interface OverlayApplicationStatus {
     filteredCount: number;
     currentItemTitle?: string;
     currentItemIndex?: number;
+    recentItems?: {
+      title: string;
+      outcome: 'success' | 'unchanged' | 'filtered' | 'error';
+    }[];
+    recentErrors?: {
+      title: string;
+      message: string;
+    }[];
     progress: number;
     etaSeconds?: number;
   };
@@ -590,6 +600,54 @@ const OverlaysPageView: React.FC = () => {
             </span>
           )}
         </div>
+        {!!currentJobProgress?.recentItems?.length && (
+          <div className="mt-5 rounded-md bg-black/30 px-4 py-4">
+            <p className="mb-3 text-sm font-semibold text-stone-200">
+              {intl.formatMessage(messages.recentItems)}
+            </p>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {currentJobProgress.recentItems.slice(0, 8).map((item, index) => (
+                <div
+                  key={`${item.title}-${index}`}
+                  className="flex items-center justify-between gap-3 rounded bg-stone-950/60 px-3 py-2 text-sm"
+                >
+                  <span className="truncate text-stone-300">{item.title}</span>
+                  <span
+                    className={
+                      item.outcome === 'success'
+                        ? 'text-green-400'
+                        : item.outcome === 'error'
+                        ? 'text-red-400'
+                        : item.outcome === 'filtered'
+                        ? 'text-blue-400'
+                        : 'text-yellow-400'
+                    }
+                  >
+                    {item.outcome}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {!!currentJobProgress?.recentErrors?.length && (
+          <div className="mt-5 rounded-md border border-red-500/30 bg-red-950/20 px-4 py-4">
+            <p className="mb-3 text-sm font-semibold text-red-200">
+              {intl.formatMessage(messages.recentErrors)}
+            </p>
+            <div className="space-y-2">
+              {currentJobProgress.recentErrors.slice(0, 6).map((item, index) => (
+                <p
+                  key={`${item.title}-${index}`}
+                  className="text-sm text-red-300"
+                >
+                  <span className="font-semibold">{item.title}:</span>{' '}
+                  {item.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
     );
   };

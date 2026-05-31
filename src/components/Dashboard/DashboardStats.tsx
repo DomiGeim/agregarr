@@ -21,7 +21,7 @@ import Link from 'next/link';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 
 const messages = defineMessages({
   collections: 'Collections',
@@ -72,12 +72,10 @@ const messages = defineMessages({
   backupCount: '{count} backup(s)',
   noBackups: 'No backups yet',
   recheck: 'Re-check',
+  refreshDashboard: 'Refresh dashboard',
+  dashboardUpdated: 'Dashboard updated: {time}',
   checking: 'Checking...',
   lastChecked: 'Last checked: {time}',
-  translationAudit: 'Translation audit',
-  runTranslationAudit: 'Check translations',
-  translationAuditOk: 'No language leaks found',
-  translationAuditIssues: '{count} language issue(s)',
   mediaServerCapabilities: 'Media Server Capabilities',
   plexOnly: 'Plex-only',
   capabilityCollectionSync: 'Collection sync',
@@ -205,16 +203,6 @@ interface BackupHealth {
   };
 }
 
-interface TranslationAuditResponse {
-  checkedAt: string;
-  issues: {
-    locale: string;
-    key: string;
-    value: string;
-    reason: string;
-  }[];
-}
-
 const StatCard = ({
   tileId,
   title,
@@ -282,13 +270,14 @@ const StatCard = ({
 
 const DashboardStats: React.FC = () => {
   const intl = useIntl();
+  const { mutate: globalMutate } = useSWRConfig();
   const [collapsedTiles, setCollapsedTiles] = useState<string[]>([]);
   const [hiddenTiles, setHiddenTiles] = useState<string[]>([]);
   const [collapsedSections, setCollapsedSections] = useState<string[]>([]);
   const [isCheckingSources, setIsCheckingSources] = useState(false);
-  const [isCheckingTranslations, setIsCheckingTranslations] = useState(false);
-  const [translationAudit, setTranslationAudit] =
-    useState<TranslationAuditResponse | null>(null);
+  const [lastDashboardRefresh, setLastDashboardRefresh] = useState<Date | null>(
+    null
+  );
   const {
     data: dashboardData,
     error,
@@ -321,6 +310,12 @@ const DashboardStats: React.FC = () => {
       setCollapsedSections([]);
     }
   }, []);
+
+  useEffect(() => {
+    if (dashboardData) {
+      setLastDashboardRefresh(new Date());
+    }
+  }, [dashboardData]);
 
   const toggleCollapsedTile = (tileId: string) => {
     setCollapsedTiles((current) => {
@@ -365,16 +360,13 @@ const DashboardStats: React.FC = () => {
     }
   };
 
-  const runTranslationAudit = async () => {
-    setIsCheckingTranslations(true);
-    try {
-      const response = await axios.get<TranslationAuditResponse>(
-        '/api/v1/dashboard/i18n-audit'
-      );
-      setTranslationAudit(response.data);
-    } finally {
-      setIsCheckingTranslations(false);
-    }
+  const refreshDashboard = async () => {
+    await Promise.all([
+      mutate(),
+      globalMutate('/api/v1/status'),
+      globalMutate('/api/v1/dashboard/backup-health'),
+    ]);
+    setLastDashboardRefresh(new Date());
   };
 
   const renderSectionToggle = (sectionId: string) => {
@@ -629,6 +621,20 @@ const DashboardStats: React.FC = () => {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+      <div className="rounded-lg border border-gray-700 bg-stone-800 p-4 shadow-sm sm:col-span-2 lg:col-span-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-400">
+            {intl.formatMessage(messages.dashboardUpdated, {
+              time: lastDashboardRefresh
+                ? lastDashboardRefresh.toLocaleString()
+                : '-',
+            })}
+          </p>
+          <Button buttonType="default" buttonSize="sm" onClick={refreshDashboard}>
+            {intl.formatMessage(messages.refreshDashboard)}
+          </Button>
+        </div>
+      </div>
       {hiddenTiles.length > 0 && (
         <div className="rounded-lg border border-gray-700 bg-stone-800 p-4 shadow-sm sm:col-span-2 lg:col-span-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -882,25 +888,6 @@ const DashboardStats: React.FC = () => {
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm text-gray-500">{mediaServerName}</span>
-              {translationAudit && (
-                <span className="text-xs text-gray-400">
-                  {translationAudit.issues.length === 0
-                    ? intl.formatMessage(messages.translationAuditOk)
-                    : intl.formatMessage(messages.translationAuditIssues, {
-                        count: translationAudit.issues.length,
-                      })}
-                </span>
-              )}
-              <Button
-                buttonSize="sm"
-                buttonType="ghost"
-                onClick={runTranslationAudit}
-                disabled={isCheckingTranslations}
-              >
-                {isCheckingTranslations
-                  ? intl.formatMessage(messages.checking)
-                  : intl.formatMessage(messages.runTranslationAudit)}
-              </Button>
               {renderSectionToggle('media-server-capabilities')}
             </div>
           </div>

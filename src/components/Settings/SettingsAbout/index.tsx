@@ -39,6 +39,9 @@ const messages = defineMessages({
   toastSettingsBackupRestoreSuccess: 'Settings backup restored successfully.',
   toastSettingsBackupRestoreFailure: 'Failed to restore settings backup.',
   toastSettingsBackupExportFailure: 'Failed to export settings backup.',
+  toastSettingsBackupVerified: 'Settings backup exported and verified.',
+  backupHistory: 'Backup History',
+  noBackups: 'No backups yet',
   timezone: 'Time Zone',
   appDataPath: 'Data Directory',
   supportagregarr: 'Support Agregarr',
@@ -53,6 +56,16 @@ const messages = defineMessages({
   exportDebugInfo: 'Export Debugging Info',
 });
 
+interface BackupListResponse {
+  storagePath: string;
+  backups: {
+    filename: string;
+    sizeBytes: number;
+    modifiedAt: string;
+    downloadUrl: string;
+  }[];
+}
+
 const SettingsAbout = () => {
   const intl = useIntl();
   const { addToast } = useToasts();
@@ -64,6 +77,9 @@ const SettingsAbout = () => {
   );
 
   const { data: status } = useSWR<StatusResponse>('/api/v1/status');
+  const { data: backupList } = useSWR<BackupListResponse>(
+    '/api/v1/dashboard/backups'
+  );
 
   if (!data && !error) {
     return <LoadingSpinner />;
@@ -88,6 +104,19 @@ const SettingsAbout = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      try {
+        const backup = JSON.parse(await response.data.text());
+        await axios.post('/api/v1/dashboard/settings-restore-preview', backup);
+        addToast(intl.formatMessage(messages.toastSettingsBackupVerified), {
+          autoDismiss: true,
+          appearance: 'success',
+        });
+      } catch {
+        addToast(intl.formatMessage(messages.toastSettingsBackupExportFailure), {
+          autoDismiss: true,
+          appearance: 'warning',
+        });
+      }
       mutate('/api/v1/dashboard/backup-health');
       mutate('/api/v1/dashboard/backups');
     } catch (error) {
@@ -274,30 +303,64 @@ const SettingsAbout = () => {
             </Button>
           </List.Item>
           <List.Item title={intl.formatMessage(messages.settingsBackup)}>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                buttonType="default"
-                type="button"
-                onClick={exportSettingsBackup}
-              >
-                <ArrowDownTrayIcon className="mr-2 h-5 w-5" />
-                {intl.formatMessage(messages.exportSettingsBackup)}
-              </Button>
-              <Button
-                buttonType="default"
-                type="button"
-                onClick={() => restoreInputRef.current?.click()}
-              >
-                <ArrowUpTrayIcon className="mr-2 h-5 w-5" />
-                {intl.formatMessage(messages.restoreSettingsBackup)}
-              </Button>
-              <input
-                ref={restoreInputRef}
-                type="file"
-                accept="application/json,.json"
-                className="hidden"
-                onChange={restoreSettingsBackup}
-              />
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  buttonType="default"
+                  type="button"
+                  onClick={exportSettingsBackup}
+                >
+                  <ArrowDownTrayIcon className="mr-2 h-5 w-5" />
+                  {intl.formatMessage(messages.exportSettingsBackup)}
+                </Button>
+                <Button
+                  buttonType="default"
+                  type="button"
+                  onClick={() => restoreInputRef.current?.click()}
+                >
+                  <ArrowUpTrayIcon className="mr-2 h-5 w-5" />
+                  {intl.formatMessage(messages.restoreSettingsBackup)}
+                </Button>
+                <input
+                  ref={restoreInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={restoreSettingsBackup}
+                />
+              </div>
+              <div className="rounded-md border border-stone-700 bg-stone-900/60 p-3">
+                <p className="mb-2 text-sm font-semibold text-white">
+                  {intl.formatMessage(messages.backupHistory)}
+                </p>
+                <div className="space-y-2">
+                  {(backupList?.backups || []).slice(0, 5).map((backup) => (
+                    <a
+                      key={backup.filename}
+                      href={backup.downloadUrl}
+                      className="block rounded border border-stone-700 px-3 py-2 text-sm transition hover:border-orange-500/60"
+                    >
+                      <span className="block truncate text-orange-300">
+                        {backup.filename}
+                      </span>
+                      <span className="mt-1 block text-xs text-stone-400">
+                        {new Date(backup.modifiedAt).toLocaleString()} ·{' '}
+                        {Math.round(backup.sizeBytes / 1024)} KB
+                      </span>
+                    </a>
+                  ))}
+                  {!backupList?.backups?.length && (
+                    <p className="text-sm text-stone-400">
+                      {intl.formatMessage(messages.noBackups)}
+                    </p>
+                  )}
+                </div>
+                {backupList?.storagePath && (
+                  <code className="mt-3 block break-all text-xs text-stone-500">
+                    {backupList.storagePath}
+                  </code>
+                )}
+              </div>
             </div>
           </List.Item>
         </List>

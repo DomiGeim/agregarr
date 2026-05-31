@@ -47,6 +47,14 @@ export interface OverlayLibraryProgress {
   filteredCount: number;
   currentItemTitle?: string;
   currentItemIndex?: number;
+  recentItems?: {
+    title: string;
+    outcome: OverlayItemOutcome | 'error';
+  }[];
+  recentErrors?: {
+    title: string;
+    message: string;
+  }[];
   progress: number;
   etaSeconds?: number;
 }
@@ -123,6 +131,8 @@ class OverlayLibraryService {
         patch.currentItemTitle ?? previous?.currentItemTitle ?? undefined,
       currentItemIndex:
         patch.currentItemIndex ?? previous?.currentItemIndex ?? undefined,
+      recentItems: patch.recentItems ?? previous?.recentItems ?? [],
+      recentErrors: patch.recentErrors ?? previous?.recentErrors ?? [],
       progress:
         totalItems > 0
           ? Math.min(100, Math.round((processedItems / totalItems) * 100))
@@ -490,6 +500,8 @@ class OverlayLibraryService {
       let unchangedCount = 0;
       let filteredCount = 0;
       let processedItems = 0;
+      let recentItems: OverlayLibraryProgress['recentItems'] = [];
+      let recentErrors: OverlayLibraryProgress['recentErrors'] = [];
 
       this.updateLibraryProgress(
         libraryId,
@@ -557,12 +569,29 @@ class OverlayLibraryService {
           } else {
             filteredCount++;
           }
+          recentItems = [
+            { title: item.title, outcome },
+            ...(recentItems || []),
+          ].slice(0, 10);
         } catch (error) {
           errorCount++;
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          recentItems = [
+            { title: item.title, outcome: 'error' as const },
+            ...(recentItems || []),
+          ].slice(0, 10);
+          recentErrors = [
+            {
+              title: item.title,
+              message: errorMessage,
+            },
+            ...(recentErrors || []),
+          ].slice(0, 10);
           logger.error('Failed to apply overlays to item', {
             label: 'OverlayLibrary',
             itemTitle: item.title,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
             stack: error instanceof Error ? error.stack : undefined,
             errorDetails: error,
           });
@@ -577,6 +606,8 @@ class OverlayLibraryService {
               errorCount,
               unchangedCount,
               filteredCount,
+              recentItems,
+              recentErrors,
             },
             options?.onProgress
           );

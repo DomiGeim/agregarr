@@ -38,6 +38,8 @@ const messages = defineMessages({
   errors: 'Errors',
   unchanged: 'Unchanged',
   filtered: 'Filtered',
+  recentItems: 'Recent items',
+  recentErrors: 'Recent errors',
 });
 
 interface PlexLibrary {
@@ -83,6 +85,14 @@ interface OverlayLibraryProgress {
   filteredCount: number;
   currentItemTitle?: string;
   currentItemIndex?: number;
+  recentItems?: {
+    title: string;
+    outcome: 'success' | 'unchanged' | 'filtered' | 'error';
+  }[];
+  recentErrors?: {
+    title: string;
+    message: string;
+  }[];
   progress: number;
   etaSeconds?: number;
 }
@@ -552,6 +562,58 @@ const LibraryConfigView: React.FC = () => {
                         </span>
                       )}
                     </div>
+                    {!!syncProgress?.recentItems?.length && (
+                      <div className="mt-3 rounded bg-stone-950/60 px-3 py-2">
+                        <p className="mb-2 text-xs font-semibold text-stone-300">
+                          {intl.formatMessage(messages.recentItems)}
+                        </p>
+                        <div className="space-y-1">
+                          {syncProgress.recentItems
+                            .slice(0, 4)
+                            .map((item, index) => (
+                              <div
+                                key={`${item.title}-${index}`}
+                                className="flex items-center justify-between gap-2 text-xs"
+                              >
+                                <span className="truncate text-stone-400">
+                                  {item.title}
+                                </span>
+                                <span
+                                  className={
+                                    item.outcome === 'success'
+                                      ? 'text-green-400'
+                                      : item.outcome === 'error'
+                                      ? 'text-red-400'
+                                      : item.outcome === 'filtered'
+                                      ? 'text-blue-400'
+                                      : 'text-yellow-400'
+                                  }
+                                >
+                                  {item.outcome}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                    {!!syncProgress?.recentErrors?.length && (
+                      <div className="mt-3 rounded border border-red-500/30 bg-red-950/20 px-3 py-2">
+                        <p className="mb-2 text-xs font-semibold text-red-200">
+                          {intl.formatMessage(messages.recentErrors)}
+                        </p>
+                        {syncProgress.recentErrors
+                          .slice(0, 3)
+                          .map((item, index) => (
+                            <p
+                              key={`${item.title}-${index}`}
+                              className="truncate text-xs text-red-300"
+                              title={item.message}
+                            >
+                              {item.title}: {item.message}
+                            </p>
+                          ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
