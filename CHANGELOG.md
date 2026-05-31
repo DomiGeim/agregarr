@@ -1,3 +1,24 @@
+# 2.5.27 (2026-05-31)
+
+## Highlights
+
+### Backup
+
+- Stored manual settings exports in the internal `config/backups` folder so they count as real backups.
+- Fixed the dashboard backup health response so "last backup" can display the newest backup timestamp reliably.
+- Refreshed dashboard backup caches after exporting a settings backup.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.27
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.26...v2.5.27
+
 # 2.5.26 (2026-05-31)
 
 ## Highlights
