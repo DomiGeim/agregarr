@@ -29,6 +29,15 @@ const messages = defineMessages({
   overlaySyncError: 'Failed to start overlay sync',
   failedToLoad: 'Failed to load libraries',
   noOverlays: 'No overlays configured',
+  syncStatus: 'Sync Status',
+  renderingItem: 'Rendering',
+  itemProgress: 'Item {current} of {total}',
+  processed: 'Processed {processed} / {total}',
+  eta: 'ETA: {time}',
+  success: 'Success',
+  errors: 'Errors',
+  unchanged: 'Unchanged',
+  filtered: 'Filtered',
 });
 
 interface PlexLibrary {
@@ -62,6 +71,42 @@ interface Template {
   name: string;
   type: OverlayTemplateType;
 }
+
+interface OverlayLibraryProgress {
+  libraryId: string;
+  libraryName: string;
+  totalItems: number;
+  processedItems: number;
+  successCount: number;
+  errorCount: number;
+  unchangedCount: number;
+  filteredCount: number;
+  currentItemTitle?: string;
+  currentItemIndex?: number;
+  progress: number;
+  etaSeconds?: number;
+}
+
+interface RunningLibraryStatus {
+  libraryId: string;
+  libraryName: string;
+  progress?: OverlayLibraryProgress;
+}
+
+const formatDuration = (seconds?: number): string => {
+  if (!seconds || seconds <= 0) {
+    return '0s';
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}m ${remainingSeconds}s`;
+};
 
 // Component to show large preview for a library (grid layout)
 const LibraryPreviewLarge: React.FC<{
@@ -196,9 +241,9 @@ const LibraryConfigView: React.FC = () => {
 
   // Poll for running library overlays
   const { data: runningLibrariesData } = useSWR<{
-    runningLibraries: { libraryId: string }[];
+    runningLibraries: RunningLibraryStatus[];
   }>('/api/v1/overlay-library-configs/status/all', {
-    refreshInterval: 3000, // Poll every 3 seconds
+    refreshInterval: 1500,
   });
 
   // Update syncing libraries based on actual status
@@ -369,7 +414,13 @@ const LibraryConfigView: React.FC = () => {
             config.enabledOverlays.some((o) => o.enabled) &&
             templates.length > 0;
           const isSyncing = syncingLibraries.has(library.key);
+          const syncProgress = runningLibrariesData?.runningLibraries.find(
+            (runningLibrary) => runningLibrary.libraryId === library.key
+          )?.progress;
           const isConfirmClicked = confirmClickedLibraries.has(library.key);
+          const progressPercent = syncProgress?.progress ?? 0;
+          const processedItems = syncProgress?.processedItems ?? 0;
+          const totalItems = syncProgress?.totalItems ?? 0;
 
           return (
             <div
@@ -415,11 +466,94 @@ const LibraryConfigView: React.FC = () => {
                   {library.name}
                 </h4>
                 <p className="mt-1 text-xs text-stone-400">
-                  {library.type === 'movie' ? 'Movies' : 'TV Shows'} •{' '}
+                  {library.type === 'movie' ? 'Movies' : 'TV Shows'} &bull;{' '}
                   {intl.formatMessage(messages.overlaysEnabled, {
                     count: overlayCount,
                   })}
                 </p>
+
+                {isSyncing && (
+                  <div className="mt-3 rounded-md border border-orange-500/40 bg-black/30 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold">
+                      <span className="text-stone-200">
+                        {intl.formatMessage(messages.syncStatus)}
+                      </span>
+                      <span className="text-orange-300">
+                        {progressPercent}%
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-stone-700">
+                      <div
+                        className="h-full rounded-full bg-orange-500 transition-all"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 rounded bg-stone-950/70 px-3 py-2">
+                      <p className="text-[11px] uppercase text-stone-500">
+                        {intl.formatMessage(messages.renderingItem)}
+                      </p>
+                      <p className="mt-1 truncate text-sm font-semibold text-white">
+                        {syncProgress?.currentItemTitle || library.name}
+                      </p>
+                      <p className="mt-1 text-xs text-stone-400">
+                        {intl.formatMessage(messages.itemProgress, {
+                          current:
+                            syncProgress?.currentItemIndex || processedItems,
+                          total: totalItems,
+                        })}
+                      </p>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded bg-stone-950/60 px-2 py-1.5">
+                        <span className="text-stone-500">
+                          {intl.formatMessage(messages.success)}
+                        </span>
+                        <span className="float-right font-semibold text-green-400">
+                          {syncProgress?.successCount ?? 0}
+                        </span>
+                      </div>
+                      <div className="rounded bg-stone-950/60 px-2 py-1.5">
+                        <span className="text-stone-500">
+                          {intl.formatMessage(messages.errors)}
+                        </span>
+                        <span className="float-right font-semibold text-red-400">
+                          {syncProgress?.errorCount ?? 0}
+                        </span>
+                      </div>
+                      <div className="rounded bg-stone-950/60 px-2 py-1.5">
+                        <span className="text-stone-500">
+                          {intl.formatMessage(messages.unchanged)}
+                        </span>
+                        <span className="float-right font-semibold text-yellow-400">
+                          {syncProgress?.unchangedCount ?? 0}
+                        </span>
+                      </div>
+                      <div className="rounded bg-stone-950/60 px-2 py-1.5">
+                        <span className="text-stone-500">
+                          {intl.formatMessage(messages.filtered)}
+                        </span>
+                        <span className="float-right font-semibold text-blue-400">
+                          {syncProgress?.filteredCount ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-400">
+                      <span>
+                        {intl.formatMessage(messages.processed, {
+                          processed: processedItems,
+                          total: totalItems,
+                        })}
+                      </span>
+                      {syncProgress?.etaSeconds !== undefined && (
+                        <span>
+                          {intl.formatMessage(messages.eta, {
+                            time: formatDuration(syncProgress.etaSeconds),
+                          })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-3 space-y-2">
                   {/* Top row: Configure (2/3) + Sync (1/3) */}
