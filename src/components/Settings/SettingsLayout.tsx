@@ -77,7 +77,7 @@ const SettingsLayout = ({ children }: SettingsLayoutProps) => {
       <div className="mt-6">
         <SettingsTabs settingsRoutes={settingsRoutes} />
       </div>
-      <div className="mt-10 text-white">{children}</div>
+      <div className="mt-6 text-white sm:mt-10">{children}</div>
     </>
   );
 };

@@ -231,13 +231,13 @@ const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
   return (
     <section
       className={`rounded-lg border border-gray-700 bg-stone-900/70 shadow-sm ${
-        compact ? 'p-4' : 'p-5'
+        compact ? 'p-4' : 'p-4 sm:p-5'
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h3 className="text-lg font-semibold text-white">
+            <h3 className="text-base font-semibold text-white sm:text-lg">
               {intl.formatMessage(messages.title)}
             </h3>
             <span
@@ -254,7 +254,7 @@ const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
             </span>
           </div>
 
-          <p className="mt-2 truncate text-sm text-gray-300">
+          <p className="mt-2 break-words text-sm text-gray-300 sm:truncate">
             {isStarting && !syncStatus.running
               ? intl.formatMessage(messages.starting)
               : syncStatus.running
@@ -272,13 +272,13 @@ const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
         </div>
 
         {showControls && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
             {syncStatus.running ? (
               <Button
                 buttonType="danger"
                 onClick={cancelSync}
                 disabled={isCancelling}
-                className="flex items-center gap-2"
+                className="flex w-full items-center justify-center gap-2 sm:w-auto"
               >
                 {isCancelling ? (
                   <Spinner className="h-4 w-4 animate-spin" />
@@ -292,7 +292,7 @@ const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
                 buttonType="primary"
                 onClick={startSync}
                 disabled={isStarting}
-                className="flex items-center gap-2"
+                className="flex w-full items-center justify-center gap-2 sm:w-auto"
               >
                 {isStarting ? (
                   <Spinner className="h-4 w-4 animate-spin" />
@@ -305,6 +305,7 @@ const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
             <Button
               buttonType="default"
               onClick={() => router.push('/settings/jobs')}
+              className="w-full justify-center sm:w-auto"
             >
               {intl.formatMessage(messages.jobs)}
             </Button>
@@ -331,7 +332,7 @@ const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
       </div>
 
       <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-        <div className="flex items-center gap-2 text-gray-400">
+        <div className="flex min-w-0 items-center gap-2 text-gray-400">
           <ClockIcon className="h-4 w-4 text-gray-500" />
           <span>
             {intl.formatMessage(messages.lastSyncLabel)}:{' '}
@@ -340,7 +341,7 @@ const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
             </span>
           </span>
         </div>
-        <div className="flex items-center gap-2 text-gray-400">
+        <div className="flex min-w-0 items-center gap-2 text-gray-400">
           <ClockIcon className="h-4 w-4 text-gray-500" />
           <span>
             {intl.formatMessage(messages.nextSyncLabel)}:{' '}

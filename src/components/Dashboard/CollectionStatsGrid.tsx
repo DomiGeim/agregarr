@@ -144,17 +144,19 @@ const CollectionStatsGrid: React.FC = () => {
     if (isTautulliError) {
       return (
         <div className="rounded-lg bg-stone-800 shadow-sm">
-          <div className="border-b border-gray-700 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <h3 className="flex items-center text-lg font-medium text-white">
+          <div className="border-b border-gray-700 px-4 py-4 sm:px-6">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="flex min-w-0 items-center text-base font-medium text-white sm:text-lg">
                 <ChartBarIcon className="mr-2 h-5 w-5 text-orange-400" />
-                {intl.formatMessage(messages.collectionStatistics)}
+                <span className="truncate">
+                  {intl.formatMessage(messages.collectionStatistics)}
+                </span>
               </h3>
               {collapseButton}
             </div>
           </div>
           {!collapsed && (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <div className="flex flex-col items-center py-8 text-center">
                 <ExclamationCircleIcon className="mb-4 h-12 w-12 text-orange-400" />
                 <h4 className="mb-2 text-lg font-semibold text-white">
@@ -179,17 +181,19 @@ const CollectionStatsGrid: React.FC = () => {
     // For other errors, show generic error message
     return (
       <div className="rounded-lg bg-stone-800 shadow-sm">
-        <div className="border-b border-gray-700 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <h3 className="flex items-center text-lg font-medium text-white">
+        <div className="border-b border-gray-700 px-4 py-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="flex min-w-0 items-center text-base font-medium text-white sm:text-lg">
               <ChartBarIcon className="mr-2 h-5 w-5 text-orange-400" />
-              {intl.formatMessage(messages.collectionStatistics)}
+              <span className="truncate">
+                {intl.formatMessage(messages.collectionStatistics)}
+              </span>
             </h3>
             {collapseButton}
           </div>
         </div>
         {!collapsed && (
-          <div className="p-6 text-center">
+          <div className="p-4 text-center sm:p-6">
             <p className="mb-2 text-red-400">
               {intl.formatMessage(messages.failedToLoadCollectionStats)}
             </p>
@@ -202,16 +206,18 @@ const CollectionStatsGrid: React.FC = () => {
 
   return (
     <div className="rounded-lg bg-stone-800 shadow-sm">
-      <div className="border-b border-gray-700 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <h3 className="flex items-center text-lg font-medium text-white">
+      <div className="border-b border-gray-700 px-4 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="flex min-w-0 items-center text-base font-medium text-white sm:text-lg">
             <ChartBarIcon className="mr-2 h-5 w-5 text-orange-400" />
-            {intl.formatMessage(messages.collectionStatistics)}
+            <span className="truncate">
+              {intl.formatMessage(messages.collectionStatistics)}
+            </span>
           </h3>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {/* Days input */}
             {!collapsed && (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2">
                 <label htmlFor="days-input" className="text-sm text-gray-400">
                   {intl.formatMessage(messages.daysLabel)}
                 </label>
@@ -230,11 +236,12 @@ const CollectionStatsGrid: React.FC = () => {
 
             {/* Stat type buttons */}
             {!collapsed && (
-              <div className="flex space-x-2">
+              <div className="flex flex-1 gap-2 sm:flex-none">
                 <Button
                   buttonSize="sm"
                   buttonType={statType === 'plays' ? 'primary' : 'default'}
                   onClick={() => setStatType('plays')}
+                  className="flex-1 sm:flex-none"
                 >
                   <PlayIcon className="mr-1 h-4 w-4" />
                   {intl.formatMessage(messages.playsButton)}
@@ -243,6 +250,7 @@ const CollectionStatsGrid: React.FC = () => {
                   buttonSize="sm"
                   buttonType={statType === 'duration' ? 'primary' : 'default'}
                   onClick={() => setStatType('duration')}
+                  className="flex-1 sm:flex-none"
                 >
                   <ClockIcon className="mr-1 h-4 w-4" />
                   {intl.formatMessage(messages.durationButton)}
@@ -255,7 +263,7 @@ const CollectionStatsGrid: React.FC = () => {
       </div>
 
       {!collapsed && (
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {!collectionStats ? (
             <div className="flex justify-center py-8">
               <LoadingSpinner />
@@ -275,7 +283,7 @@ const CollectionStatsGrid: React.FC = () => {
               {collectionStats.collections.map((collection) => (
                 <div
                   key={collection.rating_key}
-                  className="flex items-center space-x-3 rounded-lg border border-gray-700 p-3 transition-colors hover:border-gray-600"
+                  className="flex items-start gap-3 rounded-lg border border-gray-700 p-3 transition-colors hover:border-gray-600 sm:items-center"
                 >
                   <div className="flex-shrink-0">
                     {collection.posterUrl ? (
@@ -306,7 +314,7 @@ const CollectionStatsGrid: React.FC = () => {
                     <p className="truncate font-medium text-white">
                       {collection.title}
                     </p>
-                    <div className="flex items-center space-x-2 text-sm text-gray-400">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-400 sm:text-sm">
                       <span>
                         {collection.item_count}{' '}
                         {intl.formatMessage(messages.items)}
@@ -336,7 +344,7 @@ const CollectionStatsGrid: React.FC = () => {
                   </div>
 
                   <div className="flex-shrink-0 text-right">
-                    <div className="text-xl font-bold text-white">
+                    <div className="text-lg font-bold text-white sm:text-xl">
                       {statType === 'plays'
                         ? collection.total_plays
                         : Math.floor(collection.total_duration / 3600)}
@@ -350,7 +358,7 @@ const CollectionStatsGrid: React.FC = () => {
 
               {collectionStats.collections.length > 0 && (
                 <div className="mt-3 border-t border-gray-700 pt-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs text-gray-500">
                       {intl.formatMessage(messages.lastUpdated, {
                         time: new Date(

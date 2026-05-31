@@ -233,13 +233,15 @@ const StatCard = ({
   onToggleCollapse?: (tileId: string) => void;
   onHide?: (tileId: string) => void;
 }) => (
-  <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
-    <div className="flex items-center justify-between">
-      <div>
+  <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:p-6">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
         <p className="text-sm font-medium text-gray-400">{title}</p>
         {!collapsed && (
           <>
-            <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
+            <p className="mt-2 break-words text-2xl font-semibold text-white sm:text-3xl">
+              {value}
+            </p>
             {subtitle && (
               <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
             )}
@@ -247,12 +249,12 @@ const StatCard = ({
         )}
       </div>
       <div className="flex flex-shrink-0 items-center gap-2">
-        <Icon className="h-8 w-8 text-orange-400" />
+        <Icon className="h-7 w-7 text-orange-400 sm:h-8 sm:w-8" />
         {tileId && onToggleCollapse && (
           <button
             type="button"
             aria-label={collapsed ? 'Expand tile' : 'Collapse tile'}
-            className="text-gray-500 transition hover:text-gray-200"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-gray-500 transition hover:bg-stone-700 hover:text-gray-200"
             onClick={() => onToggleCollapse(tileId)}
           >
             {collapsed ? (
@@ -266,7 +268,7 @@ const StatCard = ({
           <button
             type="button"
             aria-label="Hide tile"
-            className="text-gray-500 transition hover:text-gray-200"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-gray-500 transition hover:bg-stone-700 hover:text-gray-200"
             onClick={() => onHide(tileId)}
           >
             <EyeSlashIcon className="h-5 w-5" />
@@ -516,7 +518,7 @@ const DashboardStats: React.FC = () => {
   if (dashboardData.tautulli?.plexOnly) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
           <StatCard
             title={intl.formatMessage(messages.mediaServer)}
             value={mediaServerName}
@@ -536,7 +538,7 @@ const DashboardStats: React.FC = () => {
             } ${intl.formatMessage(messages.preExistingCollections)}`}
           />
         </div>
-        <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
+        <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:p-6">
           <div className="flex flex-col items-center py-8 text-center">
             <ServerStackIcon className="mb-4 h-12 w-12 text-orange-400" />
             <h4 className="mb-2 text-lg font-semibold text-white">Tautulli</h4>
@@ -555,7 +557,7 @@ const DashboardStats: React.FC = () => {
   if (!isTautulliConfigured) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
           <StatCard
             title={intl.formatMessage(messages.mediaServer)}
             value={mediaServerName}
@@ -575,7 +577,7 @@ const DashboardStats: React.FC = () => {
             } ${intl.formatMessage(messages.preExistingCollections)}`}
           />
         </div>
-        <div className="rounded-lg bg-stone-800 p-6 shadow-sm">
+        <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:p-6">
           <div className="flex flex-col items-center py-8 text-center">
             <ExclamationCircleIcon className="mb-4 h-12 w-12 text-orange-400" />
             <h4 className="mb-2 text-lg font-semibold text-white">
@@ -625,7 +627,7 @@ const DashboardStats: React.FC = () => {
     (dashboardData.health?.totals.info || 0);
 
   return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
       {hiddenTiles.length > 0 && (
         <div className="rounded-lg border border-gray-700 bg-stone-800 p-4 shadow-sm sm:col-span-2 lg:col-span-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -711,7 +713,7 @@ const DashboardStats: React.FC = () => {
         )} / ${intl.formatMessage(messages.thisWeek)}`,
       })}
       {statusData?.updateAvailable && (
-        <div className="rounded-lg border border-orange-500/40 bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+        <div className="rounded-lg border border-orange-500/40 bg-stone-800 p-4 shadow-sm sm:col-span-2 sm:p-6 lg:col-span-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-orange-300">
@@ -733,7 +735,7 @@ const DashboardStats: React.FC = () => {
         </div>
       )}
       {dashboardData.tautulli?.timedOut && (
-        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+        <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:col-span-2 sm:p-6 lg:col-span-4">
           <p className="text-sm text-orange-300">
             {intl.formatMessage(messages.tautulliTimedOut)}
           </p>
@@ -741,7 +743,7 @@ const DashboardStats: React.FC = () => {
       )}
       {isTautulliConfigured &&
         dashboardData.tautulli?.isConnected === false && (
-          <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+          <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:col-span-2 sm:p-6 lg:col-span-4">
             <p className="text-sm text-orange-300">
               {intl.formatMessage(messages.tautulliUnavailable)}
             </p>
@@ -753,7 +755,7 @@ const DashboardStats: React.FC = () => {
           </div>
         )}
       {dashboardData.health && (
-        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+        <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:col-span-2 sm:p-6 lg:col-span-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-gray-400">
@@ -806,7 +808,7 @@ const DashboardStats: React.FC = () => {
         </div>
       )}
       {dashboardData.sourceStatus && (
-        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+        <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:col-span-2 sm:p-6 lg:col-span-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-gray-400">
@@ -830,6 +832,7 @@ const DashboardStats: React.FC = () => {
                 buttonType="ghost"
                 onClick={runSourceChecks}
                 disabled={isCheckingSources}
+                className="w-full justify-center sm:w-auto"
               >
                 {isCheckingSources
                   ? intl.formatMessage(messages.checking)
@@ -869,7 +872,7 @@ const DashboardStats: React.FC = () => {
         </div>
       )}
       {dashboardData.mediaServer?.capabilities && (
-        <div className="rounded-lg bg-stone-800 p-6 shadow-sm sm:col-span-2 lg:col-span-4">
+        <div className="rounded-lg bg-stone-800 p-4 shadow-sm sm:col-span-2 sm:p-6 lg:col-span-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium text-gray-400">
               {intl.formatMessage(messages.mediaServerCapabilities)}

@@ -91,6 +91,7 @@ const SettingsTabs = ({
           {intl.formatMessage(messages.selectTab)}
         </label>
         <select
+          className="w-full rounded-md border border-stone-600 bg-stone-800 px-3 py-3 text-base text-white shadow-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
           onChange={(e) => {
             router.push(e.target.value);
           }}
