@@ -1,3 +1,31 @@
+# 2.5.26 (2026-05-31)
+
+## Highlights
+
+### Poster Overlays
+
+- Added a live status panel for individual library overlay syncs with progress, current rendered title, item counts, result counters, and ETA.
+- Kept the full overlay sync status visible on the Overlay System page and refreshed it immediately after starting a full sync.
+
+### Mobile
+
+- Improved the mobile web layout with a compact header, bottom navigation, better spacing, safer text wrapping, and responsive dashboard/poster/settings controls.
+
+### Localization
+
+- Restored corrupted German umlauts in dashboard, settings, and poster overlay text.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.26
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.25...v2.5.26
+
 # 2.5.25 (2026-05-30)
 
 ## Highlights
