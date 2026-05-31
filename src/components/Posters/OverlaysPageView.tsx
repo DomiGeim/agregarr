@@ -171,7 +171,7 @@ const OverlaysPageView: React.FC = () => {
 
   // Poll jobs to check if overlay-application is running
   const { data: jobsData } = useSWR<{ id: string; running: boolean }[]>(
-    isLibrariesTab ? '/api/v1/settings/jobs' : null,
+    '/api/v1/settings/jobs',
     {
       refreshInterval: 3000,
     }
@@ -190,7 +190,7 @@ const OverlaysPageView: React.FC = () => {
 
   const { data: overlayApplicationStatus, mutate: mutateApplicationStatus } =
     useSWR<OverlayApplicationStatus>(
-      isLibrariesTab ? '/api/v1/overlay-settings/application-status' : null,
+      '/api/v1/overlay-settings/application-status',
       {
         refreshInterval: 2000,
       }
@@ -403,6 +403,7 @@ const OverlaysPageView: React.FC = () => {
       }
 
       await axios.post('/api/v1/settings/jobs/overlay-application/run');
+      mutateApplicationStatus();
 
       // Show different message if queued vs started immediately
       if (!hasRunningLibraries) {
@@ -457,7 +458,6 @@ const OverlaysPageView: React.FC = () => {
     ) ||
     intl.formatMessage(messages.overlayJobs);
   const showOverlayJobsPanel =
-    isLibrariesTab &&
     (overlayApplicationStatus?.running ||
       !!overlayApplicationStatus?.currentLibraryProgress);
 
