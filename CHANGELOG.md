@@ -1,3 +1,33 @@
+# 2.5.28 (2026-05-31)
+
+## Highlights
+
+### Dashboard
+
+- Removed the manual translation audit button from the dashboard.
+- Added a visible dashboard refresh timestamp and manual refresh action.
+
+### Backup
+
+- Added backup history to Settings > About with download links, file size, timestamp, and storage path.
+- Verified manual settings exports with a restore-preview check after export.
+
+### Poster Overlays
+
+- Added recent item history and recent error details to full overlay sync progress.
+- Added recent item history and recent error details to individual library overlay sync cards.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.28
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.27...v2.5.28
+
 # 2.5.27 (2026-05-31)
 
 ## Highlights
