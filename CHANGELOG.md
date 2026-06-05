@@ -1,3 +1,23 @@
+# 2.5.30 (2026-06-05)
+
+## Highlights
+
+### Localization
+
+- Fixed corrupted German umlauts introduced in dashboard, collection, settings, poster, and overlay translations.
+- Replaced broken `?` placeholders and old transliterations such as `Pruefe`, `Schluessel`, `noetig`, and `erklaeren` with proper German text.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.30
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.29...v2.5.30
+
 # 2.5.29 (2026-06-05)
 
 ## Highlights
