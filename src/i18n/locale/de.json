@@ -1588,6 +1588,8 @@
   "components.Settings.SettingsAbout.toastSettingsBackupRestoreSuccess": "Einstellungs-Backup erfolgreich wiederhergestellt.",
   "components.Settings.SettingsAbout.toastSettingsBackupRestoreFailure": "Einstellungs-Backup konnte nicht wiederhergestellt werden.",
   "components.Settings.SettingsAbout.toastSettingsBackupExportFailure": "Einstellungs-Backup konnte nicht exportiert werden.",
+  "components.Settings.SettingsAbout.toastSettingsBackupExportSuccess": "Einstellungs-Backup erfolgreich exportiert.",
+  "components.Settings.SettingsAbout.toastSettingsBackupVerificationWarning": "Einstellungs-Backup exportiert. Die Prüfung konnte nicht abgeschlossen werden.",
   "components.Settings.SettingsAbout.toastSettingsBackupVerified": "Einstellungs-Backup exportiert und geprüft.",
   "components.Settings.SettingsAbout.gettingsupport": "Hilfe erhalten",
   "components.Settings.SettingsAbout.githubdiscussions": "GitHub-Diskussionen",

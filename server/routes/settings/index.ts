@@ -125,7 +125,13 @@ const getTraktRedirectUri = (req?: Request) => {
 };
 
 const validateSettingsBackupPayload = (backup: unknown) => {
-  const requiredKeys = ['main', 'plex', 'tautulli', 'radarr', 'sonarr'];
+  const requiredKeys = [
+    'main',
+    'mediaServerProfile',
+    'tautulli',
+    'radarr',
+    'sonarr',
+  ];
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -139,7 +145,11 @@ const validateSettingsBackupPayload = (backup: unknown) => {
   }
 
   const data = backup as Record<string, unknown>;
-  const missingKeys = requiredKeys.filter((key) => !(key in data));
+  const hasMediaServerProfile = 'plex' in data || 'plexProfile' in data;
+  const missingKeys = [
+    ...['main', 'tautulli', 'radarr', 'sonarr'].filter((key) => !(key in data)),
+    ...(hasMediaServerProfile ? [] : ['plex or plexProfile']),
+  ];
 
   if (missingKeys.length > 0) {
     errors.push(`Missing required sections: ${missingKeys.join(', ')}`);
@@ -149,6 +159,9 @@ const validateSettingsBackupPayload = (backup: unknown) => {
   }
   if (data.plex && typeof data.plex !== 'object') {
     errors.push('plex must be an object.');
+  }
+  if (data.plexProfile && typeof data.plexProfile !== 'object') {
+    errors.push('plexProfile must be an object.');
   }
   if (data.radarr && !Array.isArray(data.radarr)) {
     errors.push('radarr must be an array.');

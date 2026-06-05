@@ -39,7 +39,10 @@ const messages = defineMessages({
   toastSettingsBackupRestoreSuccess: 'Settings backup restored successfully.',
   toastSettingsBackupRestoreFailure: 'Failed to restore settings backup.',
   toastSettingsBackupExportFailure: 'Failed to export settings backup.',
+  toastSettingsBackupExportSuccess: 'Settings backup exported successfully.',
   toastSettingsBackupVerified: 'Settings backup exported and verified.',
+  toastSettingsBackupVerificationWarning:
+    'Settings backup exported. Verification could not be completed.',
   backupHistory: 'Backup History',
   noBackups: 'No backups yet',
   timezone: 'Time Zone',
@@ -112,10 +115,13 @@ const SettingsAbout = () => {
           appearance: 'success',
         });
       } catch {
-        addToast(intl.formatMessage(messages.toastSettingsBackupExportFailure), {
-          autoDismiss: true,
-          appearance: 'warning',
-        });
+        addToast(
+          intl.formatMessage(messages.toastSettingsBackupVerificationWarning),
+          {
+            autoDismiss: true,
+            appearance: 'warning',
+          }
+        );
       }
       mutate('/api/v1/dashboard/backup-health');
       mutate('/api/v1/dashboard/backups');

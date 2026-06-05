@@ -1647,6 +1647,8 @@
   "components.Settings.SettingsAbout.supportagregarr": "Support Agregarr",
   "components.Settings.SettingsAbout.timezone": "Time Zone",
   "components.Settings.SettingsAbout.toastSettingsBackupExportFailure": "Failed to export settings backup.",
+  "components.Settings.SettingsAbout.toastSettingsBackupExportSuccess": "Settings backup exported successfully.",
+  "components.Settings.SettingsAbout.toastSettingsBackupVerificationWarning": "Settings backup exported. Verification could not be completed.",
   "components.Settings.SettingsAbout.toastSettingsBackupVerified": "Settings backup exported and verified.",
   "components.Settings.SettingsAbout.toastSettingsBackupRestoreFailure": "Failed to restore settings backup.",
   "components.Settings.SettingsAbout.toastSettingsBackupRestoreSuccess": "Settings backup restored successfully.",

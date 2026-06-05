@@ -1,3 +1,24 @@
+# 2.5.31 (2026-06-05)
+
+## Highlights
+
+### Backup
+
+- Fixed settings backup export so a successful download is no longer reported as a failed export when only the follow-up verification cannot complete.
+- Updated backup validation to accept current media server settings using `plexProfile` as well as legacy `plex`.
+- Included `plexProfile` collections in the backup restore preview counts.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.31
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.30...v2.5.31
+
 # 2.5.30 (2026-06-05)
 
 ## Highlights
