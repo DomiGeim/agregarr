@@ -449,18 +449,16 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
   try {
     const files = await fs.readdir(backupsPath);
     const backupStats = await Promise.all(
-      files
-        .filter(isSafeBackupFilename)
-        .map(async (file) => {
-          const stat = await fs.stat(path.join(backupsPath, file));
+      files.filter(isSafeBackupFilename).map(async (file) => {
+        const stat = await fs.stat(path.join(backupsPath, file));
 
-          return {
-            filename: file,
-            createdAt: stat.mtime.toISOString(),
-            sizeBytes: stat.size,
-            modifiedAt: stat.mtime,
-          };
-        })
+        return {
+          filename: file,
+          createdAt: stat.mtime.toISOString(),
+          sizeBytes: stat.size,
+          modifiedAt: stat.mtime,
+        };
+      })
     );
     backupCount = backupStats.length;
     const latest = backupStats.sort(
@@ -7288,6 +7286,7 @@ dashboardRoutes.get(
   isAuthenticated(),
   async (_req, res) => {
     const settingsPath = path.join(appDataPath(), 'settings.json');
+    const backupsPath = path.join(appDataPath(), 'backups');
     let backup = '';
 
     try {
@@ -7297,11 +7296,40 @@ dashboardRoutes.get(
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `manual-dashboard-settings-export-${timestamp}.json`;
+    const backupPath = path.join(backupsPath, filename);
+
+    try {
+      await fs.mkdir(backupsPath, { recursive: true });
+      await fs.writeFile(backupPath, backup, 'utf-8');
+      const rotation = await rotateSettingsBackups();
+
+      await appendDashboardEvent({
+        type: 'backup',
+        title: 'Manual settings backup exported',
+        message: 'Settings backup exported from the dashboard.',
+        metadata: {
+          filename,
+          rotation,
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to store manual dashboard settings backup', {
+        backupPath,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      return res.status(500).json({
+        error: 'Failed to store settings backup',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'The backup could not be stored locally.',
+      });
+    }
+
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="agregarr-settings-${timestamp}.json"`
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
     return res.status(200).send(backup);
   }

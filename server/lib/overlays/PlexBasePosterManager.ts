@@ -696,6 +696,7 @@ class PlexBasePosterManager {
   ): Promise<{
     posterBuffer: Buffer;
     basePosterChanged: boolean;
+    sourceUsed: 'tmdb' | 'plex' | 'local';
     sourceUrl: string;
     filename: string;
     fileModTime?: number | null;
@@ -718,6 +719,22 @@ class PlexBasePosterManager {
         libraryConfigType: configuredLibraryType,
         usingType: mediaType,
       });
+    }
+
+    if (posterSource === 'local') {
+      // ===== LOCAL SOURCE =====
+
+      if (!tmdbId) {
+        logger.warn(
+          'TMDB ID missing for local poster source, falling back to Plex poster',
+          {
+            label: 'PlexBasePosterManager',
+            itemTitle: item.title,
+            ratingKey: item.ratingKey,
+          }
+        );
+        posterSource = 'plex';
+      }
     }
 
     if (posterSource === 'local') {
@@ -756,6 +773,7 @@ class PlexBasePosterManager {
             localPosterResult.fileChanged ||
             switchedFromDifferentSource ||
             firstTime,
+          sourceUsed: 'local',
           sourceUrl: `local://${localPosterPath}`, // Custom URL scheme for tracking
           filename: '', // No caching for local posters
           fileModTime: localPosterResult.fileModTime,
@@ -808,6 +826,7 @@ class PlexBasePosterManager {
           return {
             posterBuffer: cachedPoster,
             basePosterChanged: true, // Force TRUE - source changed or first time
+            sourceUsed: 'plex',
             sourceUrl: currentPlexPosterUrl,
             filename: this.generateFilename(libraryId, item.ratingKey),
             fileModTime: undefined,
@@ -831,8 +850,44 @@ class PlexBasePosterManager {
           return {
             posterBuffer: cachedPoster,
             basePosterChanged: false,
+            sourceUsed: 'plex',
             sourceUrl: metadata.originalPlexPosterUrl || currentPlexPosterUrl,
             filename: metadata.basePosterFilename || '',
+            fileModTime: undefined,
+          };
+        }
+        if (
+          metadata.originalPlexPosterUrl &&
+          !metadata.originalPlexPosterUrl.startsWith('local://') &&
+          !posterUrlsMatch(currentPlexPosterUrl, metadata.originalPlexPosterUrl)
+        ) {
+          logger.warn(
+            'Base cache missing while current poster is our overlay, recovering from stored original poster URL',
+            {
+              label: 'PlexBasePosterManager',
+              libraryId,
+              ratingKey: item.ratingKey,
+              originalUrl: metadata.originalPlexPosterUrl,
+            }
+          );
+
+          const recoveredPoster = await this.downloadFromPlex(
+            plexApi,
+            metadata.originalPlexPosterUrl,
+            item.ratingKey
+          );
+          const filename = await this.storeBasePoster(
+            recoveredPoster,
+            libraryId,
+            item.ratingKey
+          );
+
+          return {
+            posterBuffer: recoveredPoster,
+            basePosterChanged: true,
+            sourceUsed: 'plex',
+            sourceUrl: metadata.originalPlexPosterUrl,
+            filename,
             fileModTime: undefined,
           };
         }
@@ -854,6 +909,7 @@ class PlexBasePosterManager {
           return {
             posterBuffer: cachedPoster,
             basePosterChanged: false,
+            sourceUsed: 'plex',
             sourceUrl: metadata.originalPlexPosterUrl || currentPlexPosterUrl,
             filename: metadata.basePosterFilename || '',
             fileModTime: undefined,
@@ -890,6 +946,7 @@ class PlexBasePosterManager {
       return {
         posterBuffer,
         basePosterChanged: true,
+        sourceUsed: 'plex',
         sourceUrl: currentPlexPosterUrl,
         filename,
         fileModTime: undefined,
@@ -911,7 +968,23 @@ class PlexBasePosterManager {
       }
 
       if (!resolvedTmdbId) {
-        throw new Error('No TMDB ID found for item');
+        logger.warn('No TMDB ID found, falling back to Plex poster', {
+          label: 'PlexBasePosterManager',
+          itemTitle: item.title,
+          ratingKey: item.ratingKey,
+          libraryId,
+        });
+
+        return this.getBasePosterForOverlay(
+          plexApi,
+          item,
+          libraryId,
+          libraryName,
+          configuredLibraryType,
+          'plex',
+          metadata,
+          tmdbId
+        );
       }
 
       // Log TMDB fetch details for debugging wrong poster issues
@@ -937,7 +1010,24 @@ class PlexBasePosterManager {
       );
 
       if (!posterUrl) {
-        throw new Error('No TMDB poster available');
+        logger.warn('No TMDB poster available, falling back to Plex poster', {
+          label: 'PlexBasePosterManager',
+          itemTitle: item.title,
+          ratingKey: item.ratingKey,
+          tmdbId: resolvedTmdbId,
+          mediaType,
+        });
+
+        return this.getBasePosterForOverlay(
+          plexApi,
+          item,
+          libraryId,
+          libraryName,
+          configuredLibraryType,
+          'plex',
+          metadata,
+          resolvedTmdbId
+        );
       }
 
       // Check if TMDB URL changed (for deduplication)
@@ -949,49 +1039,74 @@ class PlexBasePosterManager {
 
       let posterBuffer: Buffer;
 
-      if (cacheEnabled) {
-        // Try to get from cache first (7-day TTL)
-        const cachedPoster = await this.getTmdbCachedPoster(posterUrl);
+      try {
+        if (cacheEnabled) {
+          // Try to get from cache first (7-day TTL)
+          const cachedPoster = await this.getTmdbCachedPoster(posterUrl);
 
-        if (cachedPoster) {
-          logger.debug('Using cached TMDB poster', {
-            label: 'PlexBasePosterManager',
-            libraryId,
-            ratingKey: item.ratingKey,
-            tmdbUrl: posterUrl,
-            urlChanged: tmdbUrlChanged,
-          });
-          posterBuffer = cachedPoster;
+          if (cachedPoster) {
+            logger.debug('Using cached TMDB poster', {
+              label: 'PlexBasePosterManager',
+              libraryId,
+              ratingKey: item.ratingKey,
+              tmdbUrl: posterUrl,
+              urlChanged: tmdbUrlChanged,
+            });
+            posterBuffer = cachedPoster;
+          } else {
+            // Cache miss - download from TMDB
+            logger.info('Downloading TMDB poster (cache miss)', {
+              label: 'PlexBasePosterManager',
+              libraryId,
+              ratingKey: item.ratingKey,
+              tmdbUrl: posterUrl,
+              urlChanged: tmdbUrlChanged,
+            });
+
+            posterBuffer = await this.downloadFromTMDB(posterUrl);
+
+            // Store in cache for future use
+            await this.storeTmdbCachedPoster(posterUrl, posterBuffer);
+          }
         } else {
-          // Cache miss - download from TMDB
-          logger.info('Downloading TMDB poster (cache miss)', {
+          // Cache disabled - always download fresh from TMDB
+          logger.debug('Downloading TMDB poster (cache disabled)', {
             label: 'PlexBasePosterManager',
             libraryId,
             ratingKey: item.ratingKey,
             tmdbUrl: posterUrl,
-            urlChanged: tmdbUrlChanged,
           });
 
           posterBuffer = await this.downloadFromTMDB(posterUrl);
-
-          // Store in cache for future use
-          await this.storeTmdbCachedPoster(posterUrl, posterBuffer);
         }
-      } else {
-        // Cache disabled - always download fresh from TMDB
-        logger.debug('Downloading TMDB poster (cache disabled)', {
-          label: 'PlexBasePosterManager',
-          libraryId,
-          ratingKey: item.ratingKey,
-          tmdbUrl: posterUrl,
-        });
+      } catch (error) {
+        logger.warn(
+          'TMDB poster download failed, falling back to Plex poster',
+          {
+            label: 'PlexBasePosterManager',
+            itemTitle: item.title,
+            ratingKey: item.ratingKey,
+            tmdbId: resolvedTmdbId,
+            error: error instanceof Error ? error.message : String(error),
+          }
+        );
 
-        posterBuffer = await this.downloadFromTMDB(posterUrl);
+        return this.getBasePosterForOverlay(
+          plexApi,
+          item,
+          libraryId,
+          libraryName,
+          configuredLibraryType,
+          'plex',
+          metadata,
+          resolvedTmdbId
+        );
       }
 
       return {
         posterBuffer,
         basePosterChanged: tmdbUrlChanged, // Only changed if URL is different
+        sourceUsed: 'tmdb',
         sourceUrl: posterUrl,
         filename: this.getTmdbCacheFilename(posterUrl), // Now we cache TMDB posters
         fileModTime: undefined,

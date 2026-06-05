@@ -1,3 +1,35 @@
+# 2.5.29 (2026-06-05)
+
+## Highlights
+
+### Poster Overlays
+
+- Added an automatic Plex-poster fallback when TMDB IDs are missing during overlay sync.
+- Fall back to the current Plex cover when TMDB has no poster or the TMDB poster download fails.
+- Track the actual base poster source used for overlays so fallback items do not keep rerendering unnecessarily.
+- Recover existing overlaid items from the stored original Plex poster URL when the local base-poster cache is missing.
+
+### Backup
+
+- Fixed the dashboard settings-backup download so it also writes a real backup into `config/backups`.
+- Refreshed dashboard backup health and backup history immediately after downloading a dashboard backup.
+
+### Localization
+
+- Cleaned up German dashboard, operations, repair, source, sync, placeholder, and settings translations.
+- Added localized success and failure messages for dashboard backup exports.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.29
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.28...v2.5.29
+
 # 2.5.28 (2026-05-31)
 
 ## Highlights

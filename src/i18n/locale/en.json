@@ -767,6 +767,8 @@
   "components.Dashboard.backupList": "Backup List",
   "components.Dashboard.backupPreview": "Preview backup",
   "components.Dashboard.backupRecommended": "Backup recommended",
+  "components.Dashboard.backupCreated": "Settings backup created and downloaded.",
+  "components.Dashboard.backupFailed": "Failed to create settings backup.",
   "components.Dashboard.bulkCollectionExport": "Bulk collection export",
   "components.Dashboard.cacheEntries": "{count} cache entries",
   "components.Dashboard.capabilityCollectionSync": "Collection sync",

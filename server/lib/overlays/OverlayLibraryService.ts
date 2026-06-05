@@ -1148,7 +1148,14 @@ class OverlayLibraryService {
       // ONLY download poster if we've determined changes exist
       // Get poster source preference (global setting)
       const settings = getSettings();
-      const posterSource = settings.overlays?.defaultPosterSource || 'tmdb';
+      const configuredPosterSource =
+        settings.overlays?.defaultPosterSource || 'tmdb';
+      const posterSource =
+        (configuredPosterSource === 'tmdb' ||
+          configuredPosterSource === 'local') &&
+        !tmdbId
+          ? 'plex'
+          : configuredPosterSource;
 
       // Get base poster with change detection
       const { plexBasePosterManager } = await import(
@@ -1158,6 +1165,7 @@ class OverlayLibraryService {
       let basePosterResult: {
         posterBuffer: Buffer;
         basePosterChanged: boolean;
+        sourceUsed: 'tmdb' | 'plex' | 'local';
         sourceUrl: string;
         filename: string;
         fileModTime?: number | null;
@@ -1276,7 +1284,7 @@ class OverlayLibraryService {
               overlayInputHash,
               newPosterUrl,
               {
-                basePosterSource: posterSource,
+                basePosterSource: basePosterResult.sourceUsed,
                 originalPlexPosterUrl: basePosterResult.sourceUrl,
                 basePosterFilename: basePosterResult.filename,
                 localPosterModifiedTime: basePosterResult.fileModTime,

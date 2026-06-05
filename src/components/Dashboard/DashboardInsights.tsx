@@ -20,7 +20,7 @@ import axios from 'axios';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 
 const messages = defineMessages({
   title: 'Operational Intelligence',
@@ -76,6 +76,8 @@ const messages = defineMessages({
   runAction: 'Run',
   downloadDiagnostics: 'Download diagnostics',
   downloadBackup: 'Download backup',
+  backupCreated: 'Settings backup created and downloaded.',
+  backupFailed: 'Failed to create settings backup.',
   actionSucceeded: 'Action completed.',
   actionFailed: 'Action failed.',
   problemDetails: 'Problem Details',
@@ -833,6 +835,7 @@ const operationStatusClass = (status: string): string => {
 
 const DashboardInsights: React.FC = () => {
   const intl = useIntl();
+  const { mutate: globalMutate } = useSWRConfig();
   const dashboardRootRef = useRef<HTMLDivElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const layoutInputRef = useRef<HTMLInputElement>(null);
@@ -855,7 +858,7 @@ const DashboardInsights: React.FC = () => {
       ? null
       : '/api/v1/dashboard/stats'
   );
-  const { data: backupList } = useSWR<BackupListData>(
+  const { data: backupList, mutate: mutateBackupList } = useSWR<BackupListData>(
     operationalIntelligenceHidden || operationalIntelligenceCollapsed
       ? null
       : '/api/v1/dashboard/backups'
@@ -1282,6 +1285,45 @@ const DashboardInsights: React.FC = () => {
       await mutate();
     } catch (err) {
       setActionMessage(intl.formatMessage(messages.actionFailed));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+
+  const downloadSettingsBackup = async () => {
+    setRunningAction('download-backup');
+    setActionMessage(null);
+
+    try {
+      const response = await axios.get('/api/v1/dashboard/settings-backup', {
+        responseType: 'blob',
+      });
+      const disposition = response.headers['content-disposition'] as
+        | string
+        | undefined;
+      const filenameMatch = disposition?.match(/filename="?([^"]+)"?/i);
+      const filename =
+        filenameMatch?.[1] ||
+        `manual-dashboard-settings-export-${new Date()
+          .toISOString()
+          .replace(/[:.]/g, '-')}.json`;
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      await Promise.all([
+        mutateBackupList(),
+        globalMutate('/api/v1/dashboard/backup-health'),
+      ]);
+      setActionMessage(intl.formatMessage(messages.backupCreated));
+    } catch {
+      setActionMessage(intl.formatMessage(messages.backupFailed));
     } finally {
       setRunningAction(null);
     }
@@ -2668,12 +2710,16 @@ const DashboardInsights: React.FC = () => {
                     : action.title}
                 </button>
               ))}
-              <a
-                href="/api/v1/dashboard/settings-backup"
-                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
+              <button
+                type="button"
+                onClick={downloadSettingsBackup}
+                disabled={runningAction === 'download-backup'}
+                className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {intl.formatMessage(messages.downloadBackup)}
-              </a>
+                {runningAction === 'download-backup'
+                  ? intl.formatMessage(messages.loading)
+                  : intl.formatMessage(messages.downloadBackup)}
+              </button>
               <a
                 href="/api/v1/dashboard/support-package"
                 className="rounded border border-gray-600 px-3 py-2 text-xs font-semibold text-gray-200 transition-colors hover:border-orange-500/60"
