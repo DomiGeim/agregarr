@@ -125,13 +125,7 @@ const getTraktRedirectUri = (req?: Request) => {
 };
 
 const validateSettingsBackupPayload = (backup: unknown) => {
-  const requiredKeys = [
-    'main',
-    'mediaServerProfile',
-    'tautulli',
-    'radarr',
-    'sonarr',
-  ];
+  const requiredKeys = ['main', 'tautulli', 'radarr', 'sonarr'];
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -145,10 +139,15 @@ const validateSettingsBackupPayload = (backup: unknown) => {
   }
 
   const data = backup as Record<string, unknown>;
-  const hasMediaServerProfile = 'plex' in data || 'plexProfile' in data;
+  const hasMediaServerSettings = [
+    'plex',
+    'plexProfile',
+    'jellyfin',
+    'emby',
+  ].some((key) => key in data);
   const missingKeys = [
     ...['main', 'tautulli', 'radarr', 'sonarr'].filter((key) => !(key in data)),
-    ...(hasMediaServerProfile ? [] : ['plex or plexProfile']),
+    ...(hasMediaServerSettings ? [] : ['media server settings']),
   ];
 
   if (missingKeys.length > 0) {
@@ -162,6 +161,12 @@ const validateSettingsBackupPayload = (backup: unknown) => {
   }
   if (data.plexProfile && typeof data.plexProfile !== 'object') {
     errors.push('plexProfile must be an object.');
+  }
+  if (data.jellyfin && typeof data.jellyfin !== 'object') {
+    errors.push('jellyfin must be an object.');
+  }
+  if (data.emby && typeof data.emby !== 'object') {
+    errors.push('emby must be an object.');
   }
   if (data.radarr && !Array.isArray(data.radarr)) {
     errors.push('radarr must be an array.');

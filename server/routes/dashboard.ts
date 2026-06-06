@@ -1216,13 +1216,7 @@ const validateSettingsBackup = (
   schemaWarnings: string[];
   collectionCount: number;
 } => {
-  const requiredKeys = [
-    'main',
-    'mediaServerProfile',
-    'tautulli',
-    'radarr',
-    'sonarr',
-  ];
+  const requiredKeys = ['main', 'tautulli', 'radarr', 'sonarr'];
 
   if (!backup || typeof backup !== 'object') {
     return {
@@ -1234,19 +1228,18 @@ const validateSettingsBackup = (
   }
 
   const data = backup as Record<string, unknown>;
-  const hasMediaServerProfile = 'plex' in data || 'plexProfile' in data;
+  const hasMediaServerSettings = [
+    'plex',
+    'plexProfile',
+    'jellyfin',
+    'emby',
+  ].some((key) => key in data);
   const missingKeys = [
     ...['main', 'tautulli', 'radarr', 'sonarr'].filter((key) => !(key in data)),
-    ...(hasMediaServerProfile ? [] : ['plex or plexProfile']),
+    ...(hasMediaServerSettings ? [] : ['media server settings']),
   ];
   const schemaWarnings: string[] = [];
   const plex = data.plex as
-    | {
-        collectionConfigs?: unknown[];
-        preExistingCollectionConfigs?: unknown[];
-      }
-    | undefined;
-  const plexProfile = data.plexProfile as
     | {
         collectionConfigs?: unknown[];
         preExistingCollectionConfigs?: unknown[];
@@ -1261,6 +1254,12 @@ const validateSettingsBackup = (
   }
   if (data.plexProfile && typeof data.plexProfile !== 'object') {
     schemaWarnings.push('plexProfile must be an object.');
+  }
+  if (data.jellyfin && typeof data.jellyfin !== 'object') {
+    schemaWarnings.push('jellyfin must be an object.');
+  }
+  if (data.emby && typeof data.emby !== 'object') {
+    schemaWarnings.push('emby must be an object.');
   }
   if (plex?.collectionConfigs && !Array.isArray(plex.collectionConfigs)) {
     schemaWarnings.push('plex.collectionConfigs must be an array.');
@@ -1282,14 +1281,38 @@ const validateSettingsBackup = (
     valid: missingKeys.length === 0 && schemaWarnings.length === 0,
     missingKeys,
     schemaWarnings,
-    collectionCount:
-      (plex?.collectionConfigs?.length ||
-        plexProfile?.collectionConfigs?.length ||
-        0) +
-      (plex?.preExistingCollectionConfigs?.length ||
-        plexProfile?.preExistingCollectionConfigs?.length ||
-        0),
+    collectionCount: getBackupCollectionCount(data),
   };
+};
+
+const getBackupCollectionCount = (
+  settings: Record<string, unknown> | undefined
+) => {
+  const mediaProfiles = ['plex', 'plexProfile', 'jellyfin', 'emby'];
+
+  return mediaProfiles.reduce((total, key) => {
+    const profile = settings?.[key] as
+      | {
+          collectionConfigs?: unknown[];
+          preExistingCollectionConfigs?: unknown[];
+        }
+      | undefined;
+    const rawCollectionConfigs = profile?.collectionConfigs;
+    const rawPreExistingCollectionConfigs =
+      profile?.preExistingCollectionConfigs;
+    const collectionConfigs = Array.isArray(rawCollectionConfigs)
+      ? rawCollectionConfigs
+      : [];
+    const preExistingCollectionConfigs = Array.isArray(
+      rawPreExistingCollectionConfigs
+    )
+      ? rawPreExistingCollectionConfigs
+      : [];
+
+    return (
+      total + collectionConfigs.length + preExistingCollectionConfigs.length
+    );
+  }, 0);
 };
 
 const getMediaServerCapabilities = (
@@ -7380,9 +7403,9 @@ dashboardRoutes.post(
       ),
       current: {
         locale: currentSettings.main.locale,
-        collectionCount:
-          (currentSettings.plex.collectionConfigs?.length || 0) +
-          (currentSettings.plex.preExistingCollectionConfigs?.length || 0),
+        collectionCount: getBackupCollectionCount(
+          currentSettings as unknown as Record<string, unknown>
+        ),
       },
       incoming: {
         locale: (incoming.main as { locale?: string } | undefined)?.locale,

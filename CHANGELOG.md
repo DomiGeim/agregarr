@@ -1,3 +1,24 @@
+# 2.5.32 (2026-06-06)
+
+## Highlights
+
+### Backup
+
+- Fixed settings backup verification by removing the invalid `mediaServerProfile` requirement from backup validation.
+- Accepted media server settings from Plex, Plex profiles, Jellyfin, or Emby during backup preview and restore validation.
+- Improved backup preview collection counts so current and incoming settings are counted across all media server profiles.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.32
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.31...v2.5.32
+
 # 2.5.31 (2026-06-05)
 
 ## Highlights
