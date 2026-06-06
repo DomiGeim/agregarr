@@ -1,3 +1,23 @@
+# 2.5.33 (2026-06-06)
+
+## Highlights
+
+### Dashboard
+
+- Removed the Operational Intelligence / Betriebsanalyse panel from the dashboard.
+- Kept the core dashboard stats, sync status, collection statistics, and recently added panels visible.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.33
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.32...v2.5.33
+
 # 2.5.32 (2026-06-06)
 
 ## Highlights
