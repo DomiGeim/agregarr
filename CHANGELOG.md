@@ -1,3 +1,26 @@
+# 2.5.35 (2026-06-08)
+
+## Highlights
+
+### Backup
+
+- Made Backup History and Backup Status create and read the backup directory reliably.
+- Prevented one unreadable backup entry from causing the entire backup list to appear empty.
+- Updated backup rotation to skip unreadable entries individually instead of failing the whole rotation.
+- Kept the newly exported backup visible immediately using the server-confirmed export metadata.
+- Avoided overwriting the visible Backup History with a stale empty refresh right after export.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.35
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.34...v2.5.35
+
 # 2.5.34 (2026-06-08)
 
 ## Highlights

@@ -447,19 +447,36 @@ const getBackupHealth = async (settings: ReturnType<typeof getSettings>) => {
   let backupCount = 0;
 
   try {
+    await fs.mkdir(backupsPath, { recursive: true });
     const files = await fs.readdir(backupsPath);
-    const backupStats = await Promise.all(
-      files.filter(isSafeBackupFilename).map(async (file) => {
-        const stat = await fs.stat(path.join(backupsPath, file));
+    const backupStats = (
+      await Promise.all(
+        files.filter(isSafeBackupFilename).map(async (file) => {
+          try {
+            const stat = await fs.stat(path.join(backupsPath, file));
 
-        return {
-          filename: file,
-          createdAt: stat.mtime.toISOString(),
-          sizeBytes: stat.size,
-          modifiedAt: stat.mtime,
-        };
-      })
-    );
+            if (!stat.isFile()) {
+              return undefined;
+            }
+
+            return {
+              filename: file,
+              createdAt: stat.mtime.toISOString(),
+              sizeBytes: stat.size,
+              modifiedAt: stat.mtime,
+            };
+          } catch (error) {
+            logger.warn('Backup health skipped unreadable backup file', {
+              label: 'Dashboard',
+              file,
+              errorMessage:
+                error instanceof Error ? error.message : 'Unknown error',
+            });
+            return undefined;
+          }
+        })
+      )
+    ).filter((backup): backup is NonNullable<typeof backup> => !!backup);
     backupCount = backupStats.length;
     const latest = backupStats.sort(
       (a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime()
@@ -501,21 +518,38 @@ const listSettingsBackups = async (): Promise<BackupFileSummary[]> => {
   const backupsPath = path.join(appDataPath(), 'backups');
 
   try {
+    await fs.mkdir(backupsPath, { recursive: true });
     const files = await fs.readdir(backupsPath);
-    const backupFiles = await Promise.all(
-      files.filter(isSafeBackupFilename).map(async (filename) => {
-        const stat = await fs.stat(path.join(backupsPath, filename));
+    const backupFiles = (
+      await Promise.all(
+        files.filter(isSafeBackupFilename).map(async (filename) => {
+          try {
+            const stat = await fs.stat(path.join(backupsPath, filename));
 
-        return {
-          filename,
-          sizeBytes: stat.size,
-          modifiedAt: stat.mtime.toISOString(),
-          downloadUrl: `/api/v1/dashboard/backups/${encodeURIComponent(
-            filename
-          )}`,
-        };
-      })
-    );
+            if (!stat.isFile()) {
+              return undefined;
+            }
+
+            return {
+              filename,
+              sizeBytes: stat.size,
+              modifiedAt: stat.mtime.toISOString(),
+              downloadUrl: `/api/v1/dashboard/backups/${encodeURIComponent(
+                filename
+              )}`,
+            };
+          } catch (error) {
+            logger.warn('Skipped unreadable settings backup file', {
+              label: 'Dashboard',
+              filename,
+              errorMessage:
+                error instanceof Error ? error.message : 'Unknown error',
+            });
+            return undefined;
+          }
+        })
+      )
+    ).filter((backup): backup is BackupFileSummary => !!backup);
 
     return backupFiles.sort(
       (a, b) =>
@@ -532,16 +566,36 @@ const rotateSettingsBackups = async (
   const backupsPath = path.join(appDataPath(), 'backups');
 
   try {
+    await fs.mkdir(backupsPath, { recursive: true });
     const files = await fs.readdir(backupsPath);
-    const backupFiles = await Promise.all(
-      files
-        .filter((file) => file.endsWith('.json'))
-        .map(async (file) => ({
-          file,
-          path: path.join(backupsPath, file),
-          modifiedAt: (await fs.stat(path.join(backupsPath, file))).mtime,
-        }))
-    );
+    const backupFiles = (
+      await Promise.all(
+        files.filter(isSafeBackupFilename).map(async (file) => {
+          try {
+            const filePath = path.join(backupsPath, file);
+            const stat = await fs.stat(filePath);
+
+            if (!stat.isFile()) {
+              return undefined;
+            }
+
+            return {
+              file,
+              path: filePath,
+              modifiedAt: stat.mtime,
+            };
+          } catch (error) {
+            logger.warn('Backup rotation skipped unreadable backup file', {
+              label: 'Dashboard',
+              file,
+              errorMessage:
+                error instanceof Error ? error.message : 'Unknown error',
+            });
+            return undefined;
+          }
+        })
+      )
+    ).filter((backup): backup is NonNullable<typeof backup> => !!backup);
     const removable = backupFiles
       .sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime())
       .slice(maxBackups);

@@ -72,7 +72,7 @@ interface BackupListResponse {
 const SettingsAbout = () => {
   const intl = useIntl();
   const { addToast } = useToasts();
-  const { mutate } = useSWRConfig();
+  const { mutate: globalMutate } = useSWRConfig();
   const [showExportModal, setShowExportModal] = useState(false);
   const restoreInputRef = useRef<HTMLInputElement>(null);
   const { data, error } = useSWR<SettingsAboutResponse>(
@@ -80,9 +80,8 @@ const SettingsAbout = () => {
   );
 
   const { data: status } = useSWR<StatusResponse>('/api/v1/status');
-  const { data: backupList } = useSWR<BackupListResponse>(
-    '/api/v1/dashboard/backups'
-  );
+  const { data: backupList, mutate: mutateBackupList } =
+    useSWR<BackupListResponse>('/api/v1/dashboard/backups');
 
   if (!data && !error) {
     return <LoadingSpinner />;
@@ -111,16 +110,43 @@ const SettingsAbout = () => {
       const backupFilename =
         response.headers['x-agregarr-backup-filename'] ||
         response.headers['X-Agregarr-Backup-Filename'];
+      const backupSize = Number(
+        response.headers['x-agregarr-backup-size'] ||
+          response.headers['X-Agregarr-Backup-Size'] ||
+          response.data.size ||
+          0
+      );
 
       try {
         const backupListResponse = await axios.get<BackupListResponse>(
           '/api/v1/dashboard/backups'
         );
-        const savedBackupVisible = backupFilename
+        let nextBackupList = backupListResponse.data;
+        let savedBackupVisible = backupFilename
           ? backupListResponse.data.backups.some(
               (backup) => backup.filename === backupFilename
             )
           : backupListResponse.data.backups.length > 0;
+
+        if (!savedBackupVisible && backupFilename) {
+          nextBackupList = {
+            ...backupListResponse.data,
+            backups: [
+              {
+                filename: backupFilename,
+                sizeBytes: backupSize,
+                modifiedAt: new Date().toISOString(),
+                downloadUrl: `/api/v1/dashboard/backups/${encodeURIComponent(
+                  backupFilename
+                )}`,
+              },
+              ...backupListResponse.data.backups.filter(
+                (backup) => backup.filename !== backupFilename
+              ),
+            ],
+          };
+          savedBackupVisible = true;
+        }
 
         if (!savedBackupVisible) {
           throw new globalThis.Error(
@@ -132,6 +158,7 @@ const SettingsAbout = () => {
           autoDismiss: true,
           appearance: 'success',
         });
+        await mutateBackupList(nextBackupList, false);
       } catch {
         addToast(
           intl.formatMessage(messages.toastSettingsBackupVerificationWarning),
@@ -141,10 +168,7 @@ const SettingsAbout = () => {
           }
         );
       }
-      await Promise.all([
-        mutate('/api/v1/dashboard/backup-health'),
-        mutate('/api/v1/dashboard/backups'),
-      ]);
+      await globalMutate('/api/v1/dashboard/backup-health');
     } catch (error) {
       addToast(intl.formatMessage(messages.toastSettingsBackupExportFailure), {
         autoDismiss: true,
