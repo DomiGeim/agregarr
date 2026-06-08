@@ -1,3 +1,25 @@
+# 2.5.34 (2026-06-08)
+
+## Highlights
+
+### Backup
+
+- Fixed settings backup export verification to check the Backup History endpoint instead of the restore-preview endpoint.
+- Made manual settings backup export fail clearly when the server cannot store the backup file locally.
+- Added exported backup metadata headers and refreshed Backup Status plus Backup History after export.
+- Updated backup export messages so successful exports are reported as saved, not restore-verified.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.34
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.33...v2.5.34
+
 # 2.5.33 (2026-06-06)
 
 ## Highlights

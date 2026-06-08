@@ -40,9 +40,9 @@ const messages = defineMessages({
   toastSettingsBackupRestoreFailure: 'Failed to restore settings backup.',
   toastSettingsBackupExportFailure: 'Failed to export settings backup.',
   toastSettingsBackupExportSuccess: 'Settings backup exported successfully.',
-  toastSettingsBackupVerified: 'Settings backup exported and verified.',
+  toastSettingsBackupVerified: 'Settings backup exported and saved.',
   toastSettingsBackupVerificationWarning:
-    'Settings backup exported. Verification could not be completed.',
+    'Settings backup exported, but it was not found in backup history.',
   backupHistory: 'Backup History',
   noBackups: 'No backups yet',
   timezone: 'Time Zone',
@@ -107,9 +107,27 @@ const SettingsAbout = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+
+      const backupFilename =
+        response.headers['x-agregarr-backup-filename'] ||
+        response.headers['X-Agregarr-Backup-Filename'];
+
       try {
-        const backup = JSON.parse(await response.data.text());
-        await axios.post('/api/v1/dashboard/settings-restore-preview', backup);
+        const backupListResponse = await axios.get<BackupListResponse>(
+          '/api/v1/dashboard/backups'
+        );
+        const savedBackupVisible = backupFilename
+          ? backupListResponse.data.backups.some(
+              (backup) => backup.filename === backupFilename
+            )
+          : backupListResponse.data.backups.length > 0;
+
+        if (!savedBackupVisible) {
+          throw new globalThis.Error(
+            'Exported backup was not returned by backup history.'
+          );
+        }
+
         addToast(intl.formatMessage(messages.toastSettingsBackupVerified), {
           autoDismiss: true,
           appearance: 'success',
@@ -123,8 +141,10 @@ const SettingsAbout = () => {
           }
         );
       }
-      mutate('/api/v1/dashboard/backup-health');
-      mutate('/api/v1/dashboard/backups');
+      await Promise.all([
+        mutate('/api/v1/dashboard/backup-health'),
+        mutate('/api/v1/dashboard/backups'),
+      ]);
     } catch (error) {
       addToast(intl.formatMessage(messages.toastSettingsBackupExportFailure), {
         autoDismiss: true,

@@ -2151,19 +2151,29 @@ settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFilename = `manual-settings-export-${timestamp}.json`;
     const backupPath = path.join(backupsPath, backupFilename);
+    let backupSize = 0;
 
     try {
       fs.mkdirSync(backupsPath, { recursive: true });
       fs.writeFileSync(backupPath, backupJson, 'utf-8');
+      backupSize = fs.statSync(backupPath).size;
       logger.info('Manual settings backup exported', {
         label: 'Settings',
         backupPath,
+        sizeBytes: backupSize,
       });
     } catch (writeError) {
-      logger.warn('Manual settings backup could not be stored locally', {
+      logger.error('Manual settings backup could not be stored locally', {
         label: 'Settings',
         backupPath,
         errorMessage:
+          writeError instanceof Error ? writeError.message : 'Unknown error',
+      });
+
+      return next({
+        status: 500,
+        message: 'Settings backup could not be stored locally.',
+        error:
           writeError instanceof Error ? writeError.message : 'Unknown error',
       });
     }
@@ -2173,6 +2183,8 @@ settingsRoutes.get('/backup', isAuthenticated(), (_req, res, next) => {
       'Content-Disposition',
       `attachment; filename="${backupFilename}"`
     );
+    res.setHeader('X-Agregarr-Backup-Filename', backupFilename);
+    res.setHeader('X-Agregarr-Backup-Size', String(backupSize));
 
     return res.status(200).send(backupJson);
   } catch (error) {
