@@ -1240,8 +1240,32 @@ export abstract class BaseCollectionSync<TSource extends CollectionSource>
       );
 
       // Label all items (new and existing)
+      let labelFailures = 0;
+      let lastLabelError: unknown;
       for (const itemKey of itemRatingKeys) {
-        await plexClient.addLabelToItem(itemKey, labelName);
+        try {
+          await plexClient.addLabelToItem(itemKey, labelName);
+        } catch (error) {
+          labelFailures++;
+          lastLabelError = error;
+          logger.warn('Failed to label collection item', {
+            itemKey,
+            labelName,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      if (
+        itemRatingKeys.length > 0 &&
+        labelFailures === itemRatingKeys.length
+      ) {
+        throw new Error(
+          `All ${labelFailures} items failed labelling for "${collectionName}": ${
+            lastLabelError instanceof Error
+              ? lastLabelError.message
+              : String(lastLabelError)
+          }`
+        );
       }
 
       // CLEANUP: Remove labels from items that are no longer in the collection

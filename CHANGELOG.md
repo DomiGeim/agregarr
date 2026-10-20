@@ -1,3 +1,31 @@
+# 2.5.36 (2026-10-20)
+
+## Highlights
+
+### Collections
+
+- Read Seerr/Overseerr availability directly from request media, including separate 4K status and continued checks for partially available items.
+- Preserve collection labels when every label update fails, while allowing remaining items to sync after individual failures.
+- Preserve zero-based source positions when ordering multi-source collections.
+- Propagate AniList and MyAnimeList processing failures instead of reporting empty successful syncs.
+- Remove the incompatible optional AniList Plex GUID lookup.
+
+### Poster Overlays
+
+- Crop elements at poster boundaries instead of shrinking oversized elements.
+- Add six renderer regression scenarios covering clipping, off-poster elements, and Sharp compositing.
+
+## Docker Images
+
+```sh
+docker pull ghcr.io/domigeim/agregarr:v2.5.36
+docker pull ghcr.io/domigeim/agregarr:latest
+```
+
+## Full Changelog
+
+https://github.com/DomiGeim/agregarr/compare/v2.5.35...v2.5.36
+
 # 2.5.35 (2026-06-08)
 
 ## Highlights

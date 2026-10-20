@@ -679,7 +679,12 @@ export class AutoRequestService {
         .createQueryBuilder('missing_item')
         .leftJoinAndSelect('missing_item.requestedBy', 'user')
         .where('missing_item.requestStatus IN (:...statuses)', {
-          statuses: ['pending', 'approved', 'processing'],
+          statuses: [
+            'pending',
+            'approved',
+            'processing',
+            'partially_available',
+          ],
         })
         .andWhere('missing_item.createdAt >= :date', { date: thirtyDaysAgo })
         .getMany();
@@ -771,12 +776,12 @@ export class AutoRequestService {
             // For completed/approved requests, also check media availability status
             if (newStatus === 'processing' || newStatus === 'approved') {
               try {
-                const media = await overseerrAPI.getMediaByTmdbId(
-                  missingItem.tmdbId
-                );
+                const media = overseerrRequest.media;
                 if (media) {
                   // MediaStatus enum values
-                  switch (media.status) {
+                  switch (
+                    overseerrRequest.is4k ? media.status4k : media.status
+                  ) {
                     case 5: // AVAILABLE
                       newStatus = 'available';
                       break;

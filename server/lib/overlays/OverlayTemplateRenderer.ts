@@ -573,31 +573,12 @@ class OverlayTemplateRendererService {
         if (overlayBuffer) {
           // Get overlay buffer metadata
           const overlayMeta = await sharp(overlayBuffer).metadata();
-          let overlayWidth = overlayMeta.width ?? 0;
-          let overlayHeight = overlayMeta.height ?? 0;
+          const overlayWidth = overlayMeta.width ?? 0;
+          const overlayHeight = overlayMeta.height ?? 0;
 
           let safeOverlayBuffer = overlayBuffer;
 
-          // Ensure overlay dimensions never exceed the base poster size
-          if (
-            overlayWidth > posterWidth ||
-            overlayHeight > posterHeight ||
-            overlayWidth === 0 ||
-            overlayHeight === 0
-          ) {
-            safeOverlayBuffer = await sharp(overlayBuffer)
-              .resize({
-                width: Math.min(overlayWidth || posterWidth, posterWidth),
-                height: Math.min(overlayHeight || posterHeight, posterHeight),
-                fit: 'inside',
-              })
-              .toBuffer();
-
-            // Recalculate dimensions after resize to ensure correct positioning
-            const safeMeta = await sharp(safeOverlayBuffer).metadata();
-            overlayWidth = safeMeta.width ?? overlayWidth;
-            overlayHeight = safeMeta.height ?? overlayHeight;
-          }
+          if (overlayWidth === 0 || overlayHeight === 0) continue;
 
           // Scale position from template coordinates to poster coordinates
           // Use uniform scaling with offsets to handle non-standard aspect ratios
@@ -612,8 +593,20 @@ class OverlayTemplateRendererService {
           );
 
           // Position the buffer so its center aligns with the calculated center
-          const left = centerX - Math.round(overlayWidth / 2);
-          const top = centerY - Math.round(overlayHeight / 2);
+          let left = centerX - Math.round(overlayWidth / 2);
+          let top = centerY - Math.round(overlayHeight / 2);
+          const cropLeft = Math.max(0, -left);
+          const cropTop = Math.max(0, -top);
+          const width = Math.min(overlayWidth, posterWidth - left) - cropLeft;
+          const height = Math.min(overlayHeight, posterHeight - top) - cropTop;
+          if (width <= 0 || height <= 0) continue;
+          if (width !== overlayWidth || height !== overlayHeight) {
+            safeOverlayBuffer = await sharp(safeOverlayBuffer)
+              .extract({ left: cropLeft, top: cropTop, width, height })
+              .toBuffer();
+            left += cropLeft;
+            top += cropTop;
+          }
 
           overlays.push({
             input: safeOverlayBuffer,
