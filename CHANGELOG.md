@@ -15,6 +15,10 @@
 - Crop elements at poster boundaries instead of shrinking oversized elements.
 - Add six renderer regression scenarios covering clipping, off-poster elements, and Sharp compositing.
 
+### Docker
+
+- Pin the native build tool to a Node 20 compatible version to restore container builds.
+
 ## Docker Images
 
 ```sh
